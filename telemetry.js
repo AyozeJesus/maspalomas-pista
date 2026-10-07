@@ -376,6 +376,102 @@
     return [d(rep(0)) / det, d(rep(1)) / det, d(rep(2)) / det];
   }
 
+  // ---------- inclinación con el giroscopio ----------
+  // Ángulo de la moto (+ a derechas) a partir solo del giroscopio del móvil, en sus ejes fijos sobre la moto:
+  // f (hacia delante) y u (vertical con la moto derecha). En curva la moto gira alrededor de la vertical del
+  // mundo, y vista desde la moto tumbada ese giro se reparte entre su vertical (cos φ) y su eje lateral (sen φ):
+  // tan φ = ω·izquierda / ω·vertical. Con giro suave (curva rápida, recta) esa división es ruido, y se usa
+  // sen φ = −v·(ω·vertical)/g, que tampoco ve el cabeceo de la horquilla (gira alrededor del eje lateral).
+  // La gravedad no sirve en curva (en un giro equilibrado apunta al suelo de la moto), así que solo fija u
+  // en recta. Entre medias se integra el balanceo (ω·f). Parado, se aprende el sesgo del giroscopio.
+  function LeanEstimator() {
+    this.f = null;
+    this.u = null;
+    this.l = null;
+    this.phi = 0;
+    this.wu = 0;
+    this.wl = 0;
+    this.bias = [0, 0, 0];
+  }
+  LeanEstimator.prototype.setAxes = function (f, u) {
+    const uu = norm3(u);
+    const fu = dot3(f, uu);
+    this.u = uu;
+    this.f = norm3([f[0] - fu * uu[0], f[1] - fu * uu[1], f[2] - fu * uu[2]]);
+    this.l = cross3(this.u, this.f);
+  };
+  // w: giro en rad/s en ejes del móvil; v: velocidad en m/s (NaN si no se sabe). Devuelve grados.
+  LeanEstimator.prototype.step = function (dt, w0, v) {
+    const h = clamp(dt, 0, 0.1);
+    const b = this.bias;
+    // Parado y quieto: lo que marque el giroscopio es su sesgo.
+    if (
+      v < 0.3 &&
+      Math.hypot(w0[0] - b[0], w0[1] - b[1], w0[2] - b[2]) < 0.08
+    ) {
+      const kb = 1 - Math.exp(-h / 2);
+      for (let i = 0; i < 3; i++) b[i] += (w0[i] - b[i]) * kb;
+    }
+    if (!this.f) return NaN;
+    const w = [w0[0] - b[0], w0[1] - b[1], w0[2] - b[2]];
+    const wf = dot3(w, this.f);
+    const lp = 1 - Math.exp(-h / 0.15);
+    this.wu += (dot3(w, this.u) - this.wu) * lp;
+    this.wl += (dot3(w, this.l) - this.wl) * lp;
+    this.phi += wf * h;
+    const yu = Math.abs(this.wu);
+    // Giro claro alrededor de la vertical de la moto: medida directa del ángulo.
+    const kr = clamp((yu - 0.1) / 0.2, 0, 1);
+    if (kr > 0) {
+      const meas = Math.atan2(this.wl * Math.sign(this.wu), yu);
+      this.phi += (meas - this.phi) * kr * (1 - Math.exp(-h / 0.3));
+    }
+    if (kr < 1) {
+      // Giro suave: por la velocidad si se sabe; si no, en recta sin giro la moto va derecha.
+      if (v > 5) {
+        const meas = Math.asin(clamp((-v * this.wu) / G, -0.95, 0.95));
+        this.phi += (meas - this.phi) * (1 - kr) * (1 - Math.exp(-h / 0.4));
+      } else if (Math.hypot(this.wu, this.wl) < 0.06 && !(v < 3)) {
+        this.phi -= this.phi * (1 - Math.exp(-h / 1.0));
+      }
+    }
+    this.phi = clamp(this.phi, -1.3, 1.3);
+    return (this.phi * 180) / Math.PI;
+  };
+
+  // Vertical de la moto derecha en ejes del móvil: media de la gravedad en recta lanzada sin giro (en caballete
+  // lateral la moto está tumbada, así que parado solo vale si no hay rectas).
+  function uprightAxis(gx, gy, gz, wx, wy, wz, v, hz) {
+    const sums = { straight: [0, 0, 0, 0], still: [0, 0, 0, 0] };
+    for (let k = 0; k < gx.length; k++) {
+      const key =
+        v[k] > 15 && Math.hypot(wx[k], wy[k], wz[k]) < 0.06
+          ? "straight"
+          : v[k] < 0.5
+            ? "still"
+            : null;
+      if (!key) continue;
+      const s = sums[key];
+      s[0] += gx[k];
+      s[1] += gy[k];
+      s[2] += gz[k];
+      s[3]++;
+    }
+    for (const key of ["straight", "still"]) {
+      const s = sums[key];
+      if (s[3] >= hz * 2) return { u: norm3(s), from: key };
+    }
+    let sx = 0;
+    let sy = 0;
+    let sz = 0;
+    for (let k = 0; k < gx.length; k++) {
+      sx += gx[k];
+      sy += gy[k];
+      sz += gz[k];
+    }
+    return { u: norm3([sx, sy, sz]), from: "all" };
+  }
+
   // ---------- análisis ----------
   // Devuelve la tanda procesada: línea de tiempo fusionada, vueltas, métricas por curva y referencia.
   function analyze(session, opts) {
@@ -476,6 +572,8 @@
     let yaw; // rad/s, + giro a derechas
     let lag = 0;
     let fit = null;
+    let gyroW = null;
+    let axes = null;
     if (hasImu) {
       // Remuestreo a 50 Hz y filtrado: la vibración del motor se va con medias de 0,3 s (acelerómetro).
       const ax = movingAvg(resampleTo(tg, session.acc.t, session.acc.x), 15);
@@ -487,33 +585,15 @@
       const gx = movingAvg(resampleTo(tg, session.grav.t, session.grav.x), 25);
       const gy = movingAvg(resampleTo(tg, session.grav.t, session.grav.y), 25);
       const gz = movingAvg(resampleTo(tg, session.grav.t, session.grav.z), 25);
-      // Vertical de la moto recta: media de la gravedad parado o en recta (sin giro).
+      // Vertical de la moto recta: media de la gravedad en recta (sin giro) o, si no hay, parado.
       const vg = resampleTo(tg, ft, fv);
-      let sx = 0;
-      let sy = 0;
-      let sz = 0;
-      let cnt = 0;
-      for (let k = 0; k < m; k++) {
-        const still = vg[k] < 0.5;
-        const straight = vg[k] > 15 && Math.hypot(wx[k], wy[k], wz[k]) < 0.06;
-        if (still || straight) {
-          sx += gx[k];
-          sy += gy[k];
-          sz += gz[k];
-          cnt++;
-        }
-      }
-      if (cnt < hz * 2) {
-        for (let k = 0; k < m; k++) {
-          sx += gx[k];
-          sy += gy[k];
-          sz += gz[k];
-        }
+      const upright = uprightAxis(gx, gy, gz, wx, wy, wz, vg, hz);
+      if (upright.from === "all")
         warnings.push(
           "No hay tramos parados ni rectos claros para calibrar: la inclinación puede ir algo desviada.",
         );
-      }
-      const u0 = norm3([sx, sy, sz]);
+      const u0 = upright.u;
+      gyroW = [wx, wy, wz];
       // Eje longitudinal: el que mejor explica la aceleración que mide el GPS (con su retardo).
       const fitAt = (lagS) => {
         const M = [
@@ -582,6 +662,7 @@
         wv[1] - dot3(wv, u0) * u0[1],
         wv[2] - dot3(wv, u0) * u0[2],
       ]);
+      axes = { f, u: u0, upFrom: upright.from };
       aLong = new Float64Array(m);
       yaw = new Float64Array(m);
       for (let k = 0; k < m; k++) {
@@ -641,14 +722,24 @@
     for (const seg of segs)
       fuseDistance(seg, fixes, gpsT, tg, v, sF, track.L, hz);
 
-    // Inclinación por física (v·giro/g) y radio de la trazada, con el giro suavizado medio segundo
-    // para que un pico de ruido no pase por inclinación máxima.
+    // Inclinación: con giroscopio, la que mide el móvil (ángulo real de la moto); sin él, por física
+    // (v·giro/g). Radio de la trazada con el giro suavizado medio segundo para que un pico de ruido
+    // no pase por inclinación máxima.
     const yawS = movingAvg(yaw, Math.round(hz / 2));
     const lean = new Float64Array(m);
     const R = new Float64Array(m);
     for (let k = 0; k < m; k++) {
       lean[k] = (Math.atan((v[k] * yawS[k]) / G) * 180) / Math.PI;
       R[k] = Math.abs(yawS[k]) > 0.02 ? v[k] / Math.abs(yawS[k]) : Infinity;
+    }
+    let leanFrom = "física";
+    if (axes && gyroW) {
+      const est = new LeanEstimator();
+      est.setAxes(axes.f, axes.u);
+      const [wx, wy, wz] = gyroW;
+      for (let k = 0; k < m; k++)
+        lean[k] = est.step(1 / hz, [wx[k], wy[k], wz[k]], v[k]);
+      leanFrom = "giroscopio";
     }
 
     const ref = reference(track, o.target || 65.0, power);
@@ -672,6 +763,8 @@
       hasImu,
       lag,
       fit: fit ? { r2: fit.r2, used: fit.used } : null,
+      axes,
+      leanFrom,
       warnings,
       timeline: { t: tg, v, a: aLong, lean, s: sF },
       fixes,
@@ -1229,13 +1322,17 @@
       const v = V[jj] + (V[jj + 1] - V[jj]) * f;
       const a =
         ds[jj] > 0 ? (V[jj + 1] * V[jj + 1] - V[jj] * V[jj]) / (2 * ds[jj]) : 0;
+      // Curvatura y rumbo continuos entre vértices: una moto no cambia de inclinación a saltos.
+      let dpsi = PSI[jj + 1] - PSI[jj];
+      if (dpsi > Math.PI) dpsi -= 2 * Math.PI;
+      if (dpsi < -Math.PI) dpsi += 2 * Math.PI;
       return {
         x: X[jj] + (X[jj + 1] - X[jj]) * f,
         y: Y[jj] + (Y[jj + 1] - Y[jj]) * f,
         v,
         a,
-        k: KSs[jj],
-        psi: PSI[jj],
+        k: KSs[jj] + (KSs[jj + 1] - KSs[jj]) * f,
+        psi: PSI[jj] + dpsi * f,
       };
     };
     // Sensores del móvil (Android): móvil en bolsa sobre el depósito, pantalla arriba inclinada 25° hacia el piloto.
@@ -1260,13 +1357,22 @@
       z: new Float64Array(cnt),
     };
     const tilt = (25 * Math.PI) / 180;
+    // Giroscopio real: un pequeño sesgo por eje y el cabeceo de la horquilla al frenar (unos 4° por g,
+    // con 0,15 s de retraso), que gira la moto alrededor de su eje lateral.
+    const bias = [0.006, -0.004, 0.008];
     let prevLean = 0;
+    let pitch = 0;
+    let prevPitch = 0;
     for (let q = 0; q < cnt; q++) {
       const t = q / hz;
       const st = stateAt(t);
       const lean = Math.atan((st.v * st.v * st.k) / G);
       const dLean = q ? (lean - prevLean) * hz : 0;
       prevLean = lean;
+      const pitchTarget = (clamp(-st.a / G, -0.6, 1.3) * 4 * Math.PI) / 180;
+      pitch += (pitchTarget - pitch) * (1 - Math.exp(-1 / hz / 0.15));
+      const dPitch = q ? (pitch - prevPitch) * hz : 0;
+      prevPitch = pitch;
       const yawRate = -st.v * st.k;
       const f = [Math.cos(st.psi), Math.sin(st.psi), 0];
       const r = [Math.sin(st.psi), -Math.cos(st.psi), 0];
@@ -1298,7 +1404,12 @@
         0,
       ];
       const gw = [0, 0, G];
-      const ww = [dLean * f[0], dLean * f[1], yawRate + dLean * f[2]];
+      // Morro abajo = giro positivo alrededor del eje izquierdo de la moto (−rb).
+      const ww = [
+        dLean * f[0] - dPitch * rb[0],
+        dLean * f[1] - dPitch * rb[1],
+        yawRate + dLean * f[2] - dPitch * rb[2],
+      ];
       const vib = st.v > 1 ? 1.2 : 0.05;
       const P = (vec) => [dot3(vec, xp), dot3(vec, yp), dot3(vec, zp)];
       const A1 = P(aw);
@@ -1308,9 +1419,9 @@
       acc.x[q] = A1[0] + vib * gauss(rand);
       acc.y[q] = A1[1] + vib * gauss(rand);
       acc.z[q] = A1[2] + vib * gauss(rand);
-      gyro.x[q] = W1[0] + 0.03 * gauss(rand);
-      gyro.y[q] = W1[1] + 0.03 * gauss(rand);
-      gyro.z[q] = W1[2] + 0.03 * gauss(rand);
+      gyro.x[q] = W1[0] + bias[0] + 0.03 * gauss(rand);
+      gyro.y[q] = W1[1] + bias[1] + 0.03 * gauss(rand);
+      gyro.z[q] = W1[2] + bias[2] + 0.03 * gauss(rand);
       grav.x[q] = G1[0] + 0.03 * gauss(rand);
       grav.y[q] = G1[1] + 0.03 * gauss(rand);
       grav.z[q] = G1[2] + 0.03 * gauss(rand);
@@ -1344,7 +1455,15 @@
       crossT.push(T[Math.min(N - 1, lp * n)]);
     return {
       session: { loc, acc, gyro, grav, warnings: [] },
-      truth: { lapTimes: truth, crossings: crossT },
+      truth: {
+        lapTimes: truth,
+        crossings: crossT,
+        // Inclinación verdadera (grados, + a derechas) en el instante t, para comprobar la medida.
+        leanAt: (t) => {
+          const st = stateAt(t);
+          return (Math.atan((st.v * st.v * st.k) / G) * 180) / Math.PI;
+        },
+      },
     };
   }
 
@@ -1360,6 +1479,7 @@
     sectorBounds,
     toLocal,
     toLatLon,
+    LeanEstimator,
     STEP_M,
     G,
   };

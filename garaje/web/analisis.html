@@ -1,0 +1,306 @@
+<!doctype html>
+<html lang="es">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="/icon.png">
+<title>Telemetría Maspalomas · Garaje</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&family=Saira+Extra+Condensed:wght@600;700;800&display=swap">
+<style>
+  /* Layout: pantalla de box. Carga de la tanda arriba; resumen y vueltas; luego el detalle de la vuelta elegida
+     (mejoras, gráficas con cursor común, mapa y horquillas); historial e instrucciones al final. */
+  :root {
+    --bg: #e9edef;
+    --panel: #f7f9fa;
+    --ink: #11171b;
+    --muted: #56626a;
+    --rule: #cdd5da;
+    --accent: #1b5d9c;
+    --ghost: #7d8a93;
+    --road: #2c343a;
+    --road-edge: #96a2aa;
+    --gas: #1f9254;
+    --brake: #d2382d;
+    --coast: #df9f00;
+    --best: #7a3fb0;
+    --kerb: #d2382d;
+    --kerb-w: #ffffff;
+    --display: "Saira Extra Condensed", "Arial Narrow", "Roboto Condensed", sans-serif;
+    --body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0e1215; --panel: #161c20; --ink: #e5eaec; --muted: #95a2aa; --rule: #29323a;
+      --accent: #5fa3e6; --ghost: #a2afb7; --road: #353e45; --road-edge: #56626a;
+      --gas: #38c477; --brake: #f0574b; --coast: #f3b52c; --best: #b98ae6; --kerb: #e5483d; --kerb-w: #dfe4e7;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0e1215; --panel: #161c20; --ink: #e5eaec; --muted: #95a2aa; --rule: #29323a;
+    --accent: #5fa3e6; --ghost: #a2afb7; --road: #353e45; --road-edge: #56626a;
+    --gas: #38c477; --brake: #f0574b; --coast: #f3b52c; --best: #b98ae6; --kerb: #e5483d; --kerb-w: #dfe4e7;
+    color-scheme: dark;
+  }
+  body { background: var(--bg); color: var(--ink); font-family: var(--body); font-size: 15px; line-height: 1.5; }
+  .wrap { max-width: 1160px; margin: 0 auto; padding-inline: 20px; padding-block: 24px 64px; display: grid; gap: 28px; }
+  @media (max-width: 520px) { .wrap { padding-inline: 16px; } }
+  h1, h2, h3 { margin: 0; text-wrap: balance; }
+  p { margin: 0; }
+  .mono, .num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+  .eyebrow { font-family: var(--mono); font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+  .kerb { height: 6px; width: 72px; background: repeating-linear-gradient(90deg, var(--kerb) 0 12px, var(--kerb-w) 12px 24px); border: 1px solid var(--rule); }
+  a { color: var(--accent); }
+
+  .mast { display: grid; gap: 10px; }
+  .mast h1 { font-family: var(--display); font-weight: 800; font-size: clamp(44px, 8vw, 84px); line-height: 0.9; text-transform: uppercase; }
+  .mast h1 span { color: var(--accent); }
+  .lede { max-width: 66ch; font-size: 16px; }
+  .row { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; }
+
+  .panel { background: var(--panel); border: 1px solid var(--rule); border-radius: 6px; padding: 16px; display: grid; gap: 14px; min-width: 0; }
+  .panel-title { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 8px 16px; }
+  .panel-title h2, .panel-title h3 { font-family: var(--display); font-weight: 700; font-size: 26px; text-transform: uppercase; line-height: 1; }
+  .caption { font-size: 13px; color: var(--muted); max-width: 72ch; }
+  .grid2 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; }
+  @media (max-width: 880px) { .grid2 { grid-template-columns: minmax(0, 1fr); } }
+
+  button, .btn {
+    font: 600 14px/1 var(--body); color: var(--ink); background: var(--panel);
+    border: 1px solid var(--ink); border-radius: 5px; padding: 10px 14px; cursor: pointer;
+  }
+  .btn-primary { background: var(--ink); color: var(--panel); }
+  button:disabled { opacity: 0.5; cursor: default; }
+  button:focus-visible, select:focus-visible, input:focus-visible, .drop:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .seg { display: inline-flex; border: 1px solid var(--rule); border-radius: 5px; overflow: hidden; }
+  .seg button { border: 0; border-radius: 0; font-weight: 500; font-size: 13px; padding: 8px 11px; }
+  .seg button + button { border-left: 1px solid var(--rule); }
+  .seg button[aria-pressed="true"] { background: var(--ink); color: var(--panel); }
+  .field { display: grid; gap: 4px; }
+  .field label { font-size: 12px; color: var(--muted); }
+  .field input { font: 600 18px var(--mono); width: 7.5ch; padding: 6px 9px; border: 1px solid var(--rule); border-radius: 5px; background: var(--panel); color: var(--ink); }
+
+  /* Carga */
+  .drop { border: 2px dashed var(--rule); border-radius: 6px; padding: 18px; display: grid; gap: 10px; justify-items: start; }
+  .drop.over { border-color: var(--accent); background: var(--bg); }
+  .drop input[type="file"] { position: absolute; width: 1px; height: 1px; opacity: 0; }
+  .status { font-size: 14px; }
+  .status.err { color: var(--brake); font-weight: 600; }
+  .badge { display: inline-flex; gap: 6px; align-items: center; font: 600 12px var(--body); padding: 4px 8px; border-radius: 3px; background: var(--bg); color: var(--ink); }
+  .badge.demo { background: var(--coast); color: #1a1406; }
+  .warn { font-size: 13px; color: var(--muted); }
+  .warn li { margin: 2px 0; }
+
+  /* Resumen */
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+  .tile { display: grid; gap: 2px; padding: 12px; background: var(--bg); border-radius: 4px; }
+  .tile span { font-size: 12px; color: var(--muted); }
+  .tile b { font-family: var(--display); font-weight: 700; font-size: 34px; line-height: 1; font-variant-numeric: tabular-nums; }
+  .tile small { font-family: var(--mono); font-size: 12px; color: var(--muted); }
+
+  /* Tabla de vueltas */
+  .tbl { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--rule); white-space: nowrap; }
+  th { font-weight: 500; color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; }
+  td { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+  tbody tr { cursor: pointer; }
+  tbody tr:hover { background: var(--bg); }
+  tr.sel { background: var(--bg); box-shadow: inset 3px 0 0 var(--accent); }
+  td.best { color: var(--best); font-weight: 600; }
+  td.worse { color: var(--brake); }
+  td.better { color: var(--gas); }
+  tr.invalid td { color: var(--muted); }
+
+  /* Mejoras */
+  .sub-h { margin-bottom: 8px; font-weight: 500; }
+  [hidden] { display: none !important; }
+  .tips { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
+  .tips li { display: grid; gap: 4px; padding: 12px; background: var(--bg); border-radius: 4px; }
+  .tip-head { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: baseline; }
+  .tip-head strong { font-family: var(--display); font-weight: 700; font-size: 22px; line-height: 1; }
+  .tip-head b { font-family: var(--mono); color: var(--brake); }
+  .tip-head b.good { color: var(--gas); }
+  .tip-line { display: flex; gap: 8px; align-items: baseline; font-size: 14px; }
+  .pill { font: 600 11px var(--mono); padding: 2px 6px; border-radius: 3px; background: var(--panel); border: 1px solid var(--rule); white-space: nowrap; text-decoration: none; color: var(--ink); }
+
+  /* Gráficas */
+  .charts { position: relative; display: grid; gap: 6px; touch-action: pan-y; }
+  .chart { display: grid; grid-template-columns: 92px minmax(0, 1fr); gap: 8px; align-items: stretch; }
+  .chart-name { font-size: 12px; color: var(--muted); display: grid; align-content: center; gap: 2px; }
+  .chart-name b { font-family: var(--mono); font-size: 13px; color: var(--ink); font-weight: 600; }
+  .chart-name i { font-style: normal; font-family: var(--mono); font-size: 12px; color: var(--ghost); }
+  .chart svg { width: 100%; height: 96px; display: block; background: var(--bg); border-radius: 3px; }
+  .chart.tall svg { height: 140px; }
+  .corner-axis { position: relative; height: 16px; margin-left: 100px; font: 600 11px var(--mono); color: var(--muted); }
+  .corner-axis span { position: absolute; transform: translateX(-50%); }
+  .l-lap { fill: none; stroke: var(--accent); stroke-width: 1.8; }
+  .l-ref { fill: none; stroke: var(--ghost); stroke-width: 1.6; stroke-dasharray: 5 3; }
+  .l-zero { stroke: var(--rule); stroke-width: 1; }
+  .l-corner { stroke: var(--rule); stroke-width: 1; stroke-dasharray: 3 3; }
+  .l-cursor { stroke: var(--ink); stroke-width: 1.2; }
+  .a-loss { fill: var(--brake); fill-opacity: 0.25; }
+  .a-gain { fill: var(--gas); fill-opacity: 0.25; }
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 13px; color: var(--muted); }
+  .legend i { display: inline-block; width: 18px; height: 0; margin-right: 6px; vertical-align: middle; border-top: 2px solid; }
+  .lg-lap { border-color: var(--accent) !important; }
+  .lg-ref { border-color: var(--ghost) !important; border-top-style: dashed !important; }
+  .lg-g { border-color: var(--gas) !important; border-top-width: 5px !important; }
+  .lg-b { border-color: var(--brake) !important; border-top-width: 5px !important; }
+  .lg-c { border-color: var(--coast) !important; border-top-width: 5px !important; }
+
+  /* Mapa */
+  .map svg { width: 100%; height: auto; display: block; }
+  .m-edge { fill: none; stroke: var(--road-edge); stroke-width: 13.5; stroke-linejoin: round; }
+  .m-road { fill: none; stroke: var(--road); stroke-width: 12; stroke-linejoin: round; }
+  .m-ph { fill: none; stroke-width: 4; stroke-linejoin: round; }
+  .m-gas { stroke: var(--gas); } .m-brake { stroke: var(--brake); } .m-coast { stroke: var(--coast); }
+  .m-dot { fill: var(--accent); stroke: var(--panel); stroke-width: 2.5; }
+  .map svg { cursor: crosshair; }
+  .m-finish-w { stroke: var(--kerb-w); stroke-width: 4; }
+  .m-finish-k { stroke: var(--ink); stroke-width: 4; stroke-dasharray: 2.5 2.5; }
+  .m-finish-t { font: 600 11px var(--mono); fill: var(--ink); text-anchor: middle; }
+  .m-label { font: 700 13px var(--display); fill: var(--ink); text-anchor: middle; dominant-baseline: central; }
+  .m-badge { fill: var(--panel); stroke: var(--ink); stroke-width: 1.4; }
+
+  /* Horquillas */
+  .corners { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 12px; }
+  .corner { display: grid; gap: 6px; padding: 12px; background: var(--bg); border-radius: 4px; min-width: 0; }
+  .corner h3 { font-family: var(--display); font-weight: 700; font-size: 22px; line-height: 1; }
+  .corner table td, .corner table th { padding: 4px 4px; font-size: 13px; border-bottom-color: var(--rule); }
+  .corner th { text-transform: none; letter-spacing: 0; font-size: 12px; }
+  .corner td:first-child { font-family: var(--body); color: var(--muted); white-space: normal; }
+
+  /* Historial */
+  .hist-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+  .hist-list li { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 10px; align-items: center; padding: 10px 12px; background: var(--bg); border-radius: 4px; }
+  .hist-list b { font-family: var(--mono); }
+  .hist-list button { padding: 6px 10px; font-size: 12px; }
+  .hist-chart svg { width: 100%; height: 120px; display: block; background: var(--bg); border-radius: 3px; }
+  .confirm { display: inline-flex; gap: 6px; align-items: center; font-size: 13px; }
+
+  ol.how { margin: 0; padding-left: 20px; display: grid; gap: 6px; max-width: 72ch; }
+  ul.notes { margin: 0; padding-left: 18px; display: grid; gap: 6px; font-size: 13px; color: var(--muted); max-width: 86ch; }
+</style>
+
+<div class="wrap">
+  <header class="mast">
+    <div class="row"><div class="kerb" aria-hidden="true"></div><span class="eyebrow">Garaje · tandas guardadas en este Mac · <a href="/">volver a la lista</a></span></div>
+    <h1>Telemetría<br><span>Maspalomas</span></h1>
+    <p class="lede">La tanda que subió el móvil, vuelta a vuelta: dónde ganas y dónde pierdes, curva a curva y por cada uno de los cuatro pilares. La inclinación es la que midió el giroscopio del móvil. Va con la explicación de <a href="https://claude.ai/artifact/1RrPnnyj8FkGL7NghJYFze" target="_blank" rel="noopener">Maspalomas a fondo</a>.</p>
+  </header>
+
+  <section class="panel" aria-labelledby="load-h">
+    <div class="panel-title"><h2 id="load-h">Tanda</h2><span id="source-badge" class="badge demo">Ejemplo generado con el modelo</span></div>
+    <div class="drop" id="drop">
+      <p>Arrastra aquí el <strong>.zip</strong> que exporta Sensor Logger (o sus CSV: Location, Accelerometer, Gyroscope y Gravity).</p>
+      <div class="row">
+        <label class="btn btn-primary" for="file">Subir tanda</label>
+        <input id="file" type="file" accept=".zip,.csv,application/zip,text/csv" multiple>
+        <button type="button" id="demo-btn">Ver la tanda de ejemplo</button>
+      </div>
+      <p class="caption">El archivo se procesa en este navegador; no se envía a ningún sitio. Solo se guarda el resumen si pulsas «Guardar esta tanda».</p>
+    </div>
+    <div class="row">
+      <div class="field"><label for="target">Objetivo</label><input id="target" type="text" inputmode="decimal" value="1:05,0" autocomplete="off" spellcheck="false"></div>
+      <p class="status" id="status" role="status">Cargando el ejemplo…</p>
+    </div>
+    <ul class="warn" id="warnings" hidden></ul>
+  </section>
+
+  <section class="panel" id="summary" aria-labelledby="sum-h">
+    <div class="panel-title"><h2 id="sum-h">Resumen</h2><span class="caption" id="sum-meta"></span></div>
+    <div class="tiles" id="tiles"></div>
+    <div class="tbl">
+      <table>
+        <thead id="laps-head"></thead>
+        <tbody id="laps-body"></tbody>
+      </table>
+    </div>
+    <p class="caption">Toca una vuelta para verla en detalle. En morado, tu mejor tiempo en cada columna; la vuelta ideal suma tus mejores sectores. Cada sector va de la mitad de una recta a la mitad de la siguiente, con su horquilla dentro.</p>
+  </section>
+
+  <section class="panel" id="detail" aria-labelledby="det-h">
+    <div class="panel-title"><h2 id="det-h">Vuelta <span id="det-lap">—</span></h2>
+      <div class="row"><span class="caption">Comparar con</span>
+        <div class="seg" id="ref-mode">
+          <button type="button" data-v="obj" aria-pressed="true">Objetivo</button>
+          <button type="button" data-v="best" aria-pressed="false">Mi mejor vuelta</button>
+        </div>
+      </div>
+    </div>
+    <div>
+      <h3 class="caption sub-h">Dónde están tus puntos de mejora en esta vuelta</h3>
+      <ol class="tips" id="tips"></ol>
+    </div>
+  </section>
+
+  <section class="grid2" id="detail-grid">
+    <div class="panel">
+      <div class="panel-title"><h3>Telemetría</h3><span class="caption mono" id="cursor-read">Desliza sobre las gráficas</span></div>
+      <div class="corner-axis" id="corner-axis" aria-hidden="true"></div>
+      <div class="charts" id="charts">
+        <div class="chart tall"><div class="chart-name">Velocidad<b id="r-v">—</b><i id="r-v2">—</i></div><svg id="c-v" viewBox="0 0 1000 140" preserveAspectRatio="none" role="img" aria-label="Velocidad a lo largo de la vuelta"></svg></div>
+        <div class="chart"><div class="chart-name">Diferencia<b id="r-d">—</b></div><svg id="c-d" viewBox="0 0 1000 96" preserveAspectRatio="none" role="img" aria-label="Diferencia de tiempo acumulada"></svg></div>
+        <div class="chart"><div class="chart-name">Freno / gas<b id="r-a">—</b><i id="r-a2">—</i></div><svg id="c-a" viewBox="0 0 1000 96" preserveAspectRatio="none" role="img" aria-label="Aceleración longitudinal"></svg></div>
+        <div class="chart"><div class="chart-name">Inclinación<b id="r-l">—</b><i id="r-l2">—</i></div><svg id="c-l" viewBox="0 0 1000 96" preserveAspectRatio="none" role="img" aria-label="Inclinación estimada"></svg></div>
+      </div>
+      <div class="legend" aria-hidden="true"><span><i class="lg-lap"></i>Esta vuelta</span><span><i class="lg-ref"></i><span id="ref-name">Objetivo</span></span><span>Diferencia: rojo pierdes, verde ganas</span></div>
+    </div>
+    <div class="panel map">
+      <div class="panel-title"><h3>En la pista</h3><span class="caption">dónde frenas, dónde vas sin carga y dónde aceleras</span></div>
+      <svg id="map" role="img" aria-label="Mapa del circuito con la vuelta coloreada. Toca un punto de la pista para poner ahí la línea de meta."></svg>
+      <div class="legend" aria-hidden="true"><span><i class="lg-g"></i>Acelerando</span><span><i class="lg-b"></i>Frenando</span><span><i class="lg-c"></i>Sin freno ni gas en curva</span></div>
+      <div class="row">
+        <p class="caption">Toca la pista para mover la <strong>línea de meta</strong> (ponla donde la tenga RaceChrono o el cronometraje del circuito). Vueltas, sectores y el orden C1…C4 cuentan desde ahí.</p>
+        <button type="button" id="finish-reset">Meta por defecto</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel" id="corners-sec" aria-labelledby="cor-h">
+    <div class="panel-title"><h2 id="cor-h">Horquilla a horquilla</h2><span class="caption">esta vuelta · <span id="cor-ref">objetivo</span> · diferencia</span></div>
+    <div class="corners" id="corners"></div>
+    <p class="caption">«Tiempo muerto» es el rato entre soltar el freno y que la moto vuelva a acelerar de verdad: incluye costear y mantener gas a velocidad constante. La inclinación sale de la velocidad y el giro (la física de la curva), no de una inclinación medida directamente.</p>
+  </section>
+
+  <section class="panel" aria-labelledby="hist-h">
+    <div class="panel-title"><h2 id="hist-h">Tus tandas</h2><button type="button" id="save-btn">Guardar esta tanda</button></div>
+    <p class="caption" id="hist-where">Se guardan solo para ti.</p>
+    <div class="hist-chart"><svg id="hist-svg" viewBox="0 0 1000 120" preserveAspectRatio="none" role="img" aria-label="Mejor vuelta de cada tanda guardada"></svg></div>
+    <ul class="hist-list" id="hist-list"></ul>
+  </section>
+
+  <section class="panel" aria-labelledby="how-h">
+    <div class="panel-title"><h2 id="how-h">Cómo grabar con el Pixel</h2></div>
+    <p class="caption">La forma más sencilla: el <a href="https://ayozejesus.github.io/maspalomas-pista/" target="_blank" rel="noopener">Modo pista</a>, que te enseña el delta en directo en la moto, graba la tanda solo y, al parar, la exporta en un .zip que se sube aquí tal cual. Si prefieres grabar con Sensor Logger:</p>
+    <ol class="how">
+      <li>Instala <strong>Sensor Logger</strong> desde Google Play (gratis).</li>
+      <li>En sus sensores activa solo <strong>Location</strong>, <strong>Accelerometer</strong>, <strong>Gyroscope</strong> y <strong>Gravity</strong>. Pon 100 Hz en los tres últimos y la frecuencia más alta que deje en Location.</li>
+      <li>Sujeta el móvil <strong>fijo a la moto</strong>: bolsa de depósito acolchada o bajo el colín, sin holgura. Da igual cómo esté orientado, pero no puede moverse en toda la tanda. Ni en el bolsillo ni en la mochila, y nada de manillar (las vibraciones pueden dañar la cámara).</li>
+      <li>En boxes pulsa grabar y deja la moto <strong>quieta 10 segundos</strong>: así sé dónde está la vertical.</li>
+      <li>Al volver, para la grabación y expórtala como <strong>Zipped CSV</strong> a Archivos o Drive.</li>
+      <li>Aquí, «Subir tanda» y elige el .zip. Si ruedas en sentido horario lo detecto solo.</li>
+    </ol>
+  </section>
+
+  <section class="panel" aria-labelledby="acc-h">
+    <div class="panel-title"><h2 id="acc-h">Qué precisión esperar</h2></div>
+    <ul class="notes">
+      <li>El GPS del móvil da una posición por segundo con 1–3 m de error en el Pixel. Por eso no se usa la posición tal cual: la velocidad se calcula con el acelerómetro a 50 Hz corregido con el GPS, y la posición se coloca sobre el trazado real del circuito.</li>
+      <li>Tiempos de vuelta y sectores: unas centésimas a una décima. Puntos de frenada y de gas: unos 5–10 m. Velocidad mínima: ±2 km/h. Inclinación: ±2–3° si el móvil va bien sujeto.</li>
+      <li>Lo que no se puede ver con el móvil es tu línea exacta dentro de la pista. El radio en el vértice (velocidad entre giro) es la pista de si usas el ancho.</li>
+      <li>La meta es la del dato de OpenStreetMap, en la recta principal: los tiempos pueden diferir unas décimas de un cronometraje oficial con la línea en otro sitio, pero las comparaciones entre tus vueltas valen igual.</li>
+      <li>El objetivo es el modelo de «Maspalomas a fondo» calibrado al tiempo que escribas: una referencia, no una vuelta real.</li>
+    </ul>
+  </section>
+</div>
+
+<script src="/lib/jszip.min.js"></script>
+<script src="/lib/track-data.js"></script>
+<script src="/lib/sim.js"></script>
+<script src="/lib/analysis.js"></script>
+<script src="/lib/telemetry.js"></script>
+<script src="/tel-app.js"></script>

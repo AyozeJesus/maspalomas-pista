@@ -4,7 +4,11 @@
   const T = window.MaspaTelemetry;
   const S = window.MaspaSim;
   const GEO = window.MASPA_GEO;
+  const F = window.MaspaFormato;
+  const ST = window.PistaStore;
+  const APP_VERSION = 2;
   const G = 9.80665;
+  const REC_EVERY = 10; // segundos entre trozos guardados en el móvil
   const $ = (id) => document.getElementById(id);
 
   // ---------- formato ----------
@@ -36,6 +40,9 @@
   function ring(i, n) {
     return ((i % n) + n) % n;
   }
+  function clamp(x, a, b) {
+    return Math.max(a, Math.min(b, x));
+  }
 
   // ---------- ajustes y mejor vuelta (este navegador) ----------
   function load(key, fallback) {
@@ -55,7 +62,7 @@
     }
   }
   const settings = Object.assign(
-    { cue: false, lead: 20, finish: { osm: 0, rev: 0 } },
+    { cue: false, lead: 20, finish: { osm: 0, rev: 0 }, garaje: null },
     load("pista-ajustes", {}),
   );
   function saveSettings() {
@@ -147,29 +154,64 @@
       cueDone: new Set(),
       prevCueS: null,
       deltaEma: null,
-      calib: {
-        M: [
-          [0, 0, 0],
-          [0, 0, 0],
-          [0, 0, 0],
-        ],
-        y: [0, 0, 0],
-        count: 0,
-        up: [0, 0, 0],
-        upN: 0,
-        f: null,
-        sum: [0, 0, 0],
-        n: 0,
-      },
+      calib: newCalib(),
       aEma: 0,
       aLast: null,
       aLong: new Series(["t", "a"]),
+      // Inclinación con el giroscopio (grados, + derecha) y lo que calcula el móvil, a 10 Hz.
+      lean: new T.LeanEstimator(),
+      leanDeg: NaN,
+      leanAxes: 0,
+      hasGyro: false,
+      moved: false,
+      canal: new Series(["t", "s", "v", "a", "lean", "lap"]),
+      canalT: -Infinity,
+      // Curva en curso, curvas de esta vuelta y resumen de la última curva.
+      cw: null,
+      lapCorners: [],
+      recap: null,
+      recapT: -Infinity,
+      rec: null,
+      analysis: null,
       slowSince: null,
       lag: 0,
       lagR2: null,
       mode: "ride",
       flashUntil: 0,
     };
+  }
+
+  function newCalib() {
+    return {
+      M: [
+        [0, 0, 0],
+        [0, 0, 0],
+        [0, 0, 0],
+      ],
+      y: [0, 0, 0],
+      count: 0,
+      up: [0, 0, 0],
+      upN: 0,
+      // Vertical solo con la moto lanzada en recta (parada puede estar en el caballete, tumbada).
+      upS: [0, 0, 0],
+      upSN: 0,
+      f: null,
+      fVer: 0,
+      sum: [0, 0, 0],
+      n: 0,
+    };
+  }
+
+  // El móvil se ha movido en su soporte (o se ha cogido con la mano): se vuelven a aprender sus ejes.
+  function resetCalib() {
+    const bias = E.lean.bias.slice();
+    E.calib = newCalib();
+    E.lean = new T.LeanEstimator();
+    E.lean.bias = bias;
+    E.leanAxes = 0;
+    E.leanDeg = NaN;
+    E.aEma = 0;
+    E.moved = false;
   }
 
   function now() {
@@ -182,6 +224,8 @@
     const ref = T.reference(E.track, 65.0, S.MAPS.repro.power);
     E.corners = ref.corners;
     E.bounds = T.sectorBounds(ref.corners, E.track.L);
+    // El sector k (S1…S4) contiene la k-ésima curva en orden de paso desde meta.
+    E.cornerBySector = ref.corners.slice().sort((a, b) => a.sApex - b.sApex);
     if (!E.sim) {
       const b = load(bestKey(dir), null);
       if (
@@ -309,6 +353,7 @@
     E.lapSamples = [{ s: 0, tl: 0 }];
     E.lapSpeeds = [];
     E.lapOk = true;
+    E.lapCorners = [];
     E.cueDone.clear();
     E.prevCueS = null;
   }
@@ -390,9 +435,26 @@
     const time = tc - E.lapStart;
     const valid =
       E.lapOk && time > 45 && time < 150 && E.lapSamples.length > 20;
-    const lap = { num: E.lapNum, time, valid };
+    // Lo medido curva a curva en esta vuelta (sin la comparación, que solo vale para el directo).
+    const corners = E.bounds.map((_, k) => {
+      const c = E.lapCorners[k];
+      return c
+        ? {
+            num: c.num,
+            leanMax: c.leanMax,
+            gMax: c.gMax,
+            vMin: c.vMin,
+            brakeS: c.brakeS,
+            time: c.time,
+          }
+        : null;
+    });
+    const lap = { num: E.lapNum, time, valid, corners };
     E.laps.push(lap);
-    if (!valid) return;
+    if (!valid) {
+      saveMeta("grabando");
+      return;
+    }
     lap.grid = gridOf(E.lapSamples, L, time);
     lap.sectors = sectorsOf(lap.grid, time);
     lap.brakeS = brakePoints(E.lapStart, tc, E.lapSamples, E.lapSpeeds);
@@ -404,12 +466,14 @@
         grid: lap.grid,
         sectors: lap.sectors,
         brakeS: lap.brakeS,
+        corners,
         date: new Date().toISOString(),
       };
       if (!E.sim) store(bestKey(E.dir), E.best);
     }
     showLapFlash(time, isBest, prevBest);
     estimateLag();
+    saveMeta("grabando");
   }
 
   // ---------- sensores ----------
@@ -433,9 +497,10 @@
       if (c.count >= 30 && c.count % 10 === 0 && c.upN > 50) {
         const w = solve3(c.M, c.y);
         if (w) {
-          const u = norm3(c.up);
+          const u = norm3(c.upSN >= 100 ? c.upS : c.up);
           const wu = dot3(w, u);
           c.f = norm3([w[0] - wu * u[0], w[1] - wu * u[1], w[2] - wu * u[2]]);
+          c.fVer++;
         }
       }
     }
@@ -447,26 +512,142 @@
     E.acc.push({ t, x: lin[0], y: lin[1], z: lin[2] });
     E.grav.push({ t, x: grav[0], y: grav[1], z: grav[2] });
     E.gyro.push({ t, x: gyro[0], y: gyro[1], z: gyro[2] });
+    if (gyro[0] || gyro[1] || gyro[2]) E.hasGyro = true;
     const c = E.calib;
     c.sum[0] += lin[0];
     c.sum[1] += lin[1];
     c.sum[2] += lin[2];
     c.n++;
     const v = E.fix ? E.fix.v : 0;
-    if (v < 0.5 || (v > 15 && Math.hypot(gyro[0], gyro[1], gyro[2]) < 0.06)) {
+    const spin = Math.hypot(gyro[0], gyro[1], gyro[2]);
+    const straight = v > 15 && spin < 0.06;
+    if (v < 0.5 || straight) {
       c.up[0] += grav[0];
       c.up[1] += grav[1];
       c.up[2] += grav[2];
       c.upN++;
     }
-    if (c.f) {
-      const a = dot3(lin, c.f);
-      const dt =
-        E.aLast === null ? 0.02 : Math.max(0.001, Math.min(0.1, t - E.aLast));
-      E.aLast = t;
+    if (straight && E.hasGyro) {
+      c.upS[0] += grav[0];
+      c.upS[1] += grav[1];
+      c.upS[2] += grav[2];
+      c.upSN++;
+    }
+    // Parado, un giro brusco es el móvil en la mano o recolocado: ejes nuevos al volver a rodar.
+    if (v < 2 && spin > 1.5) E.moved = true;
+    else if (E.moved && v > 8) resetCalib();
+    const dt =
+      E.aLast === null ? 0.02 : Math.max(0.001, Math.min(0.1, t - E.aLast));
+    E.aLast = t;
+    if (E.calib.f) {
+      const a = dot3(lin, E.calib.f);
       E.aEma += (a - E.aEma) * (1 - Math.exp(-dt / 0.2));
       E.aLong.push({ t, a: E.aEma });
     }
+    const cal = E.calib;
+    if (E.hasGyro && cal.f && cal.upSN >= 100 && E.leanAxes !== cal.fVer) {
+      E.lean.setAxes(cal.f, cal.upS);
+      E.leanAxes = cal.fVer;
+    }
+    const p = E.track && E.fix && E.fix.on ? predicted(t) : null;
+    const vNow = p ? p.v : E.fix ? E.fix.v : NaN;
+    E.leanDeg = E.hasGyro ? E.lean.step(dt, gyro, vNow) : NaN;
+    cornerTrack(t, p);
+    if (t - E.canalT >= 0.1) {
+      E.canalT = t;
+      E.canal.push({
+        t,
+        s: p ? p.s : NaN,
+        v: vNow,
+        a: cal.f ? E.aEma / G : NaN,
+        lean: E.leanDeg,
+        lap: E.lapNum,
+      });
+    }
+  }
+
+  // ---------- curva a curva ----------
+  // Cada curva va de la mitad de la recta anterior (límite de sector) hasta 80 m después de su vértice.
+  // Mientras tanto se apunta lo que mide el móvil; al salir queda el resumen, que el panel enseña en la recta.
+  function sectorAt(s) {
+    const B = E.bounds;
+    const L = E.track.L;
+    let best = 0;
+    let bd = Infinity;
+    B.forEach((b, k) => {
+      const d = ring(s - b, L);
+      if (d < bd) {
+        bd = d;
+        best = k;
+      }
+    });
+    return best;
+  }
+
+  function cornerTrack(t, p) {
+    if (!p || E.lapStart === null || !E.bounds) return;
+    const L = E.track.L;
+    const n = E.bounds.length;
+    const k = sectorAt(p.s);
+    let w = E.cw;
+    if (!w || w.k !== k) {
+      // Solo se avanza a la curva siguiente; un salto atrás del GPS no reinicia nada.
+      const stale = !w || t - w.tLast > 5;
+      if (!stale && k !== (w.k + 1) % n) return;
+      w = E.cw = {
+        k,
+        t0: t,
+        s0: p.s,
+        tLast: t,
+        leanMax: 0,
+        gMax: null,
+        vMin: Infinity,
+        brakeS: null,
+        brakeCand: null,
+        done: false,
+      };
+    }
+    w.tLast = t;
+    if (w.done) return;
+    const corner = E.cornerBySector[k];
+    const rel = (s) => ring(s - E.bounds[k], L);
+    const secLen = rel(E.bounds[(k + 1) % n]) || L;
+    const exitRel = Math.min(rel(corner.sApex + 80), secLen - 10);
+    const r = rel(p.s);
+    if (isFinite(E.leanDeg))
+      w.leanMax = Math.max(w.leanMax, Math.abs(E.leanDeg));
+    if (E.calib.f) {
+      const a = E.aEma;
+      w.gMax = Math.max(w.gMax || 0, -a / G);
+      if (a < -0.1 * G) {
+        if (w.brakeCand === null) w.brakeCand = p.s;
+        if (a < -0.3 * G && w.brakeS === null) w.brakeS = w.brakeCand;
+      } else if (a > -0.05 * G) w.brakeCand = null;
+    }
+    if (r > rel(corner.sApex) - 60) w.vMin = Math.min(w.vMin, p.v);
+    if (r < exitRel) return;
+    w.done = true;
+    const res = {
+      k,
+      num: corner.num,
+      name: corner.name,
+      leanMax: E.hasGyro && E.leanAxes ? Math.round(w.leanMax * 10) / 10 : null,
+      gMax: w.gMax !== null ? Math.round(w.gMax * 100) / 100 : null,
+      vMin: isFinite(w.vMin) ? Math.round(w.vMin * 36) / 10 : null,
+      brakeS: w.brakeS !== null ? Math.round(w.brakeS) : null,
+      time: Math.round((t - w.t0) * 1000) / 1000,
+      dt: null,
+      ref: null,
+    };
+    if (E.best) {
+      let tb = gridAt(E.best.grid, p.s) - gridAt(E.best.grid, w.s0);
+      if (tb < 0) tb += E.best.time;
+      res.dt = Math.round((t - w.t0 - tb) * 1000) / 1000;
+      res.ref = E.best.corners ? E.best.corners[k] || null : null;
+    }
+    E.lapCorners[k] = res;
+    E.recap = res;
+    E.recapT = t;
   }
 
   // ---------- boxes ----------
@@ -521,6 +702,10 @@
     } catch (e) {
       analysis = null;
     }
+    E.analysis = analysis ? compactAnalysis(analysis) : null;
+    recFlush(true);
+    saveMeta("grabando");
+    renderStoreLine();
     const laps = analysis ? analysis.laps.filter((l) => l.valid) : valid;
     const bestT = laps.length ? Math.min(...laps.map((l) => l.time)) : null;
     laps.forEach((l, i) => {
@@ -605,6 +790,152 @@
   function enterRide() {
     E.mode = "ride";
     show("dash");
+  }
+
+  // Lo esencial del análisis completo para el resumen de la tanda (sin las series, que ya van en los trozos).
+  function compactAnalysis(a) {
+    return {
+      sentido: a.dir,
+      inclinacion: a.leanFrom,
+      ideal: a.ideal,
+      mejor: a.best ? a.best.time : null,
+      avisos: a.warnings,
+      vueltas: a.laps.map((l) => ({
+        num: l.num,
+        time: Math.round(l.time * 1000) / 1000,
+        valid: l.valid,
+        sectors: l.sectors,
+        corners: l.corners,
+      })),
+    };
+  }
+
+  // ---------- grabación en el móvil ----------
+  function newRecId() {
+    const d = new Date();
+    const p = (x) => String(x).padStart(2, "0");
+    const rnd = Math.random().toString(36).slice(2, 6).padEnd(4, "0");
+    return (
+      d.getFullYear() +
+      p(d.getMonth() + 1) +
+      p(d.getDate()) +
+      "-" +
+      p(d.getHours()) +
+      p(d.getMinutes()) +
+      p(d.getSeconds()) +
+      "-" +
+      rnd
+    );
+  }
+
+  function recStart(epochMs) {
+    if (!ST) return;
+    E.rec = {
+      id: newRecId(),
+      epoch: epochMs,
+      seq: 0,
+      idx: { loc: 0, acc: 0, gyro: 0, grav: 0, canal: 0 },
+      lastT: 0,
+      saved: 0,
+      failed: false,
+      queue: Promise.resolve(),
+    };
+    saveMeta("grabando");
+    ST.closeStale(E.rec.id).catch(() => {});
+  }
+
+  // Guarda en el móvil lo grabado desde el último trozo (cada REC_EVERY s, o ya si `force`).
+  function recFlush(force) {
+    const eng = E;
+    if (!eng || !eng.rec) return;
+    const R = eng.rec;
+    const t = now();
+    if (!force && t - R.lastT < REC_EVERY) return;
+    R.lastT = t;
+    const series = {};
+    let any = false;
+    for (const key of ["loc", "acc", "gyro", "grav", "canal"]) {
+      const s = eng[key];
+      const i0 = R.idx[key];
+      if (s.n <= i0) continue;
+      const o = {};
+      for (const c of s.cols) o[c] = s.d[c].slice(i0, s.n);
+      series[key] = o;
+      R.idx[key] = s.n;
+      any = true;
+    }
+    if (!any) return;
+    const chunk = {
+      v: F.VERSION,
+      id: R.id,
+      seq: R.seq++,
+      epoch: R.epoch,
+      series,
+    };
+    R.queue = R.queue
+      .then(() => ST.putChunk(chunk))
+      .then(
+        () => {
+          R.saved++;
+        },
+        () => {
+          R.failed = true;
+        },
+      );
+  }
+
+  function saveMeta(estado) {
+    const eng = E;
+    if (!eng || !eng.rec) return;
+    const R = eng.rec;
+    const meta = {
+      v: F.VERSION,
+      id: R.id,
+      epoch: R.epoch,
+      inicio: new Date(R.epoch).toISOString(),
+      fin: estado === "grabando" ? null : new Date().toISOString(),
+      estado,
+      sim: !!eng.sim,
+      app: APP_VERSION,
+      sentido: eng.dir,
+      meta: settings.finish,
+      mejor: eng.best ? eng.best.time : null,
+      retrasoGps: eng.lagR2 !== null ? eng.lag : null,
+      calibrado: !!eng.calib.f,
+      vueltas: eng.laps.map((l) => ({
+        num: l.num,
+        time: Math.round(l.time * 1000) / 1000,
+        valid: l.valid,
+        sectors: l.sectors || null,
+        corners: l.corners || null,
+      })),
+      analisis: eng.analysis,
+    };
+    R.queue = R.queue
+      .then(() => ST.putSession(meta))
+      .catch(() => {
+        R.failed = true;
+      });
+  }
+
+  function renderStoreLine() {
+    const el = $("p-store");
+    if (!el || !E) return;
+    if (!E.rec) {
+      el.textContent = E.sim ? "Simulador: no se guarda." : "";
+      return;
+    }
+    const s = ST.sync;
+    const mac =
+      s.state === "ok"
+        ? "se sube sola a tu Mac"
+        : s.state === "off"
+          ? "conecta el garaje del Mac para tener copia"
+          : "se subirá a tu Mac cuando haya conexión";
+    el.textContent = E.rec.failed
+      ? "No se ha podido guardar en el móvil: exporta la tanda antes de cerrar."
+      : "Tanda guardada en el móvil · " + mac + ".";
+    el.className = E.rec.failed ? "warnbox" : "muted";
   }
 
   // ---------- pantalla ----------
@@ -782,11 +1113,102 @@
     const boxes = $("d-sectors").children;
     for (let k = 0; k < 4; k++)
       boxes[k].className = E.sectorState[k] ? "s-" + E.sectorState[k] : "";
+    renderLive(t);
+  }
+
+  function setText(id, text) {
+    const el = $(id);
+    if (el.textContent !== text) el.textContent = text;
+  }
+  function setCls(id, cls) {
+    const el = $(id);
+    if (el.className !== cls) el.className = cls;
+  }
+
+  // Lo que mide el móvil ahora mismo (inclinación y g) y el resumen de la última curva.
+  function renderLive(t) {
+    const moving = E.fix && E.fix.v > 3;
+    const lean = E.leanDeg;
+    if (!E.hasGyro) {
+      setText("d-lean", "—");
+      setText("d-lean-l", "sin giroscopio");
+    } else if (!isFinite(lean) || !moving) {
+      setText("d-lean", "—");
+      setText("d-lean-l", E.leanAxes ? "inclinación" : "calibrando…");
+    } else {
+      setText("d-lean", fmt(Math.abs(lean), 0) + "°");
+      setText(
+        "d-lean-l",
+        Math.abs(lean) < 3 ? "recto" : lean > 0 ? "derecha" : "izquierda",
+      );
+    }
+    if (E.calib.f && moving) {
+      const g = E.aEma / G;
+      setText("d-g", fmtSigned(g, 2));
+      setText("d-g-l", g < -0.15 ? "g freno" : g > 0.1 ? "g gas" : "g");
+    } else {
+      setText("d-g", "—");
+      setText("d-g-l", E.calib.f ? "g" : "calibrando…");
+    }
+    const r = E.recap;
+    const box = $("d-recap");
+    if (!r) {
+      box.hidden = true;
+      return;
+    }
+    box.hidden = false;
+    // Recién salido de la curva: el resumen se marca unos segundos.
+    setCls("d-recap", "recap" + (t - E.recapT < 3 ? " fresh" : ""));
+    setText("r-name", "C" + r.num + " · " + r.name);
+    setText("r-dt", r.dt === null ? "" : fmtSigned(r.dt, 2) + " s");
+    setCls(
+      "r-dt",
+      "num " +
+        (r.dt === null ? "" : r.dt < -0.03 ? "up" : r.dt > 0.03 ? "down" : ""),
+    );
+    const ref = r.ref;
+    // Diferencia con la mejor vuelta en esa curva; solo lleva color si pasa de `thr` (ruido del móvil).
+    const cmp = (id, val, refVal, digits, unit, higherIsBetter, thr) => {
+      setText(id, val === null ? "—" : fmt(val, digits) + unit);
+      let d = "";
+      let cls = "";
+      if (val !== null && ref && refVal !== null && refVal !== undefined) {
+        const diff = val - refVal;
+        d =
+          Math.abs(diff) < 0.5 * Math.pow(10, -digits)
+            ? "="
+            : fmtSigned(diff, digits);
+        if (higherIsBetter !== null && Math.abs(diff) >= thr)
+          cls = diff > 0 === higherIsBetter ? "up" : "down";
+      }
+      setText(id + "-d", d);
+      setCls(id + "-d", "num " + cls);
+    };
+    cmp("r-lean", r.leanMax, ref && ref.leanMax, 0, "°", null, 0);
+    cmp("r-g", r.gMax, ref && ref.gMax, 2, " g", true, 0.04);
+    cmp("r-v", r.vMin, ref && ref.vMin, 0, "", true, 1.5);
+    // Punto de frenada frente a la mejor vuelta: + es más tarde (más cerca de la curva).
+    let bp = "—";
+    let bpCls = "";
+    if (
+      r.brakeS !== null &&
+      ref &&
+      ref.brakeS !== null &&
+      ref.brakeS !== undefined
+    ) {
+      const L = E.track.L;
+      const d = ring(r.brakeS - ref.brakeS + L / 2, L) - L / 2;
+      bp = (d > 0 ? "+" : d < 0 ? "−" : "") + fmt(Math.abs(d), 0) + " m";
+      bpCls = d >= 3 ? "up" : d <= -3 ? "down" : "";
+    }
+    setText("r-bp", bp);
+    setCls("r-bp", "num " + bpCls);
   }
 
   function loop() {
     if (E && E.sim) simStep();
     render();
+    if (E) recFlush(false);
     requestAnimationFrame(loop);
   }
 
@@ -821,7 +1243,8 @@
     if (sim.iL >= d.loc.t.length && E.mode === "ride") enterPits();
   }
 
-  function startSim(speedFactor) {
+  // opts.grabar: guarda la tanda simulada como una de verdad (solo para pruebas automáticas).
+  function startSim(speedFactor, opts) {
     E = newEngine(true);
     E.t0 = 0;
     sim.data = T.demoSession({ seed: 7 }).session;
@@ -830,6 +1253,7 @@
     sim.iM = 0;
     sim.last = null;
     sim.speed = speedFactor || 1;
+    if (opts && opts.grabar) recStart(Date.now());
     show("dash");
   }
 
@@ -893,6 +1317,8 @@
     }
     E = newEngine(false);
     E.t0 = Date.now() / 1000;
+    recStart(Math.round(E.t0 * 1000));
+    if (ST) ST.persist();
     try {
       if (document.documentElement.requestFullscreen)
         await document.documentElement.requestFullscreen({
@@ -930,6 +1356,10 @@
   }
 
   function stopAll() {
+    if (E) {
+      recFlush(true);
+      saveMeta("terminada");
+    }
     if (watchId !== null) navigator.geolocation.clearWatch(watchId);
     watchId = null;
     window.removeEventListener("devicemotion", onMotionEvent);
@@ -944,55 +1374,26 @@
   }
 
   // ---------- exportar ----------
-  async function exportSession(eng) {
-    if (!eng || !window.JSZip) return;
-    const btn = $("export");
-    const ms0 = Math.round((eng.sim ? Date.now() / 1000 : eng.t0) * 1000);
-    const ns = (t) => String(ms0 + Math.round(t * 1000)) + "000000";
-    const csv = (header, series, cols) => {
-      const v = series.view();
-      const lines = [header];
-      for (let i = 0; i < series.n; i++)
-        lines.push(
-          [ns(v.t[i]), v.t[i].toFixed(4)]
-            .concat(cols.map((c) => v[c][i]))
-            .join(","),
-        );
-      return lines.join("\n") + "\n";
-    };
+  // Mismos CSV que Sensor Logger (más Canales.csv con lo calculado en directo), en un .zip.
+  async function downloadZip(files, epochMs, isSim) {
+    if (!window.JSZip) return false;
     const zip = new window.JSZip();
-    zip.file(
-      "Location.csv",
-      csv(
-        "time,seconds_elapsed,horizontalAccuracy,speed,longitude,latitude",
-        eng.loc,
-        ["hacc", "speed", "lon", "lat"],
-      ),
-    );
-    if (eng.acc.n)
-      zip.file(
-        "Accelerometer.csv",
-        csv("time,seconds_elapsed,z,y,x", eng.acc, ["z", "y", "x"]),
-      );
-    if (eng.gyro.n)
-      zip.file(
-        "Gyroscope.csv",
-        csv("time,seconds_elapsed,z,y,x", eng.gyro, ["z", "y", "x"]),
-      );
-    if (eng.grav.n)
-      zip.file(
-        "Gravity.csv",
-        csv("time,seconds_elapsed,z,y,x", eng.grav, ["z", "y", "x"]),
-      );
+    for (const f of files) zip.file(f.name, f.text);
     const blob = await zip.generateAsync({
       type: "blob",
       compression: "DEFLATE",
     });
-    const d = new Date();
+    const d = new Date(epochMs);
+    const p = (x) => String(x).padStart(2, "0");
     const name =
       "maspalomas-" +
-      d.toISOString().slice(0, 16).replace(/[-:T]/g, "") +
-      (eng.sim ? "-simulador" : "") +
+      d.getFullYear() +
+      p(d.getMonth() + 1) +
+      p(d.getDate()) +
+      "-" +
+      p(d.getHours()) +
+      p(d.getMinutes()) +
+      (isSim ? "-simulador" : "") +
       ".zip";
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -1002,7 +1403,34 @@
     a.click();
     a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 5000);
-    if (btn) btn.textContent = "Exportada";
+    return true;
+  }
+
+  async function exportSession(eng) {
+    if (!eng) return;
+    const ms0 = eng.rec
+      ? eng.rec.epoch
+      : Math.round((eng.sim ? Date.now() / 1000 : eng.t0) * 1000);
+    const series = {};
+    for (const key of ["loc", "acc", "gyro", "grav", "canal"])
+      if (eng[key].n) series[key] = eng[key].view();
+    if (await downloadZip(F.csvFiles(series, ms0), ms0, eng.sim))
+      $("export").textContent = "Exportada";
+  }
+
+  // La última tanda guardada en el móvil (vale también después de cerrar la página).
+  async function exportStored() {
+    const btn = $("home-export");
+    try {
+      const list = await ST.sessions();
+      const s = list.find((x) => !x.sim) || list[0];
+      if (!s) return;
+      const merged = F.mergeChunks(await ST.chunksOf(s.id));
+      if (await downloadZip(F.csvFiles(merged.series, s.epoch), s.epoch, s.sim))
+        btn.textContent = "Exportada";
+    } catch (e) {
+      btn.textContent = "No se ha podido leer la tanda guardada";
+    }
   }
 
   // ---------- inicio ----------
@@ -1026,8 +1454,95 @@
     $("lead").value = settings.lead;
     $("lead-v").textContent = settings.lead;
     drawMetaMap();
-    const exp = $("home-export");
-    if (exp) exp.hidden = !lastE;
+    $("home-export").hidden = !lastE;
+    renderGarage();
+  }
+
+  // ---------- garaje (el Mac) ----------
+  let garageQueued = false;
+  function renderGarage() {
+    // Varias notificaciones seguidas de la cola se pintan una sola vez.
+    if (garageQueued) return;
+    garageQueued = true;
+    setTimeout(() => {
+      garageQueued = false;
+      paintGarage();
+    }, 50);
+  }
+
+  async function paintGarage() {
+    if (!ST) return;
+    const s = ST.sync;
+    let pend = { trozos: 0, sesiones: 0 };
+    let stored = [];
+    try {
+      pend = await ST.pendingCounts();
+      stored = await ST.sessions();
+    } catch (e) {
+      setStatus(
+        "st-cola",
+        "bad",
+        "Este navegador no deja guardar las tandas en el móvil: exporta cada tanda al terminar.",
+      );
+    }
+    const real = stored.filter((x) => !x.sim);
+    if (stored.length) {
+      setStatus(
+        "st-cola",
+        pend.trozos ? "wait" : "ok",
+        "Tandas guardadas en el móvil: " +
+          real.length +
+          (pend.trozos
+            ? " · faltan " + pend.trozos + " trozos por subir al Mac"
+            : s.state === "ok"
+              ? " · todo subido al Mac"
+              : ""),
+      );
+    } else setStatus("st-cola", "", "Tandas guardadas en el móvil: ninguna");
+    const texts = {
+      off: [
+        "",
+        "Mac sin conectar. Abre «Abrir garaje» en el Mac y escanea con la cámara el código que sale en pantalla.",
+      ],
+      busy: ["wait", "Conectando con el Mac…"],
+      ok: ["ok", "Mac conectado: las tandas se suben solas."],
+      offline: [
+        "wait",
+        "Sin conexión con el Mac (" +
+          (s.lastError || "no contesta") +
+          "). Todo queda en el móvil y se sube solo al volver. Si has vuelto a abrir el garaje, escanea su código nuevo.",
+      ],
+      auth: [
+        "bad",
+        "El Mac no reconoce este móvil: escanea otra vez el código del garaje.",
+      ],
+    };
+    const [state, text] = texts[s.state] || texts.off;
+    setStatus("st-mac", state, text);
+    $("garage-sync").hidden = !settings.garaje;
+    $("garage-forget").hidden = !settings.garaje;
+    $("home-export").hidden = !lastE && !stored.length;
+    if (E) renderStoreLine();
+  }
+
+  function applyPairing() {
+    if (!ST) return false;
+    const cfg = ST.parsePairing(location.hash);
+    if (!location.hash.startsWith("#garaje=")) return false;
+    history.replaceState(null, "", location.pathname + location.search);
+    if (!cfg) {
+      setStatus(
+        "st-mac",
+        "bad",
+        "El código escaneado no es válido: vuelve a escanear el del garaje.",
+      );
+      return false;
+    }
+    settings.garaje = cfg;
+    saveSettings();
+    ST.configure(cfg);
+    ST.persist();
+    return true;
   }
 
   function drawMetaMap() {
@@ -1089,7 +1604,44 @@
     });
     $("resume").addEventListener("click", enterRide);
     $("export").addEventListener("click", () => exportSession(E || lastE));
-    $("home-export").addEventListener("click", () => exportSession(lastE));
+    $("home-export").addEventListener("click", () =>
+      lastE ? exportSession(lastE) : exportStored(),
+    );
+    $("garage-sync").addEventListener("click", () => {
+      if (settings.garaje) ST.configure(settings.garaje);
+    });
+    let forgetArmed = false;
+    $("garage-forget").addEventListener("click", () => {
+      const btn = $("garage-forget");
+      if (!forgetArmed) {
+        forgetArmed = true;
+        btn.textContent = "¿Desconectar? Toca otra vez";
+        setTimeout(() => {
+          forgetArmed = false;
+          btn.textContent = "Desconectar el Mac";
+        }, 4000);
+        return;
+      }
+      forgetArmed = false;
+      btn.textContent = "Desconectar el Mac";
+      settings.garaje = null;
+      saveSettings();
+      ST.configure(null);
+      renderGarage();
+    });
+    window.addEventListener("hashchange", () => {
+      if (applyPairing()) renderGarage();
+    });
+    // Al salir de la página (o si Android la congela) se guarda lo grabado hasta ese momento.
+    const saveNow = () => {
+      if (!E || !E.rec) return;
+      recFlush(true);
+      saveMeta("grabando");
+    };
+    window.addEventListener("pagehide", saveNow);
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "hidden") saveNow();
+    });
     let confirmArmed = false;
     $("finish").addEventListener("click", () => {
       if (!confirmArmed) {
@@ -1182,12 +1734,25 @@
   // Acceso para pruebas automáticas del simulador (no afecta al uso normal).
   window.MaspaPista = {
     startSim,
+    stopAll,
     get engine() {
       return E;
     },
     sim,
+    onMotion: (...a) => onMotion(...a),
+    onFix: (...a) => onFix(...a),
   };
   wire();
+  if (ST) {
+    ST.sync.onChange = renderGarage;
+    // Una tanda que quedó «grabando» (la página se cerró en pista) se da por cortada y se sube igual.
+    ST.closeStale(null)
+      .then(renderGarage)
+      .catch(() => {});
+    if (!applyPairing()) ST.configure(settings.garaje);
+    // En pista se sube poco a poco (un trozo cada 20 s) para no quitarle tiempo al panel.
+    ST.startLoop(10000, () => (E && E.mode === "ride" ? 20000 : 0));
+  }
   renderHome();
   requestAnimationFrame(loop);
 })();

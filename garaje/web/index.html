@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Garaje Maspalomas</title>
+<link rel="icon" href="/icon.png">
+<style>
+  /* Garaje: página local del Mac. Emparejar el móvil y ver las tandas guardadas. */
+  :root {
+    color-scheme: light;
+    --bg: #f3f4f1;
+    --panel: #ffffff;
+    --ink: #15191c;
+    --muted: #5d676e;
+    --rule: #dde1dc;
+    --accent: #1f6fc4;
+    --good: #12823f;
+    --warn: #a86d00;
+    --bad: #b8261b;
+    --best: #6d36b0;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      color-scheme: dark;
+      --bg: #0d1012;
+      --panel: #161b1f;
+      --ink: #eef1f2;
+      --muted: #98a3aa;
+      --rule: #2a3238;
+      --accent: #5aa2ee;
+      --good: #3ccf75;
+      --warn: #e7b23a;
+      --bad: #ff7a6e;
+      --best: #b98ae6;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.5 var(--sans); }
+  main { max-width: 1040px; margin: 0 auto; padding: 28px 20px 48px; display: grid; gap: 20px; }
+  h1 { font-size: 30px; line-height: 1.1; margin: 0; letter-spacing: -0.01em; }
+  h1 span { color: var(--accent); }
+  h2 { font-size: 19px; margin: 0 0 6px; }
+  .sub { color: var(--muted); margin: 6px 0 0; }
+  .card { background: var(--panel); border: 1px solid var(--rule); border-radius: 12px; padding: 18px; }
+  .pair { display: grid; grid-template-columns: 260px 1fr; gap: 22px; align-items: start; }
+  .qr { width: 260px; height: 260px; display: grid; place-items: center; background: #fff; border-radius: 10px; border: 1px solid var(--rule); color: #333; text-align: center; padding: 10px; font-size: 14px; }
+  .qr svg { width: 100%; height: 100%; }
+  ol { margin: 0; padding-left: 20px; display: grid; gap: 6px; }
+  .state { display: flex; gap: 8px; align-items: center; margin-top: 12px; font-weight: 600; }
+  .dot { width: 11px; height: 11px; border-radius: 50%; background: var(--muted); flex: none; }
+  .dot.ok { background: var(--good); }
+  .dot.wait { background: var(--warn); }
+  .dot.bad { background: var(--bad); }
+  .muted { color: var(--muted); font-size: 14px; }
+  code { font-size: 13px; background: var(--bg); padding: 1px 5px; border-radius: 4px; word-break: break-all; }
+  table { width: 100%; border-collapse: collapse; font-size: 15px; }
+  th, td { text-align: left; padding: 9px 8px; border-bottom: 1px solid var(--rule); vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; font-size: 13px; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  td:first-child { white-space: nowrap; }
+  .best { color: var(--best); font-weight: 700; }
+  .tag { display: inline-block; font-size: 12px; font-weight: 700; padding: 1px 7px; border-radius: 99px; border: 1px solid var(--rule); color: var(--muted); }
+  .tag.live { color: var(--warn); border-color: var(--warn); }
+  .tag.cut { color: var(--bad); border-color: var(--bad); }
+  a.btn, button { font: 600 14px var(--sans); color: var(--accent); background: none; border: 1px solid var(--rule); border-radius: 8px; padding: 6px 10px; cursor: pointer; text-decoration: none; white-space: nowrap; display: inline-block; }
+  a.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  a.btn:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .actions { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+  .err { color: var(--bad); font-size: 13px; }
+  .empty { color: var(--muted); padding: 16px 0 4px; }
+  .wrap { overflow-x: auto; }
+  footer { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; justify-content: space-between; }
+  @media (max-width: 720px) {
+    .pair { grid-template-columns: 1fr; }
+    .qr { width: 220px; height: 220px; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Garaje <span>Maspalomas</span></h1>
+    <p class="sub">Tus tandas de Modo pista, guardadas en este Mac.</p>
+  </header>
+
+  <section class="card" aria-labelledby="pair-h">
+    <div class="pair">
+      <div class="qr" id="qr" role="img" aria-label="Código para conectar el móvil">Abriendo el túnel…</div>
+      <div>
+        <h2 id="pair-h">Conectar el móvil</h2>
+        <ol>
+          <li>Abre la cámara del Pixel y apunta a este código.</li>
+          <li>Toca el enlace: se abre Modo pista y en «Tus tandas y el Mac» pone «Mac conectado».</li>
+          <li>Deja el Mac encendido, enchufado y con la tapa abierta mientras ruedas. Cada tanda se sube sola, y si no hay cobertura en el circuito se queda en el móvil y sube después.</li>
+        </ol>
+        <div class="state"><span class="dot" id="tun-dot"></span><span id="tun-t">Abriendo el túnel…</span></div>
+        <p class="muted" id="tun-note">Cada vez que abres el garaje, el código cambia: escanéalo antes de salir hacia el circuito.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="card" aria-labelledby="list-h">
+    <h2 id="list-h">Tus tandas</h2>
+    <div class="wrap">
+      <table>
+        <thead><tr><th>Fecha</th><th>Estado</th><th class="num">Vueltas</th><th class="num">Mejor</th><th class="num">Ideal</th><th>Sentido</th><th class="num">Datos</th><th></th></tr></thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </div>
+    <p class="empty" id="empty" hidden>Todavía no ha llegado ninguna tanda. Conecta el móvil y sal a pista (o prueba el simulador con el móvil conectado).</p>
+  </section>
+
+  <footer class="muted">
+    <span>Carpeta: <code id="folder">—</code>. Todo se queda ahí hasta que tú la borres.</span>
+    <button type="button" id="open-folder">Abrir la carpeta</button>
+  </footer>
+</main>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
+<script src="/garaje.js"></script>
+</body>
+</html>

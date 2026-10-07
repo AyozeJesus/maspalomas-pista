@@ -72,7 +72,7 @@
   .gps { display: flex; gap: 8px; align-items: baseline; }
   .gps .dot { align-self: center; }
   .unit { font-size: 13px; font-weight: 600; opacity: 0.85; }
-  .delta { display: grid; place-items: center; font-weight: 900; line-height: 0.9; font-size: min(30vw, 34vh); letter-spacing: -0.04em; text-align: center; }
+  .delta { display: grid; place-items: center; align-content: center; font-weight: 900; line-height: 0.9; font-size: min(30vw, 34vh); letter-spacing: -0.04em; text-align: center; }
   .delta small { display: block; font-size: 0.16em; font-weight: 700; letter-spacing: 0; opacity: 0.85; margin-top: 0.2em; }
   .dash-bottom { display: grid; gap: 10px; padding: 0 16px max(14px, env(safe-area-inset-bottom)); }
   .laptime { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
@@ -84,13 +84,39 @@
   .sectors .s-good { background: #18b956; color: #000; }
   .sectors .s-bad { background: #f2c230; color: #000; }
   .stop { position: absolute; right: 12px; top: max(52px, calc(env(safe-area-inset-top) + 44px)); font-size: 14px; padding: 8px 12px; background: rgba(0, 0, 0, 0.4); border-color: rgba(255, 255, 255, 0.3); }
+  /* Lo que mide el móvil ahora: inclinación y g. */
+  .live { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  .live div { background: rgba(0, 0, 0, 0.35); border-radius: 8px; padding: 4px 10px; display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+  .live b { font-size: min(9vw, 6.5vh); font-weight: 900; line-height: 1.05; white-space: nowrap; }
+  .live small { font-size: min(3.6vw, 2.6vh); font-weight: 700; opacity: 0.85; }
+  /* Resumen de la curva que acabas de pasar (para leerlo en la recta). */
+  .recap { background: rgba(0, 0, 0, 0.45); border: 2px solid transparent; border-radius: 10px; padding: 6px 10px; display: grid; gap: 4px; }
+  .recap.fresh { border-color: var(--ink); }
+  .recap-h { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; font-size: min(4.2vw, 3vh); font-weight: 800; }
+  .recap-h b { font-size: min(6.5vw, 4.6vh); font-weight: 900; }
+  .recap-g { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; text-align: center; }
+  .recap-g div { display: grid; }
+  .recap-g small { font-size: min(3.1vw, 2.2vh); font-weight: 700; opacity: 0.8; }
+  .recap-g b { font-size: min(6vw, 4.2vh); font-weight: 900; line-height: 1.1; }
+  .recap-g i { font-style: normal; font-size: min(3.4vw, 2.4vh); font-weight: 800; min-height: 1.2em; }
+  .up { color: #6df29b; }
+  .down { color: #ff9a8f; }
   @media (orientation: landscape) {
-    .dash { grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
+    .dash { grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
     .dash-top { grid-column: 1 / -1; }
-    .delta { font-size: min(22vw, 58vh); }
-    .dash-bottom { align-content: center; padding-bottom: max(14px, env(safe-area-inset-bottom)); }
-    .laptime { flex-direction: column; align-items: flex-start; }
-    .laptime span { text-align: left; }
+    .stop { top: max(4px, env(safe-area-inset-top)); left: 50%; right: auto; transform: translateX(-50%); }
+    .delta { font-size: min(20vw, 52vh); }
+    .dash-bottom { align-content: center; gap: 6px; padding-bottom: max(10px, env(safe-area-inset-bottom)); }
+    .laptime { flex-direction: row; align-items: baseline; }
+    .laptime b { font-size: min(7vw, 11vh); }
+    .laptime span { font-size: min(2.4vw, 4vh); }
+    .live b { font-size: min(4.6vw, 8vh); }
+    .live small, .recap-g small { font-size: min(1.8vw, 3.2vh); }
+    .recap-h { font-size: min(2.2vw, 4vh); }
+    .recap-h b { font-size: min(3.2vw, 6vh); }
+    .recap-g b { font-size: min(3vw, 5.6vh); }
+    .recap-g i { font-size: min(1.8vw, 3.2vh); }
+    .sectors div { height: min(8vh, 30px); }
   }
   /* Avisos a pantalla completa: vuelta, sector y frenada. */
   .flash { position: fixed; inset: 0; display: grid; place-items: center; text-align: center; font-weight: 900; pointer-events: none; }
@@ -106,7 +132,7 @@
   <!-- Inicio -->
   <main class="page" id="home">
     <h1>Modo pista<br><span>Maspalomas</span></h1>
-    <p class="muted">Delta en directo frente a tu mejor vuelta, tiempo por vuelta y sectores, todo en grande. Al parar en boxes, el análisis de la tanda.</p>
+    <p class="muted">Delta en directo frente a tu mejor vuelta, inclinación y frenada medidas con el móvil, el resumen de cada curva, tiempo por vuelta y sectores. Al parar en boxes, el análisis de la tanda.</p>
     <div class="card status" id="status">
       <div><span class="dot" id="st-gps"></span><span id="st-gps-t">GPS: se activará al salir</span></div>
       <div><span class="dot" id="st-imu"></span><span id="st-imu-t">Pantalla y sensores: se activarán al salir</span></div>
@@ -114,7 +140,18 @@
     </div>
     <button class="primary" id="go">Salir a pista</button>
     <button id="sim">Probar con el simulador</button>
-    <button id="home-export" hidden>Exportar la última tanda (.zip)</button>
+    <section class="card" aria-labelledby="mac-h">
+      <h2 id="mac-h">Tus tandas y el Mac</h2>
+      <div class="status">
+        <div><span class="dot" id="st-cola"></span><span id="st-cola-t">Tandas guardadas en el móvil: ninguna</span></div>
+        <div><span class="dot" id="st-mac"></span><span id="st-mac-t">Mac sin conectar.</span></div>
+      </div>
+      <div class="row">
+        <button id="home-export" hidden>Exportar la última tanda (.zip)</button>
+        <button id="garage-sync" hidden>Subir ahora</button>
+        <button id="garage-forget" hidden>Desconectar el Mac</button>
+      </div>
+    </section>
     <section class="card" aria-labelledby="set-h">
       <h2 id="set-h">Ajustes</h2>
       <label class="switch" for="cue"><span>Aviso de frenada (prueba)<br><span class="muted">Destello blanco antes de donde frenaste en tu mejor vuelta.</span></span><input type="checkbox" id="cue"></label>
@@ -135,7 +172,8 @@
         <li>Móvil en un soporte con amortiguador de vibraciones, bien a la vista sin bajar la cabeza.</li>
         <li>Brillo al máximo. La pantalla se mantiene encendida mientras esta página esté abierta.</li>
         <li>No leas en frenada ni en curva: el panel está hecho para verse con el rabillo del ojo (verde ganas, rojo pierdes). Lee en las rectas o en boxes.</li>
-        <li>Al sol y sobre el depósito el móvil se calienta: si se apaga por temperatura, la tanda grabada hasta ese momento se pierde.</li>
+        <li>Monta el móvil antes de salir y no lo muevas en el soporte: la inclinación y la frenada se calibran solas en la vuelta de salida. Si lo coges en boxes, se recalibra al volver a rodar.</li>
+        <li>Al sol y sobre el depósito el móvil se calienta. Si se apaga, lo grabado hasta unos segundos antes queda guardado.</li>
       </ul>
     </section>
   </main>
@@ -145,6 +183,19 @@
     <div class="dash-top"><span class="num" id="d-lap">Vuelta —</span><span class="gps"><span class="dot" id="d-gps"></span><span class="num" id="d-speed">0</span><small class="unit">km/h</small></span></div>
     <div class="delta num" id="d-delta">—<small id="d-delta-sub">esperando meta</small></div>
     <div class="dash-bottom">
+      <div class="live">
+        <div><small id="d-lean-l">inclinación</small><b class="num" id="d-lean">—</b></div>
+        <div><small id="d-g-l">g</small><b class="num" id="d-g">—</b></div>
+      </div>
+      <div class="recap" id="d-recap" hidden>
+        <div class="recap-h"><span id="r-name"></span><b class="num" id="r-dt"></b></div>
+        <div class="recap-g">
+          <div><small>Tumbada</small><b class="num" id="r-lean">—</b><i class="num" id="r-lean-d"></i></div>
+          <div><small>Frenada</small><b class="num" id="r-g">—</b><i class="num" id="r-g-d"></i></div>
+          <div><small>Mínima</small><b class="num" id="r-v">—</b><i class="num" id="r-v-d"></i></div>
+          <div><small>Frenas</small><b class="num" id="r-bp">—</b><i>vs mejor</i></div>
+        </div>
+      </div>
       <div class="laptime"><b class="num" id="d-time">0:00,0</b><span class="num" id="d-info">Mejor —<br>Última —</span></div>
       <div class="sectors" id="d-sectors"><div>S1</div><div>S2</div><div>S3</div><div>S4</div></div>
     </div>
@@ -155,6 +206,7 @@
   <main class="page" id="pits" hidden>
     <h1>Boxes</h1>
     <p class="muted" id="p-sub"></p>
+    <p class="muted" id="p-store"></p>
     <section class="card"><h2>Vueltas</h2><table><thead><tr><th>Vuelta</th><th>Tiempo</th><th>Δ mejor</th></tr></thead><tbody id="p-laps"></tbody></table><p class="muted" id="p-ideal"></p></section>
     <section class="card"><h2>Para la próxima vuelta</h2><ol class="tips" id="p-tips"></ol></section>
     <div class="row">
@@ -162,7 +214,7 @@
       <button id="export">Exportar tanda (.zip)</button>
       <button id="finish">Terminar</button>
     </div>
-    <p class="muted">El .zip se abre en la página «Telemetría Maspalomas» para el análisis completo. Mientras no termines, la grabación sigue: al arrancar, la pantalla vuelve sola al panel.</p>
+    <p class="muted">Mientras no termines, la grabación sigue: al arrancar, la pantalla vuelve sola al panel. Con el garaje del Mac conectado, la tanda completa se analiza allí; el .zip sirve para «Telemetría Maspalomas».</p>
   </main>
 
   <div class="flash" id="flash" hidden></div>
@@ -172,6 +224,8 @@
   <script src="sim.js"></script>
   <script src="analysis.js"></script>
   <script src="telemetry.js"></script>
+  <script src="formato.js"></script>
+  <script src="store.js"></script>
   <script src="live.js"></script>
 </body>
 </html>
