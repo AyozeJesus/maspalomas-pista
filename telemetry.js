@@ -17,6 +17,10 @@
   };
   const GRID_HZ = 50;
   const STEP_M = 2;
+  // Distancia máxima al eje para dar un fijo por «en pista»: medio ancho (6 m) + trazada por fuera en los
+  // cruces + lo que se desvía un GPS de móvil de una frecuencia durante varios segundos. Un fijo que salta
+  // lo descarta además la comprobación de avance (segmentsOnTrack).
+  const ON_TRACK_M = 20;
   const OBJ = { exit: 1, coast: 0, width: 1 };
 
   function toLocal(lat, lon) {
@@ -272,10 +276,11 @@
       let m = prev
         ? nearestOn(track.C, xs[k], ys[k], prev.i - 6, prev.i + 45)
         : null;
-      if (!m || m.dist > 15) m = nearestOn(track.C, xs[k], ys[k], 0, n - 1);
+      if (!m || m.dist > ON_TRACK_M)
+        m = nearestOn(track.C, xs[k], ys[k], 0, n - 1);
       const s = track.cs[m.i] + (track.cs[m.i + 1] - track.cs[m.i]) * m.f;
       out.push({ i: m.i, s, dist: m.dist });
-      prev = m.dist < 15 ? m : null;
+      prev = m.dist < ON_TRACK_M ? m : null;
     }
     return out;
   }
@@ -540,7 +545,7 @@
     fixes.forEach((f, k) => {
       f.s = matches[k].s;
       f.idx = matches[k].i;
-      f.on = matches[k].dist < 14 && f.speed > 4;
+      f.on = matches[k].dist < ON_TRACK_M && f.speed > 4;
     });
 
     const hasImu = !!(session.acc && session.gyro && session.grav);
@@ -717,7 +722,7 @@
     }
 
     // Distancia sobre el trazado: integral de la velocidad corregida con el encaje GPS, por tramos en pista.
-    const segs = segmentsOnTrack(fixes, gpsT);
+    const segs = segmentsOnTrack(fixes, gpsT, track.L);
     const sF = new Float64Array(m).fill(NaN);
     for (const seg of segs)
       fuseDistance(seg, fixes, gpsT, tg, v, sF, track.L, hz);
@@ -881,30 +886,48 @@
   }
 
   // Tramos continuos en pista (sin cortes de GPS de más de 3 s).
-  function segmentsOnTrack(fixes, gpsT) {
+  // Tramos seguidos en pista. Un fijo suelto fuera del trazado, o con un salto sobre él que no cuadra con la
+  // velocidad (rebote del GPS, más frecuente en móviles de una sola frecuencia), se ignora; el tramo solo se
+  // corta si pasan más de 3 s sin un fijo bueno.
+  function segmentsOnTrack(fixes, gpsT, L) {
     const segs = [];
     let cur = null;
+    let last = -1;
+    const close = () => {
+      if (cur && cur.idx.length > 10) segs.push(cur);
+      cur = null;
+    };
     for (let k = 0; k < fixes.length; k++) {
       const f = fixes[k];
-      const gap = cur ? gpsT[k] - gpsT[cur.b] : 0;
-      if (f.on && (!cur || gap <= 3)) {
-        if (!cur) cur = { a: k, b: k };
-        else cur.b = k;
-      } else {
-        if (cur && cur.b - cur.a > 10) segs.push(cur);
-        cur = f.on ? { a: k, b: k } : null;
+      if (!f.on) continue;
+      if (cur && gpsT[k] - gpsT[last] > 3) close();
+      if (cur) {
+        const p = fixes[last];
+        const dt = gpsT[k] - gpsT[last];
+        let ds = f.s - p.s;
+        if (ds > L / 2) ds -= L;
+        if (ds < -L / 2) ds += L;
+        const expected = ((f.speed + p.speed) / 2) * dt;
+        if (Math.abs(ds - expected) > 25 + 10 * dt) {
+          f.outlier = true;
+          continue;
+        }
       }
+      if (!cur) cur = { a: k, b: k, idx: [] };
+      cur.idx.push(k);
+      cur.b = k;
+      last = k;
     }
-    if (cur && cur.b - cur.a > 10) segs.push(cur);
+    close();
     return segs;
   }
 
   function fuseDistance(seg, fixes, gpsT, tg, v, sF, L, hz) {
-    // Distancia encajada desenrollada (vueltas sumadas).
+    // Distancia encajada desenrollada (vueltas sumadas), solo con los fijos buenos del tramo.
     const sm = [];
     let laps = 0;
     let prev = null;
-    for (let k = seg.a; k <= seg.b; k++) {
+    for (const k of seg.idx) {
       let s = fixes[k].s;
       if (prev !== null) {
         if (s - prev < -L / 2) laps++;
@@ -1481,6 +1504,7 @@
     toLatLon,
     LeanEstimator,
     STEP_M,
+    ON_TRACK_M,
     G,
   };
 })(typeof window !== "undefined" ? window : globalThis);

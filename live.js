@@ -282,10 +282,29 @@
       E.fix && E.fix.on
         ? T.nearestOn(tr.C, x, y, E.fix.i - 6, E.fix.i + 45)
         : null;
-    if (!m || m.dist > 15) m = T.nearestOn(tr.C, x, y, 0, tr.n - 1);
+    if (!m || m.dist > T.ON_TRACK_M) m = T.nearestOn(tr.C, x, y, 0, tr.n - 1);
     const s = tr.cs[m.i] + (tr.cs[m.i + 1] - tr.cs[m.i]) * m.f;
-    const on = m.dist < 14 && v > 4;
+    const on = m.dist < T.ON_TRACK_M && v > 4;
     const prev = E.fix;
+    // Rebote del GPS: un fijo suelto fuera del trazado, o que salta más de lo que permite la velocidad, se
+    // ignora (queda en la grabación, pero no mueve el cronómetro ni corta la vuelta). Si dura más de 3 s,
+    // es de verdad (entrada a boxes, GPS perdido) y se acepta.
+    if (prev && prev.on && t - prev.t < 3) {
+      let bounce = !on && v > 4;
+      if (on) {
+        const L = tr.L;
+        let ds = s - prev.s;
+        if (ds > L / 2) ds -= L;
+        if (ds < -L / 2) ds += L;
+        const dt = t - prev.t;
+        if (Math.abs(ds - ((v + prev.v) / 2) * dt) > 25 + 10 * dt)
+          bounce = true;
+      }
+      if (bounce) {
+        E.bounces = (E.bounces || 0) + 1;
+        return;
+      }
+    }
     const fix = { t, x, y, v, s, i: m.i, on };
     calibPair(prev, fix);
     if (on) E.lastOn = t;
@@ -347,6 +366,8 @@
   }
 
   function crossFinish(tc) {
+    E.crossings = E.crossings || [];
+    E.crossings.push(tc);
     if (E.lapStart !== null) finishLap(tc);
     E.lapStart = tc;
     E.lapNum += 1;
@@ -1243,11 +1264,13 @@
     if (sim.iL >= d.loc.t.length && E.mode === "ride") enterPits();
   }
 
-  // opts.grabar: guarda la tanda simulada como una de verdad (solo para pruebas automáticas).
+  // Solo para pruebas automáticas: opts.grabar guarda la tanda simulada como una de verdad y opts.session
+  // reproduce otra grabación (por ejemplo, con un GPS peor).
   function startSim(speedFactor, opts) {
     E = newEngine(true);
     E.t0 = 0;
-    sim.data = T.demoSession({ seed: 7 }).session;
+    sim.data =
+      opts && opts.session ? opts.session : T.demoSession({ seed: 7 }).session;
     sim.t = 0;
     sim.iL = 0;
     sim.iM = 0;
