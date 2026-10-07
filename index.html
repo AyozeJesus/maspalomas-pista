@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#000000">
+<title>Modo pista Maspalomas</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<style>
+  /* Panel de instrumentos: un solo tema oscuro de alto contraste, pensado para leerse de un vistazo al sol.
+     Pantallas: inicio (permisos y ajustes), pista (delta enorme) y boxes (análisis al parar). */
+  :root {
+    color-scheme: dark;
+    --bg: #000;
+    --panel: #111619;
+    --ink: #f4f6f7;
+    --muted: #9aa6ae;
+    --rule: #2a333a;
+    --good: #0b8a3e;
+    --bad: #c62a1f;
+    --best: #7b3fc4;
+    --warn: #e0a100;
+    --accent: #3d8fe0;
+    --sans: Roboto, "Google Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body { background: var(--bg); color: var(--ink); font-family: var(--sans); font-size: 16px; line-height: 1.45; -webkit-tap-highlight-color: transparent; }
+  .num { font-variant-numeric: tabular-nums; }
+  button { font: 700 17px var(--sans); color: var(--ink); background: var(--panel); border: 2px solid var(--rule); border-radius: 10px; padding: 14px 16px; cursor: pointer; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-size: 22px; padding: 20px; }
+  button:focus-visible { outline: 3px solid var(--warn); outline-offset: 2px; }
+  [hidden] { display: none !important; }
+
+  /* ---------- inicio y boxes ---------- */
+  .page { min-height: 100%; padding: max(16px, env(safe-area-inset-top)) 16px max(24px, env(safe-area-inset-bottom)); display: grid; gap: 16px; align-content: start; max-width: 720px; margin: 0 auto; }
+  h1 { font-size: 34px; line-height: 1; margin: 8px 0 0; letter-spacing: -0.01em; }
+  h1 span { color: var(--accent); }
+  h2 { font-size: 20px; margin: 0; }
+  .card { background: var(--panel); border: 1px solid var(--rule); border-radius: 12px; padding: 14px; display: grid; gap: 10px; }
+  .muted { color: var(--muted); font-size: 14px; }
+  .status { display: grid; gap: 6px; font-size: 15px; }
+  .status div { display: flex; gap: 8px; align-items: center; }
+  .dot { width: 12px; height: 12px; border-radius: 50%; background: var(--muted); flex: none; }
+  .dot.ok { background: var(--good); }
+  .dot.bad { background: var(--bad); }
+  .dot.wait { background: var(--warn); }
+  .row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+  .switch { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .switch input { width: 26px; height: 26px; accent-color: var(--accent); }
+  input[type="range"] { width: 100%; accent-color: var(--accent); }
+  .warnbox { border: 2px solid var(--warn); border-radius: 10px; padding: 10px 12px; font-size: 14px; }
+  .meta-map svg { width: 100%; height: auto; display: block; background: #0b0f12; border-radius: 8px; touch-action: manipulation; }
+  .m-road { fill: none; stroke: #3a444b; stroke-width: 12; stroke-linejoin: round; }
+  .m-finish { stroke: #fff; stroke-width: 5; }
+  .m-text { font: 700 13px var(--sans); fill: #fff; text-anchor: middle; }
+  table { width: 100%; border-collapse: collapse; font-size: 16px; }
+  th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--rule); }
+  th { color: var(--muted); font-weight: 500; font-size: 13px; }
+  td.best { color: #b98ae6; font-weight: 700; }
+  .tips { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+  .tips li { background: #0b0f12; border-radius: 10px; padding: 12px; display: grid; gap: 4px; }
+  .tips strong { font-size: 18px; }
+  .tips .loss { color: #ff7a6e; font-weight: 700; }
+
+  /* ---------- panel en pista ---------- */
+  .dash { position: fixed; inset: 0; display: grid; grid-template-rows: auto minmax(0, 1fr) auto; background: #000; transition: background-color 0.25s; user-select: none; }
+  .dash.good { background: var(--good); }
+  .dash.bad { background: var(--bad); }
+  .dash-top { display: flex; justify-content: space-between; align-items: center; padding: max(10px, env(safe-area-inset-top)) 16px 0; font-size: 22px; font-weight: 700; }
+  .gps { display: flex; gap: 8px; align-items: baseline; }
+  .gps .dot { align-self: center; }
+  .unit { font-size: 13px; font-weight: 600; opacity: 0.85; }
+  .delta { display: grid; place-items: center; font-weight: 900; line-height: 0.9; font-size: min(30vw, 34vh); letter-spacing: -0.04em; text-align: center; }
+  .delta small { display: block; font-size: 0.16em; font-weight: 700; letter-spacing: 0; opacity: 0.85; margin-top: 0.2em; }
+  .dash-bottom { display: grid; gap: 10px; padding: 0 16px max(14px, env(safe-area-inset-bottom)); }
+  .laptime { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+  .laptime b { font-size: min(14vw, 12vh); font-weight: 900; line-height: 1; }
+  .laptime span { font-size: min(5vw, 4.5vh); font-weight: 700; opacity: 0.9; text-align: right; }
+  .sectors { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+  .sectors div { height: min(6vh, 34px); border-radius: 6px; background: rgba(255, 255, 255, 0.14); display: grid; place-items: center; font-weight: 800; font-size: min(4vw, 3.4vh); }
+  .sectors .s-best { background: var(--best); }
+  .sectors .s-good { background: #18b956; color: #000; }
+  .sectors .s-bad { background: #f2c230; color: #000; }
+  .stop { position: absolute; right: 12px; top: max(52px, calc(env(safe-area-inset-top) + 44px)); font-size: 14px; padding: 8px 12px; background: rgba(0, 0, 0, 0.4); border-color: rgba(255, 255, 255, 0.3); }
+  @media (orientation: landscape) {
+    .dash { grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
+    .dash-top { grid-column: 1 / -1; }
+    .delta { font-size: min(22vw, 58vh); }
+    .dash-bottom { align-content: center; padding-bottom: max(14px, env(safe-area-inset-bottom)); }
+    .laptime { flex-direction: column; align-items: flex-start; }
+    .laptime span { text-align: left; }
+  }
+  /* Avisos a pantalla completa: vuelta, sector y frenada. */
+  .flash { position: fixed; inset: 0; display: grid; place-items: center; text-align: center; font-weight: 900; pointer-events: none; }
+  .flash.lap { background: #000; font-size: min(22vw, 26vh); line-height: 1; }
+  .flash.lap.best { background: var(--best); }
+  .flash.lap small { display: block; font-size: 0.28em; margin-top: 0.3em; }
+  .flash.brake { background: #fff; animation: brake 0.5s steps(2, end) 1; }
+  @keyframes brake { 0% { background: #fff; } 50% { background: var(--bad); } 100% { background: #fff; } }
+  @media (prefers-reduced-motion: reduce) { .dash { transition: none; } .flash.brake { animation: none; } }
+</style>
+</head>
+<body>
+  <!-- Inicio -->
+  <main class="page" id="home">
+    <h1>Modo pista<br><span>Maspalomas</span></h1>
+    <p class="muted">Delta en directo frente a tu mejor vuelta, tiempo por vuelta y sectores, todo en grande. Al parar en boxes, el análisis de la tanda.</p>
+    <div class="card status" id="status">
+      <div><span class="dot" id="st-gps"></span><span id="st-gps-t">GPS: se activará al salir</span></div>
+      <div><span class="dot" id="st-imu"></span><span id="st-imu-t">Pantalla y sensores: se activarán al salir</span></div>
+      <div><span class="dot" id="st-best"></span><span id="st-best-t">Mejor vuelta guardada: ninguna</span></div>
+    </div>
+    <button class="primary" id="go">Salir a pista</button>
+    <button id="sim">Probar con el simulador</button>
+    <button id="home-export" hidden>Exportar la última tanda (.zip)</button>
+    <section class="card" aria-labelledby="set-h">
+      <h2 id="set-h">Ajustes</h2>
+      <label class="switch" for="cue"><span>Aviso de frenada (prueba)<br><span class="muted">Destello blanco antes de donde frenaste en tu mejor vuelta.</span></span><input type="checkbox" id="cue"></label>
+      <div id="cue-opts" hidden>
+        <label for="lead" class="muted">Avisar <b id="lead-v">20</b> m antes</label>
+        <input type="range" id="lead" min="0" max="80" step="5" value="20">
+        <p class="warnbox">El GPS del móvil llega con retraso y el aviso puede ir hasta ~50 m tarde. Úsalo como referencia, nunca como tu punto de frenada. Tu referencia sigue siendo la pista.</p>
+      </div>
+      <div class="meta-map">
+        <p class="muted">Línea de meta: toca la pista para ponerla donde la tenga el cronometraje del circuito o RaceChrono.</p>
+        <svg id="meta-svg" role="img" aria-label="Mapa del circuito para elegir la línea de meta"></svg>
+        <div class="row"><button id="meta-reset">Meta por defecto</button><button id="best-reset">Borrar mejor vuelta guardada</button></div>
+      </div>
+    </section>
+    <section class="card">
+      <h2>Antes de salir</h2>
+      <ul class="muted">
+        <li>Móvil en un soporte con amortiguador de vibraciones, bien a la vista sin bajar la cabeza.</li>
+        <li>Brillo al máximo. La pantalla se mantiene encendida mientras esta página esté abierta.</li>
+        <li>No leas en frenada ni en curva: el panel está hecho para verse con el rabillo del ojo (verde ganas, rojo pierdes). Lee en las rectas o en boxes.</li>
+        <li>Al sol y sobre el depósito el móvil se calienta: si se apaga por temperatura, la tanda grabada hasta ese momento se pierde.</li>
+      </ul>
+    </section>
+  </main>
+
+  <!-- En pista -->
+  <section class="dash" id="dash" hidden aria-live="off">
+    <div class="dash-top"><span class="num" id="d-lap">Vuelta —</span><span class="gps"><span class="dot" id="d-gps"></span><span class="num" id="d-speed">0</span><small class="unit">km/h</small></span></div>
+    <div class="delta num" id="d-delta">—<small id="d-delta-sub">esperando meta</small></div>
+    <div class="dash-bottom">
+      <div class="laptime"><b class="num" id="d-time">0:00,0</b><span class="num" id="d-info">Mejor —<br>Última —</span></div>
+      <div class="sectors" id="d-sectors"><div>S1</div><div>S2</div><div>S3</div><div>S4</div></div>
+    </div>
+    <button class="stop" id="stop">Boxes</button>
+  </section>
+
+  <!-- Boxes -->
+  <main class="page" id="pits" hidden>
+    <h1>Boxes</h1>
+    <p class="muted" id="p-sub"></p>
+    <section class="card"><h2>Vueltas</h2><table><thead><tr><th>Vuelta</th><th>Tiempo</th><th>Δ mejor</th></tr></thead><tbody id="p-laps"></tbody></table><p class="muted" id="p-ideal"></p></section>
+    <section class="card"><h2>Para la próxima vuelta</h2><ol class="tips" id="p-tips"></ol></section>
+    <div class="row">
+      <button class="primary" id="resume">Volver a pista</button>
+      <button id="export">Exportar tanda (.zip)</button>
+      <button id="finish">Terminar</button>
+    </div>
+    <p class="muted">El .zip se abre en la página «Telemetría Maspalomas» para el análisis completo. Mientras no termines, la grabación sigue: al arrancar, la pantalla vuelve sola al panel.</p>
+  </main>
+
+  <div class="flash" id="flash" hidden></div>
+
+  <script src="jszip.min.js"></script>
+  <script src="track-data.js"></script>
+  <script src="sim.js"></script>
+  <script src="analysis.js"></script>
+  <script src="telemetry.js"></script>
+  <script src="live.js"></script>
+</body>
+</html>
