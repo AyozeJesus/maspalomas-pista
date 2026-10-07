@@ -67,6 +67,24 @@
   .tips li { background: #0b0f12; border-radius: 10px; padding: 12px; display: grid; gap: 4px; }
   .tips strong { font-size: 18px; }
   .tips .loss { color: #ff7a6e; font-weight: 700; }
+  /* Tiempos del día: comparativa entre pilotos. */
+  .cmp { gap: 6px; }
+  .cmp-head { margin: 0; font-weight: 700; }
+  .cmp-title { font-size: 17px; margin: 12px 0 0; }
+  .cmp-wrap { overflow-x: auto; }
+  .cmp-table th, .cmp-table td { padding: 6px; vertical-align: top; }
+  .cmp-table small { display: block; font-size: 12px; font-weight: 500; color: var(--muted); }
+  .cmp-table th small { white-space: normal; }
+  .cmp-table .num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .cmp-table td.top b { color: #c9a2f0; }
+  .cmp-table td.who { font-weight: 700; }
+  .cmp-note, .cmp-empty { margin: 4px 0; font-size: 14px; color: var(--muted); }
+  .cmp-laps { display: flex; flex-wrap: wrap; gap: 6px; align-items: baseline; margin: 4px 0; }
+  .cmp-laps .who { font-weight: 700; margin-right: 4px; }
+  .cmp-laps .lap { font-variant-numeric: tabular-nums; background: #0b0f12; border-radius: 6px; padding: 2px 7px; display: grid; text-align: center; }
+  .cmp-laps .lap small { font-size: 12px; color: var(--muted); }
+  .cmp-laps .lap.top small { color: #e9dcf7; }
+  .cmp-laps .lap.top { background: var(--best); }
 
   /* ---------- panel en pista ---------- */
   .dash { position: fixed; inset: 0; display: grid; grid-template-rows: auto minmax(0, 1fr) auto; background: #000; transition: background-color 0.25s; user-select: none; }
@@ -152,6 +170,7 @@
       </div>
       <div class="row">
         <button id="home-export" hidden>Exportar la última tanda (.zip)</button>
+        <button id="garage-day" hidden>Tiempos del día</button>
         <button id="garage-sync" hidden>Subir ahora</button>
         <button id="garage-forget" hidden>Desconectar el Mac</button>
       </div>
@@ -216,14 +235,23 @@
     <h1>Boxes</h1>
     <p class="muted" id="p-sub"></p>
     <p class="muted" id="p-store"></p>
-    <section class="card"><h2>Vueltas</h2><table><thead><tr><th>Vuelta</th><th>Tiempo</th><th>Δ mejor</th></tr></thead><tbody id="p-laps"></tbody></table><p class="muted" id="p-ideal"></p></section>
+    <section class="card"><h2>Vueltas</h2><table><thead><tr><th>Vuelta</th><th>Tiempo</th><th>Δ mejor</th><th>Incl. máx</th><th>Punta</th></tr></thead><tbody id="p-laps"></tbody></table><p class="muted" id="p-ideal"></p></section>
     <section class="card"><h2>Para la próxima vuelta</h2><ol class="tips" id="p-tips"></ol></section>
     <div class="row">
       <button class="primary" id="resume">Volver a pista</button>
+      <button id="pits-day" hidden>Tiempos del día</button>
       <button id="export">Exportar tanda (.zip)</button>
       <button id="finish">Terminar</button>
     </div>
     <p class="muted">Mientras no termines, la grabación sigue: al arrancar, la pantalla vuelve sola al panel. Con el garaje del Mac conectado, la tanda completa se analiza allí; el .zip sirve para «Telemetría Maspalomas».</p>
+  </main>
+
+  <!-- Tiempos del día de todos los pilotos que suben al garaje -->
+  <main class="page" id="dia" hidden>
+    <h1>Tiempos del día</h1>
+    <p class="muted" id="dia-status"></p>
+    <div class="row"><button id="dia-back">Volver</button><button id="dia-refresh">Actualizar</button></div>
+    <section class="card cmp" id="dia-body" aria-live="polite"></section>
   </main>
 
   <div class="flash" id="flash" hidden></div>
@@ -235,6 +263,7 @@
   <script src="telemetry.js"></script>
   <script src="formato.js"></script>
   <script src="store.js"></script>
+  <script src="comparativa.js"></script>
   <script src="live.js"></script>
 </body>
 </html>

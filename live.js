@@ -817,19 +817,34 @@
     renderStoreLine();
     const laps = analysis ? analysis.laps.filter((l) => l.valid) : valid;
     const bestT = laps.length ? Math.min(...laps.map((l) => l.time)) : null;
+    // Máximos de la tanda (inclinación y punta), marcados como la mejor vuelta.
+    const maxOf = (key) => {
+      const vals = laps.map((l) => l[key]).filter(Number.isFinite);
+      return vals.length ? Math.max(...vals) : null;
+    };
+    const topLean = maxOf("leanMax");
+    const topV = maxOf("vMax");
     laps.forEach((l, i) => {
       const tr = document.createElement("tr");
       const cells = [
-        String(i + 1),
-        fmtLap(l.time),
-        l.time === bestT ? "—" : fmtSigned(l.time - bestT, 2),
+        [String(i + 1), false],
+        [fmtLap(l.time), l.time === bestT],
+        [l.time === bestT ? "—" : fmtSigned(l.time - bestT, 2), false],
+        [
+          Number.isFinite(l.leanMax) ? fmt(l.leanMax, 0) + "°" : "—",
+          l.leanMax === topLean && laps.length > 1,
+        ],
+        [
+          Number.isFinite(l.vMax) ? fmt(l.vMax, 0) : "—",
+          l.vMax === topV && laps.length > 1,
+        ],
       ];
-      cells.forEach((txt, k) => {
+      for (const [txt, top] of cells) {
         const td = document.createElement("td");
         td.textContent = txt;
-        if (k === 1 && l.time === bestT) td.className = "best";
+        if (top) td.className = "best";
         tr.appendChild(td);
-      });
+      }
       body.appendChild(tr);
     });
     $("p-ideal").textContent =
@@ -1051,7 +1066,67 @@
 
   // ---------- pantalla ----------
   function show(which) {
-    for (const id of ["home", "dash", "pits"]) $(id).hidden = id !== which;
+    for (const id of ["home", "dash", "pits", "dia"])
+      $(id).hidden = id !== which;
+  }
+
+  // ---------- tiempos del día (todos los pilotos del garaje) ----------
+  let dayFrom = "home";
+  let dayTimer = null;
+  function hhmm(ms) {
+    return new Date(ms).toLocaleTimeString("es-ES", {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  }
+  function paintDay(data, at, saved) {
+    window.MaspaComparativa.render($("dia-body"), data);
+    $("dia-status").textContent =
+      (saved ? "Guardados a las " : "Actualizado a las ") +
+      hhmm(at) +
+      (data.analizando ? " · el Mac aún está analizando alguna tanda" : "");
+  }
+  async function refreshDay() {
+    if (!ST || !settings.garaje) {
+      $("dia-status").textContent =
+        "Conecta el garaje del Mac para ver los tiempos de todos.";
+      return;
+    }
+    $("dia-status").textContent = "Pidiendo los tiempos al Mac…";
+    // Primero lo que falte por subir de este móvil, para que salgan tus últimas vueltas.
+    await ST.syncNow(200);
+    try {
+      const data = await ST.fetchDay();
+      store("pista-dia", { at: Date.now(), data });
+      paintDay(data, Date.now(), false);
+    } catch (e) {
+      const cached = load("pista-dia", null);
+      $("dia-status").textContent =
+        "Sin conexión con el Mac (" +
+        ST.reason(e) +
+        ")" +
+        (cached ? ". Abajo, los tiempos de las " + hhmm(cached.at) + "." : ".");
+    }
+  }
+  function showDay(from) {
+    dayFrom = from;
+    show("dia");
+    const cached = load("pista-dia", null);
+    if (cached && cached.data) paintDay(cached.data, cached.at, true);
+    else $("dia-body").textContent = "";
+    refreshDay();
+    clearInterval(dayTimer);
+    // Mientras se mira, se actualiza solo (las tandas del otro van llegando).
+    dayTimer = setInterval(() => {
+      if ($("dia").hidden) clearInterval(dayTimer);
+      else refreshDay();
+    }, 20000);
+  }
+  function leaveDay() {
+    clearInterval(dayTimer);
+    if (dayFrom === "pits" && E && E.mode === "pits") show("pits");
+    else if (E && E.mode === "ride") show("dash");
+    else show("home");
   }
 
   function showLapFlash(time, isBest, prevBest) {
@@ -1660,6 +1735,8 @@
     const [state, text] = texts[s.state] || texts.off;
     setStatus("st-mac", state, text);
     $("garage-sync").hidden = !settings.garaje;
+    $("garage-day").hidden = !settings.garaje;
+    $("pits-day").hidden = !settings.garaje;
     $("garage-forget").hidden = !settings.garaje;
     $("home-export").hidden = !lastE && !stored.length;
     if (E) renderStoreLine();
@@ -1747,6 +1824,10 @@
     $("home-export").addEventListener("click", () =>
       lastE ? exportSession(lastE) : exportStored(),
     );
+    $("garage-day").addEventListener("click", () => showDay("home"));
+    $("pits-day").addEventListener("click", () => showDay("pits"));
+    $("dia-back").addEventListener("click", leaveDay);
+    $("dia-refresh").addEventListener("click", refreshDay);
     $("garage-sync").addEventListener("click", () => {
       if (settings.garaje) ST.configure(settings.garaje);
     });

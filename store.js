@@ -172,6 +172,8 @@
   function reason(e) {
     if (e && e.name === "AbortError") return "el Mac no contesta";
     if (e && e.status === 507) return "el disco del Mac está casi lleno";
+    if (e && e.status === 401)
+      return "el Mac no reconoce este móvil: escanea su código otra vez";
     // 502/530/1033: el túnel ya no apunta a ningún garaje (se cerró o se reinició).
     if (e && e.status >= 500)
       return "el garaje está cerrado o ha cambiado de código";
@@ -182,6 +184,18 @@
     const e = new Error("el Mac responde " + status);
     e.status = status;
     return e;
+  }
+
+  // Tiempos del día de todos los pilotos que suben a este garaje (resumen calculado en el Mac).
+  async function fetchDay() {
+    if (!sync.cfg) throw new Error("sin garaje");
+    const r = await call("GET", "/api/dia");
+    if (r.status === 401) {
+      setState("auth", "clave no válida");
+      throw failed(401);
+    }
+    if (!r.ok) throw failed(r.status);
+    return r.json();
   }
 
   async function markDone(store, key, rec, status) {
@@ -333,6 +347,8 @@
     sync,
     syncNow,
     hello,
+    fetchDay,
+    reason,
     startLoop,
     configure,
     parsePairing,

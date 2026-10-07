@@ -44,8 +44,14 @@ la ventana de Terminal.
 
 Cada móvil pone su **piloto** y su **objetivo por vuelta** en Ajustes. La mejor vuelta de referencia va por piloto
 (si dos comparten móvil, cambiad el nombre antes de salir). Para que otro piloto suba sus tandas a tu garaje,
-«Copiar enlace para otro móvil» en la página del garaje y mándaselo: el enlace solo deja subir tandas, no verlas.
-«Cambiar la clave» desconecta a todos los móviles hasta que vuelvan a escanear el código.
+«Copiar enlace para otro móvil» en la página del garaje y mándaselo. El enlace deja subir tandas y ver los tiempos
+del último día rodado (no las grabaciones ni otros días). «Cambiar la clave» desconecta a todos los móviles hasta
+que vuelvan a escanear el código.
+
+**Tiempos del día** (en el móvil, desde el inicio o boxes; y en el garaje, con selector de día): mejor vuelta,
+ideal y media de cada piloto, sus mejores sectores con el más rápido marcado, lo mejor de cada curva (mínima,
+tumbada y frenada) y todas las vueltas. Si los móviles tienen la línea de meta en sitios distintos, todo se mide
+con la misma: la que usen más pilotos o, si empatan, la puesta a mano.
 
 Funciona en Android (Chrome) y en iPhone (Safari: al salir a pista pide permiso para los sensores de movimiento;
 sin él, solo hay GPS). Si un móvil da los sensores con el signo al revés, el lado de la inclinación se corrige

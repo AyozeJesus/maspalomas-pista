@@ -754,8 +754,19 @@
 
     const ref = reference(track, o.target || 65.0, power);
     const laps = cutLaps(tg, sF, v, aLong, lean, R, track, segs, hz);
-    for (const lap of laps)
+    for (const lap of laps) {
       lap.corners = cornerMetrics(lap.grid, ref.corners, track);
+      // Máximos de la vuelta: inclinación (a cualquier lado, grados) y velocidad punta (km/h).
+      let lm = 0;
+      let vm = 0;
+      for (let i = 0; i < lap.grid.v.length; i++) {
+        const l = Math.abs(lap.grid.lean[i]);
+        if (l > lm) lm = l;
+        if (lap.grid.v[i] > vm) vm = lap.grid.v[i];
+      }
+      lap.leanMax = lm;
+      lap.vMax = vm * 3.6;
+    }
     const refCorners = cornerMetrics(ref.grid, ref.corners, track);
     const sectorsRef = sectorTimes(ref.grid, ref.corners, track);
     for (const lap of laps)

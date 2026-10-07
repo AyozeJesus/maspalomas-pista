@@ -254,7 +254,58 @@
     refreshState();
   });
 
+  // ---------- comparativa del día ----------
+  let cmpDay = null;
+  let cmpShown = "";
+  async function refreshCmp() {
+    let d;
+    try {
+      d = await getJson("/api/dia" + (cmpDay ? "?fecha=" + cmpDay : ""));
+    } catch (e) {
+      return 15000;
+    }
+    const sel = $("cmp-day");
+    const days = d.dias || [];
+    if (sel.dataset.days !== days.join(",")) {
+      sel.textContent = "";
+      for (const f of days) {
+        const day = new Date(
+          Number(f.slice(0, 4)),
+          Number(f.slice(4, 6)) - 1,
+          Number(f.slice(6, 8)),
+        );
+        const o = el(
+          "option",
+          "",
+          day.toLocaleDateString("es-ES", {
+            weekday: "short",
+            day: "numeric",
+            month: "short",
+            year: "numeric",
+          }),
+          sel,
+        );
+        o.value = f;
+      }
+      sel.dataset.days = days.join(",");
+    }
+    if (d.fecha) sel.value = d.fecha;
+    sel.parentElement.hidden = days.length < 2;
+    // Solo se repinta si algo ha cambiado (para no mover la página mientras se lee).
+    const sig = JSON.stringify(Object.assign({}, d, { calculado: null }));
+    if (sig !== cmpShown) {
+      cmpShown = sig;
+      window.MaspaComparativa.render($("cmp-body"), d);
+    }
+    return d.analizando ? 3000 : 15000;
+  }
+  $("cmp-day").addEventListener("change", () => {
+    cmpDay = $("cmp-day").value;
+    refreshCmp();
+  });
+
   $("open-folder").addEventListener("click", () => post("/api/finder"));
   poll(refreshState);
   poll(refreshList);
+  poll(refreshCmp);
 })();

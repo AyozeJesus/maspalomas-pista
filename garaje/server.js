@@ -183,17 +183,32 @@ function stampOf(id) {
   };
 }
 
-function analyzeTanda(id) {
+function finishOf(meta) {
+  const f = meta && meta.meta;
+  return {
+    osm: f && Number.isFinite(f.osm) ? f.osm : 0,
+    rev: f && Number.isFinite(f.rev) ? f.rev : 0,
+  };
+}
+function finishKey(f) {
+  return f.osm + "-" + f.rev;
+}
+
+// Resumen de la tanda con su línea de meta (resumen.json) o, para comparar con otro móvil que la tiene en otro
+// sitio, con otra (resumen-meta-<osm>-<rev>.json).
+function analyzeTanda(id, finishOverride) {
   const stamp = stampOf(id);
   const meta = readJson(path.join(tandaDir(id), "meta.json"));
-  const out = Object.assign({}, stamp, { calculado: new Date().toISOString() });
+  const out = Object.assign({}, stamp, {
+    v: RESUMEN_V,
+    calculado: new Date().toISOString(),
+  });
+  const finish = finishOverride || finishOf(meta);
   try {
     const data = filesOf(id);
     if (!data) throw new Error("Sin datos todavía.");
     const session = T().sessionFromCsv(data.files);
-    const a = T().analyze(session, {
-      finish: (meta && meta.meta) || { osm: 0, rev: 0 },
-    });
+    const a = T().analyze(session, { finish });
     const L = session.loc.t;
     Object.assign(out, {
       duracion: L.length ? L[L.length - 1] - L[0] : 0,
@@ -208,16 +223,208 @@ function analyzeTanda(id) {
         valid: l.valid,
         sectors: l.sectors,
         corners: l.corners,
+        leanMax: Math.round(l.leanMax * 10) / 10,
+        vMax: Math.round(l.vMax * 10) / 10,
       })),
     });
   } catch (e) {
     out.error = e && e.message ? e.message : String(e);
   }
   writeAtomic(
-    path.join(tandaDir(id), "resumen.json"),
+    path.join(
+      tandaDir(id),
+      finishOverride
+        ? "resumen-meta-" + finishKey(finishOverride) + ".json"
+        : "resumen.json",
+    ),
     JSON.stringify(out, null, 2) + "\n",
   );
   return out;
+}
+
+// Si cambia lo que guarda el resumen, sube la versión y los resúmenes viejos se recalculan solos.
+const RESUMEN_V = 2;
+function isFresh(resumen, stamp) {
+  return (
+    !!resumen &&
+    resumen.v === RESUMEN_V &&
+    resumen.trozos === stamp.trozos &&
+    resumen.bytes === stamp.bytes &&
+    resumen.meta === stamp.meta
+  );
+}
+
+// ---------- comparativa del día ----------
+// Todas las tandas de un día (sin el simulador), por piloto: mejor vuelta, ideal, mejores sectores, lo mejor de
+// cada curva y la lista de vueltas. Si los móviles tienen la meta en sitios distintos, las tandas que no
+// coinciden se reanalizan con la meta de la mayoría para que los sectores se puedan comparar.
+function dayOf(id) {
+  return id.slice(0, 8);
+}
+function realTandas() {
+  return listIds()
+    .map((id) => ({ id, meta: readJson(path.join(tandaDir(id), "meta.json")) }))
+    .filter((t) => !(t.meta && t.meta.sim));
+}
+function daysAvailable() {
+  return [...new Set(realTandas().map((t) => dayOf(t.id)))];
+}
+
+function computeDay(day) {
+  const items = realTandas().filter((t) => dayOf(t.id) === day);
+  let pendingAny = false;
+  const withRes = [];
+  for (const t of items) {
+    const stamp = stampOf(t.id);
+    if (!stamp.trozos) continue;
+    const res = readJson(path.join(tandaDir(t.id), "resumen.json"));
+    if (!isFresh(res, stamp)) {
+      queueAnalysis(t.id);
+      pendingAny = true;
+      continue;
+    }
+    if (res.error || !res.sentido) continue;
+    withRes.push(Object.assign(t, { stamp, res, finish: finishOf(t.meta) }));
+  }
+  // Sentido con más vueltas; los demás solo se cuentan.
+  const lapsOf = (x) => (x.res.vueltas || []).filter((v) => v.valid).length;
+  const bySense = {};
+  for (const x of withRes)
+    bySense[x.res.sentido] = (bySense[x.res.sentido] || 0) + lapsOf(x);
+  const sense = Object.keys(bySense).sort((a, b) => bySense[b] - bySense[a])[0];
+  const group = withRes.filter((x) => x.res.sentido === sense);
+  // Meta común: la que usan más pilotos; si empatan, la puesta a mano (suele ser la del cronometraje oficial)
+  // antes que la de por defecto; y si no, la de más vueltas.
+  const pilotOf = (x) =>
+    (x.meta &&
+      typeof x.meta.piloto === "string" &&
+      x.meta.piloto.slice(0, 30)) ||
+    "Sin nombre";
+  const byFinish = {};
+  for (const x of group) {
+    const k = finishKey(x.finish);
+    const f = (byFinish[k] = byFinish[k] || { pilots: new Set(), laps: 0 });
+    f.pilots.add(pilotOf(x));
+    f.laps += lapsOf(x);
+  }
+  const mainKey = Object.keys(byFinish).sort(
+    (a, b) =>
+      byFinish[b].pilots.size - byFinish[a].pilots.size ||
+      (a === "0-0") - (b === "0-0") ||
+      byFinish[b].laps - byFinish[a].laps,
+  )[0];
+  const mainFinish = group.find((x) => finishKey(x.finish) === mainKey);
+  let rebased = false;
+  let budget = 6; // reanálisis como mucho por consulta (≈1 s cada uno)
+  for (const x of group) {
+    if (finishKey(x.finish) === mainKey) continue;
+    const f = mainFinish.finish;
+    const file = path.join(tandaDir(x.id), "resumen-meta-" + mainKey + ".json");
+    let r = readJson(file);
+    if (!isFresh(r, x.stamp)) {
+      if (budget-- <= 0) {
+        pendingAny = true;
+        x.skip = true;
+        continue;
+      }
+      r = analyzeTanda(x.id, f);
+    }
+    x.res = r;
+    rebased = true;
+  }
+  const pilots = {};
+  let names = null;
+  for (const x of group) {
+    if (x.skip || x.res.error) continue;
+    const name = pilotOf(x);
+    const p = (pilots[name] = pilots[name] || {
+      piloto: name,
+      tandas: 0,
+      vueltas: [],
+    });
+    p.tandas++;
+    for (const v of x.res.vueltas || []) {
+      if (!v.valid || !Array.isArray(v.sectors)) continue;
+      if (!names && Array.isArray(v.corners))
+        names = v.corners.map((c) => ({ num: c.num, name: c.name }));
+      p.vueltas.push({
+        tanda: x.id,
+        num: v.num,
+        time: v.time,
+        sectors: v.sectors,
+        corners: v.corners || [],
+        leanMax: Number.isFinite(v.leanMax) ? v.leanMax : null,
+        vMax: Number.isFinite(v.vMax) ? v.vMax : null,
+      });
+    }
+  }
+  const out = [];
+  for (const p of Object.values(pilots)) {
+    if (!p.vueltas.length) continue;
+    const times = p.vueltas.map((v) => v.time).sort((a, b) => a - b);
+    const nSec = p.vueltas[0].sectors.length;
+    const sectores = [];
+    for (let k = 0; k < nSec; k++)
+      sectores.push(Math.min(...p.vueltas.map((v) => v.sectors[k])));
+    const best = (key, pick) => {
+      const vals = [];
+      for (const v of p.vueltas)
+        for (const c of v.corners)
+          if (Number.isFinite(c[key])) vals.push([c.name, c[key]]);
+      const m = {};
+      for (const [n, val] of vals)
+        m[n] = m[n] === undefined ? val : pick(m[n], val);
+      return m;
+    };
+    const vMin = best("vMin", Math.max);
+    const lean = best("leanMax", Math.max);
+    const brake = best("peakG", Math.max);
+    const maxOf = (key) => {
+      const vals = p.vueltas.map((v) => v[key]).filter(Number.isFinite);
+      return vals.length ? Math.max(...vals) : null;
+    };
+    out.push({
+      piloto: p.piloto,
+      tandas: p.tandas,
+      vueltas: p.vueltas.length,
+      mejor: times[0],
+      ideal: sectores.reduce((a, b) => a + b, 0),
+      media3:
+        times.slice(0, 3).reduce((a, b) => a + b, 0) /
+        Math.min(3, times.length),
+      sectores,
+      curvas: (names || []).map((c) => ({
+        name: c.name,
+        vMin: vMin[c.name] ?? null,
+        leanMax: lean[c.name] ?? null,
+        peakG: brake[c.name] ?? null,
+      })),
+      // Máximos del día: inclinación y velocidad punta (de todas sus vueltas válidas).
+      leanMax: maxOf("leanMax"),
+      vMax: maxOf("vMax"),
+      lista: p.vueltas.map((v) => ({
+        time: v.time,
+        leanMax: v.leanMax,
+        vMax: v.vMax,
+      })),
+    });
+  }
+  out.sort((a, b) => a.mejor - b.mejor);
+  const others = Object.entries(bySense)
+    .filter(([s]) => s !== sense)
+    .map(([s, n]) => ({ sentido: s, vueltas: n }));
+  return {
+    fecha: day,
+    sentido: sense || null,
+    curvas: names || [],
+    pilotos: out,
+    metaIgualada: rebased,
+    // Pilotos cuya línea de meta se ha usado para todos (cuando no coincidían).
+    metaDe: rebased && mainKey ? [...byFinish[mainKey].pilots] : null,
+    otros: others,
+    analizando: pendingAny,
+    calculado: new Date().toISOString(),
+  };
 }
 
 // Una tanda cada vez, sin bloquear las subidas del móvil más de lo necesario.
@@ -255,11 +462,7 @@ function summaryOf(id) {
   const meta = readJson(path.join(dir, "meta.json"));
   const stamp = stampOf(id);
   let resumen = readJson(path.join(dir, "resumen.json"));
-  const fresh =
-    resumen &&
-    resumen.trozos === stamp.trozos &&
-    resumen.bytes === stamp.bytes &&
-    resumen.meta === stamp.meta;
+  const fresh = isFresh(resumen, stamp);
   if (!fresh && stamp.trozos) queueAnalysis(id);
   return {
     id,
@@ -403,6 +606,16 @@ async function dock(req, res) {
       version: F.VERSION,
       tandas: listIds().length,
     });
+  // Tiempos del último día rodado, para verlos en el móvil en boxes. Solo resúmenes (nombres, tiempos,
+  // sectores y lo mejor de cada curva): ni grabaciones ni otros días.
+  if (req.method === "GET" && p === "/api/dia") {
+    const day = daysAvailable()[0];
+    return sendJson(
+      res,
+      200,
+      day ? computeDay(day) : { fecha: null, pilotos: [] },
+    );
+  }
   let m = /^\/api\/tandas\/([^/]+)\/trozos\/(\d{1,6})$/.exec(p);
   if (req.method === "PUT" && m)
     return receiveChunk(req, res, m[1], Number(m[2]));
@@ -498,6 +711,7 @@ const STATIC = {
   "/lib/track-data.js": [REPO, "track-data.js"],
   "/lib/jszip.min.js": [REPO, "jszip.min.js"],
   "/lib/formato.js": [REPO, "formato.js"],
+  "/lib/comparativa.js": [REPO, "comparativa.js"],
   "/icon.png": [REPO, "icon-192.png"],
 };
 const TYPES = {
@@ -532,6 +746,18 @@ function garage(req, res) {
     });
   if (req.method === "GET" && p === "/api/tandas")
     return sendJson(res, 200, { tandas: listIds().map(summaryOf) });
+  if (req.method === "GET" && p === "/api/dia") {
+    const days = daysAvailable();
+    const asked = new URL(req.url, "http://garaje").searchParams.get("fecha");
+    const day = days.includes(asked) ? asked : days[0];
+    return sendJson(
+      res,
+      200,
+      Object.assign(day ? computeDay(day) : { fecha: null, pilotos: [] }, {
+        dias: days,
+      }),
+    );
+  }
   let m = /^\/api\/tandas\/([^/]+)\/archivos$/.exec(p);
   if (req.method === "GET" && m) {
     if (!F.ID_RE.test(m[1])) throw httpError(400, "id no válido");
