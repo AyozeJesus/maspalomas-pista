@@ -745,6 +745,11 @@
       for (let k = 0; k < m; k++)
         lean[k] = est.step(1 / hz, [wx[k], wy[k], wz[k]], v[k]);
       leanFrom = "giroscopio";
+      // Lado: el giro ya está comprobado con el rumbo del GPS (+ a derechas); si la inclinación va al revés,
+      // el móvil da los sensores con el signo cambiado (pasa en iPhone).
+      let agree = 0;
+      for (let k = 0; k < m; k++) agree += lean[k] * yawS[k];
+      if (agree < 0) for (let k = 0; k < m; k++) lean[k] = -lean[k];
     }
 
     const ref = reference(track, o.target || 65.0, power);

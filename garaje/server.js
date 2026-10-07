@@ -65,23 +65,34 @@ function writeAtomic(file, data, mode) {
 fs.mkdirSync(TANDAS, { recursive: true });
 
 // La clave se crea la primera vez y se guarda en config.json (solo legible por tu usuario).
-function loadConfig() {
-  const file = path.join(DATOS, "config.json");
-  try {
-    const c = JSON.parse(fs.readFileSync(file, "utf8"));
-    if (c && typeof c.clave === "string" && c.clave.length >= 32) return c;
-  } catch (e) {
-    /* primera vez */
-  }
+const CONFIG_FILE = path.join(DATOS, "config.json");
+function newConfig() {
   const c = {
     clave: crypto.randomBytes(24).toString("base64url"),
     creado: new Date().toISOString(),
   };
-  writeAtomic(file, JSON.stringify(c, null, 2) + "\n", 0o600);
+  writeAtomic(CONFIG_FILE, JSON.stringify(c, null, 2) + "\n", 0o600);
   return c;
 }
-const CFG = loadConfig();
-const AUTH = Buffer.from("Bearer " + CFG.clave);
+function loadConfig() {
+  try {
+    const c = JSON.parse(fs.readFileSync(CONFIG_FILE, "utf8"));
+    if (c && typeof c.clave === "string" && c.clave.length >= 32) return c;
+  } catch (e) {
+    /* primera vez */
+  }
+  return newConfig();
+}
+let CFG = loadConfig();
+let AUTH = Buffer.from("Bearer " + CFG.clave);
+
+// Clave nueva: los móviles emparejados dejan de poder subir hasta que escaneen el código otra vez
+// (para cortar el acceso a un móvil prestado).
+function rotateKey() {
+  CFG = newConfig();
+  AUTH = Buffer.from("Bearer " + CFG.clave);
+  log("Clave cambiada: los móviles tienen que escanear el código nuevo.");
+}
 
 function authorized(req) {
   const h = Buffer.from(String(req.headers.authorization || ""));
@@ -258,6 +269,9 @@ function summaryOf(id) {
           fin: meta.fin,
           estado: meta.estado,
           sim: meta.sim,
+          piloto:
+            typeof meta.piloto === "string" ? meta.piloto.slice(0, 30) : null,
+          objetivo: Number.isFinite(meta.objetivo) ? meta.objetivo : null,
           sentido: meta.sentido,
           mejor: meta.mejor,
           vueltas: (meta.vueltas || []).length,
@@ -525,6 +539,13 @@ function garage(req, res) {
     if (!data) throw httpError(404, "sin datos");
     const meta = readJson(path.join(tandaDir(m[1]), "meta.json"));
     return sendJson(res, 200, Object.assign({ meta }, data));
+  }
+  // Las acciones piden una cabecera propia: otra web abierta en este Mac no puede mandarla sin permiso CORS.
+  if (req.method === "POST" && req.headers["x-garaje"] !== "1")
+    return sendJson(res, 403, { ok: false });
+  if (req.method === "POST" && p === "/api/clave-nueva") {
+    rotateKey();
+    return sendJson(res, 200, { ok: true });
   }
   m = /^\/api\/tandas\/([^/]+)\/finder$/.exec(p);
   if (req.method === "POST" && (m || p === "/api/finder")) {

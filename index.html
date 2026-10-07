@@ -50,6 +50,10 @@
   .switch { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
   .switch input { width: 26px; height: 26px; accent-color: var(--accent); }
   input[type="range"] { width: 100%; accent-color: var(--accent); }
+  .pilot { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 8px 12px; align-items: center; }
+  .pilot label { font-weight: 700; }
+  .pilot input { font: 600 18px var(--sans); color: var(--ink); background: #0b0f12; border: 2px solid var(--rule); border-radius: 8px; padding: 10px 12px; width: 100%; }
+  .pilot input:focus-visible { outline: 3px solid var(--warn); outline-offset: 1px; }
   .warnbox { border: 2px solid var(--warn); border-radius: 10px; padding: 10px 12px; font-size: 14px; }
   .meta-map svg { width: 100%; height: auto; display: block; background: #0b0f12; border-radius: 8px; touch-action: manipulation; }
   .m-road { fill: none; stroke: #3a444b; stroke-width: 12; stroke-linejoin: round; }
@@ -154,6 +158,11 @@
     </section>
     <section class="card" aria-labelledby="set-h">
       <h2 id="set-h">Ajustes</h2>
+      <div class="pilot">
+        <label for="piloto">Piloto</label><input id="piloto" type="text" maxlength="30" autocomplete="nickname" placeholder="Tu nombre">
+        <label for="objetivo">Objetivo</label><input id="objetivo" type="text" inputmode="decimal" autocomplete="off" spellcheck="false" placeholder="1:05,0">
+      </div>
+      <p class="muted">Cada piloto tiene su mejor vuelta y su objetivo por vuelta. Si compartís móvil, cambiad el nombre antes de salir.</p>
       <label class="switch" for="cue"><span>Aviso de frenada (prueba)<br><span class="muted">Destello blanco antes de donde frenaste en tu mejor vuelta.</span></span><input type="checkbox" id="cue"></label>
       <div id="cue-opts" hidden>
         <label for="lead" class="muted">Avisar <b id="lead-v">20</b> m antes</label>

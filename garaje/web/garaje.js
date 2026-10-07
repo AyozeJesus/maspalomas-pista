@@ -60,6 +60,7 @@
     const box = $("qr");
     if (link === lastLink) return;
     lastLink = link;
+    $("copy-link").disabled = !link;
     box.textContent = "";
     if (!link) {
       box.textContent = "Sin código hasta que el túnel esté abierto.";
@@ -141,15 +142,20 @@
     const list = data.tandas || [];
     $("empty").hidden = list.length > 0;
     let busy = false;
-    let bestOverall = Infinity;
+    // Mejor vuelta de cada piloto (sin contar el simulador).
+    const pilotOf = (t) => (t.meta && t.meta.piloto) || "";
+    const bestBy = {};
     for (const t of list)
-      if (t.resumen && t.resumen.mejor && !(t.meta && t.meta.sim))
-        bestOverall = Math.min(bestOverall, t.resumen.mejor);
+      if (t.resumen && t.resumen.mejor && !(t.meta && t.meta.sim)) {
+        const p = pilotOf(t);
+        bestBy[p] = Math.min(bestBy[p] || Infinity, t.resumen.mejor);
+      }
     for (const t of list) {
       const tr = el("tr", "", null, rows);
       const r = t.resumen;
       if (t.analizando) busy = true;
       el("td", "", fmtDate(t.id, t.meta && t.meta.inicio), tr);
+      el("td", "", pilotOf(t) || "—", tr);
       const tdState = el("td", "", null, tr);
       const [cls, label] = stateTag(t.meta);
       el("span", cls, label, tdState);
@@ -164,7 +170,7 @@
       const best = r ? r.mejor : null;
       el(
         "td",
-        "num" + (best && best === bestOverall ? " best" : ""),
+        "num" + (best && best === bestBy[pilotOf(t)] ? " best" : ""),
         t.analizando ? "analizando…" : fmtLap(best),
         tr,
       );
@@ -189,14 +195,12 @@
       const b = el("button", "", "Ver en Finder", box);
       b.type = "button";
       b.addEventListener("click", () =>
-        fetch("/api/tandas/" + encodeURIComponent(t.id) + "/finder", {
-          method: "POST",
-        }),
+        post("/api/tandas/" + encodeURIComponent(t.id) + "/finder"),
       );
       if (r && r.error) {
         const err = el("tr", "", null, rows);
         const td = el("td", "err", "No se ha podido analizar: " + r.error, err);
-        td.colSpan = 8;
+        td.colSpan = 9;
       }
     }
     return busy ? 3000 : 10000;
@@ -210,9 +214,47 @@
     run();
   }
 
-  $("open-folder").addEventListener("click", () =>
-    fetch("/api/finder", { method: "POST" }),
-  );
+  // Las acciones llevan la cabecera que pide el garaje (otra web no puede mandarla).
+  function post(url) {
+    return fetch(url, { method: "POST", headers: { "X-Garaje": "1" } });
+  }
+
+  // Enlace para el móvil de otra persona (por WhatsApp): lleva la clave, que solo deja subir tandas.
+  $("copy-link").addEventListener("click", async () => {
+    const btn = $("copy-link");
+    if (!lastLink) return;
+    try {
+      await navigator.clipboard.writeText(lastLink);
+      btn.textContent = "Enlace copiado";
+    } catch (e) {
+      window.prompt("Copia este enlace:", lastLink);
+    }
+    setTimeout(() => (btn.textContent = "Copiar enlace para otro móvil"), 3000);
+  });
+
+  let keyArmed = false;
+  $("new-key").addEventListener("click", async () => {
+    const btn = $("new-key");
+    if (!keyArmed) {
+      keyArmed = true;
+      btn.textContent =
+        "¿Seguro? Todos los móviles tendrán que volver a escanear";
+      setTimeout(() => {
+        keyArmed = false;
+        btn.textContent = "Cambiar la clave";
+      }, 5000);
+      return;
+    }
+    keyArmed = false;
+    const r = await post("/api/clave-nueva");
+    btn.textContent = r.ok
+      ? "Clave cambiada: escanea el código nuevo"
+      : "No se ha podido cambiar";
+    lastLink = undefined;
+    refreshState();
+  });
+
+  $("open-folder").addEventListener("click", () => post("/api/finder"));
   poll(refreshState);
   poll(refreshList);
 })();

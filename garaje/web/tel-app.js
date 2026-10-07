@@ -195,6 +195,12 @@
       const fin = data.meta && data.meta.meta;
       if (fin && Number.isFinite(fin.osm) && Number.isFinite(fin.rev))
         state.finish = { osm: fin.osm, rev: fin.rev };
+      // El objetivo de quien rodó (cada piloto pone el suyo en el móvil).
+      const obj = data.meta && data.meta.objetivo;
+      if (Number.isFinite(obj) && obj >= 40 && obj <= 200) {
+        state.target = obj;
+        $("target").value = fmtLap(obj, 1);
+      }
       state.session = T.sessionFromCsv(data.files);
       state.source = "file";
       state.fileName =
@@ -204,7 +210,8 @@
           month: "long",
           hour: "2-digit",
           minute: "2-digit",
-        });
+        }) +
+        (data.meta && data.meta.piloto ? " · " + data.meta.piloto : "");
       runAnalysis();
     } catch (e) {
       showError(e);

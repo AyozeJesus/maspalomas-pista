@@ -40,6 +40,17 @@ Guarda todas tus tandas en `~/Maspalomas-telemetria` (hasta que tú borres la ca
 El código cambia cada vez que abres el garaje: escanéalo antes de salir hacia el circuito. Para cerrarlo, cierra
 la ventana de Terminal.
 
+## Varios pilotos
+
+Cada móvil pone su **piloto** y su **objetivo por vuelta** en Ajustes. La mejor vuelta de referencia va por piloto
+(si dos comparten móvil, cambiad el nombre antes de salir). Para que otro piloto suba sus tandas a tu garaje,
+«Copiar enlace para otro móvil» en la página del garaje y mándaselo: el enlace solo deja subir tandas, no verlas.
+«Cambiar la clave» desconecta a todos los móviles hasta que vuelvan a escanear el código.
+
+Funciona en Android (Chrome) y en iPhone (Safari: al salir a pista pide permiso para los sensores de movimiento;
+sin él, solo hay GPS). Si un móvil da los sensores con el signo al revés, el lado de la inclinación se corrige
+solo con el rumbo del GPS.
+
 ## Privacidad y seguridad
 
 Todo se procesa en el móvil y en tu Mac. Lo único que sale a internet es el túnel hacia el garaje, que pide la

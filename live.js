@@ -62,14 +62,72 @@
     }
   }
   const settings = Object.assign(
-    { cue: false, lead: 20, finish: { osm: 0, rev: 0 }, garaje: null },
+    {
+      cue: false,
+      lead: 20,
+      finish: { osm: 0, rev: 0 },
+      garaje: null,
+      piloto: "",
+      objetivo: 65.0,
+    },
     load("pista-ajustes", {}),
   );
   function saveSettings() {
     store("pista-ajustes", settings);
   }
+  // Cada piloto tiene su mejor vuelta (si dos comparten móvil, no se mezclan). Sin nombre, la clave de siempre.
+  function pilotSlug() {
+    return settings.piloto
+      ? "-" + encodeURIComponent(settings.piloto.toLowerCase())
+      : "";
+  }
   function bestKey(dir) {
-    return "pista-mejor-" + dir + "-" + settings.finish[dir];
+    return "pista-mejor-" + dir + "-" + settings.finish[dir] + pilotSlug();
+  }
+
+  // «1:05,0», «1.05», «65» o «65,5» → segundos (NaN si no se entiende).
+  function parseLap(text) {
+    const t = String(text || "")
+      .trim()
+      .replace(/\s+/g, "");
+    let m = t.match(/^(\d{1,2})[:.'](\d{1,2})(?:[.,](\d{1,3}))?$/);
+    if (m && m[2].length === 2)
+      return (
+        Number(m[1]) * 60 + Number(m[2]) + (m[3] ? Number("0." + m[3]) : 0)
+      );
+    m = t.match(/^(\d{2,3})(?:[.,](\d{1,3}))?$/);
+    if (m) return Number(m[1]) + (m[2] ? Number("0." + m[2]) : 0);
+    return NaN;
+  }
+  function target() {
+    const t = Number(settings.objetivo);
+    return t >= 40 && t <= 200 ? t : 65.0;
+  }
+
+  // La primera vez que se pone nombre, la mejor vuelta guardada sin nombre pasa a ser de ese piloto.
+  function setPilot(name) {
+    const clean = String(name || "")
+      .trim()
+      .replace(/\s+/g, " ")
+      .slice(0, 30);
+    const first = !settings.piloto && clean;
+    settings.piloto = clean;
+    saveSettings();
+    if (!first) return;
+    try {
+      const keys = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (/^pista-mejor-(osm|rev)-\d+$/.test(k)) keys.push(k);
+      }
+      for (const k of keys) {
+        const nk = k + pilotSlug();
+        if (localStorage.getItem(nk) === null)
+          localStorage.setItem(nk, localStorage.getItem(k));
+      }
+    } catch (e) {
+      /* sin almacenamiento: empieza de cero */
+    }
   }
 
   // ---------- series que crecen ----------
@@ -162,6 +220,11 @@
       lean: new T.LeanEstimator(),
       leanDeg: NaN,
       leanAxes: 0,
+      // Lado de la inclinación comprobado con el rumbo del GPS (algunos móviles, como el iPhone, dan los
+      // sensores con el signo al revés): +1 normal, −1 al revés.
+      leanSign: 1,
+      leanVote: 0,
+      head: null,
       hasGyro: false,
       moved: false,
       canal: new Series(["t", "s", "v", "a", "lean", "lap"]),
@@ -306,6 +369,28 @@
       }
     }
     const fix = { t, x, y, v, s, i: m.i, on };
+    // Lado de la inclinación: en una curva a derechas (en el plano, con y hacia el sur, el rumbo crece) la moto
+    // va tumbada a derechas (+). Si los votos dicen lo contrario, el móvil da los sensores con el signo al revés.
+    if (prev && prev.on && on && t - prev.t < 2.5) {
+      const h = Math.atan2(y - prev.y, x - prev.x);
+      if (E.head !== null && Math.hypot(x - prev.x, y - prev.y) > 5) {
+        let dh = h - E.head;
+        while (dh > Math.PI) dh -= 2 * Math.PI;
+        while (dh < -Math.PI) dh += 2 * Math.PI;
+        if (Math.abs(dh) > 0.12 && Math.abs(E.leanDeg) > 10) {
+          E.leanVote = clamp(
+            E.leanVote + Math.sign(dh) * Math.sign(E.leanDeg),
+            -20,
+            20,
+          );
+          if (E.leanVote <= -6) {
+            E.leanSign = -E.leanSign;
+            E.leanVote = 0;
+          }
+        }
+      }
+      E.head = h;
+    } else E.head = null;
     calibPair(prev, fix);
     if (on) E.lastOn = t;
     let crossed = false;
@@ -572,7 +657,7 @@
     }
     const p = E.track && E.fix && E.fix.on ? predicted(t) : null;
     const vNow = p ? p.v : E.fix ? E.fix.v : NaN;
-    E.leanDeg = E.hasGyro ? E.lean.step(dt, gyro, vNow) : NaN;
+    E.leanDeg = E.hasGyro ? E.leanSign * E.lean.step(dt, gyro, vNow) : NaN;
     cornerTrack(t, p);
     if (t - E.canalT >= 0.1) {
       E.canalT = t;
@@ -719,7 +804,10 @@
     body.textContent = "";
     let analysis = null;
     try {
-      analysis = T.analyze(sessionOf(E), { finish: settings.finish });
+      analysis = T.analyze(sessionOf(E), {
+        finish: settings.finish,
+        target: target(),
+      });
     } catch (e) {
       analysis = null;
     }
@@ -784,7 +872,7 @@
     const isBest = last === analysis.best;
     const res = isBest
       ? T.insights(last, analysis.ref.metrics, analysis.ref.sectors, {
-          ref: "el objetivo de 1:05",
+          ref: "tu objetivo de " + fmtLap(target(), 1),
         })
       : T.insights(last, analysis.best.corners, analysis.best.sectors, {
           ref: "tu mejor vuelta",
@@ -918,6 +1006,8 @@
       estado,
       sim: !!eng.sim,
       app: APP_VERSION,
+      piloto: settings.piloto || null,
+      objetivo: target(),
       sentido: eng.dir,
       meta: settings.finish,
       mejor: eng.best ? eng.best.time : null,
@@ -1150,7 +1240,10 @@
   function renderLive(t) {
     const moving = E.fix && E.fix.v > 3;
     const lean = E.leanDeg;
-    if (!E.hasGyro) {
+    if (E.motionDenied) {
+      setText("d-lean", "—");
+      setText("d-lean-l", "sensores sin permiso");
+    } else if (!E.hasGyro) {
       setText("d-lean", "—");
       setText("d-lean-l", "sin giroscopio");
     } else if (!isFinite(lean) || !moving) {
@@ -1169,7 +1262,10 @@
       setText("d-g-l", g < -0.15 ? "g freno" : g > 0.1 ? "g gas" : "g");
     } else {
       setText("d-g", "—");
-      setText("d-g-l", E.calib.f ? "g" : "calibrando…");
+      setText(
+        "d-g-l",
+        E.motionDenied ? "sin permiso" : E.calib.f ? "g" : "calibrando…",
+      );
     }
     const r = E.recap;
     const box = $("d-recap");
@@ -1333,13 +1429,27 @@
     onMotion(t, lin, grav, gyro);
   }
 
+  // iPhone: los sensores de movimiento piden permiso, y solo se puede pedir justo al tocar un botón
+  // (antes de cualquier otra espera). En Android no hace falta.
+  async function askMotion() {
+    const D = window.DeviceMotionEvent;
+    if (!D || typeof D.requestPermission !== "function") return true;
+    try {
+      return (await D.requestPermission()) === "granted";
+    } catch (e) {
+      return false;
+    }
+  }
+
   async function startReal() {
+    const motionOk = await askMotion();
     if (!("geolocation" in navigator)) {
       setStatus("st-gps", "bad", "Este navegador no da acceso al GPS.");
       return;
     }
     E = newEngine(false);
     E.t0 = Date.now() / 1000;
+    E.motionDenied = !motionOk;
     recStart(Math.round(E.t0 * 1000));
     if (ST) ST.persist();
     try {
@@ -1470,8 +1580,15 @@
     setStatus(
       "st-best",
       any ? "ok" : "",
-      "Mejor vuelta guardada: " + parts.join(" · "),
+      "Mejor vuelta guardada" +
+        (settings.piloto ? " de " + settings.piloto : "") +
+        ": " +
+        parts.join(" · "),
     );
+    if (document.activeElement !== $("piloto"))
+      $("piloto").value = settings.piloto || "";
+    if (document.activeElement !== $("objetivo"))
+      $("objetivo").value = fmtLap(target(), 1);
     $("cue").checked = !!settings.cue;
     $("cue-opts").hidden = !settings.cue;
     $("lead").value = settings.lead;
@@ -1679,6 +1796,18 @@
       confirmArmed = false;
       $("finish").textContent = "Terminar";
       stopAll();
+    });
+    $("piloto").addEventListener("change", () => {
+      setPilot($("piloto").value);
+      renderHome();
+    });
+    $("objetivo").addEventListener("change", () => {
+      const t = parseLap($("objetivo").value);
+      if (t >= 40 && t <= 200) {
+        settings.objetivo = Math.round(t * 10) / 10;
+        saveSettings();
+      }
+      $("objetivo").value = fmtLap(target(), 1);
     });
     $("cue").addEventListener("change", () => {
       settings.cue = $("cue").checked;
