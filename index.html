@@ -9,127 +9,247 @@
 <link rel="icon" href="icon-192.png">
 <style>
   /* Panel de instrumentos: un solo tema oscuro de alto contraste, pensado para leerse de un vistazo al sol.
-     Pantallas: inicio (permisos y ajustes), pista (delta enorme) y boxes (análisis al parar). */
+     Pantallas: inicio (permisos y ajustes), pista (delta enorme), boxes (análisis al parar) y tiempos del día.
+     Sistema: espaciado en múltiplos de 4 px, tres radios, botones primario / secundario / destructivo / discreto,
+     y cifras siempre tabulares para que los tiempos no bailen. Sin fuentes ni recursos externos (va sin cobertura). */
   :root {
     color-scheme: dark;
-    --bg: #000;
-    --panel: #111619;
-    --ink: #f4f6f7;
-    --muted: #9aa6ae;
-    --rule: #2a333a;
+    --bg: #050607;
+    --surface: #0f1316;
+    --surface-2: #161c20;
+    --surface-3: #1e262b;
+    --field: #080a0c;
+    --line: #232b31;
+    --line-strong: #36424a;
+    --ink: #f3f5f6;
+    --ink-2: #c4ccd2;
+    --muted: #949fa7;
+    --primary: #2272cc;
+    --primary-hi: #2b80dd;
+    --accent: #5aa5f0;
+    --focus: #ffcf4a;
     --good: #0b8a3e;
     --bad: #c62a1f;
     --best: #7b3fc4;
     --warn: #e0a100;
-    --accent: #3d8fe0;
+    --good-ink: #4cd37e;
+    --bad-ink: #ff8a7f;
+    --best-ink: #d7b8f7;
+    --kerb: #d2382d;
+    --r-sm: 6px;
+    --r-md: 10px;
+    --r-lg: 14px;
     --sans: Roboto, "Google Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
   }
   * { box-sizing: border-box; }
   html, body { height: 100%; margin: 0; }
-  body { background: var(--bg); color: var(--ink); font-family: var(--sans); font-size: 16px; line-height: 1.45; -webkit-tap-highlight-color: transparent; }
+  html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+  body { background: var(--bg); color: var(--ink); font: 400 16px/1.45 var(--sans); -webkit-tap-highlight-color: transparent; }
   .num { font-variant-numeric: tabular-nums; }
-  button { font: 700 17px var(--sans); color: var(--ink); background: var(--panel); border: 2px solid var(--rule); border-radius: 10px; padding: 14px 16px; cursor: pointer; }
-  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-size: 22px; padding: 20px; }
-  button:focus-visible { outline: 3px solid var(--warn); outline-offset: 2px; }
   [hidden] { display: none !important; }
+  p { margin: 0; }
 
-  /* ---------- inicio y boxes ---------- */
-  .page { min-height: 100%; padding: max(16px, env(safe-area-inset-top)) 16px max(24px, env(safe-area-inset-bottom)); display: grid; gap: 16px; align-content: start; max-width: 720px; margin: 0 auto; }
-  h1 { font-size: 34px; line-height: 1; margin: 8px 0 0; letter-spacing: -0.01em; }
-  h1 span { color: var(--accent); }
-  h2 { font-size: 20px; margin: 0; }
-  .card { background: var(--panel); border: 1px solid var(--rule); border-radius: 12px; padding: 14px; display: grid; gap: 10px; }
+  /* ---------- botones ---------- */
+  button {
+    font: 600 16px/1.2 var(--sans); color: var(--ink); background: var(--surface-2);
+    border: 1px solid var(--line-strong); border-radius: var(--r-md); min-height: 48px; padding: 12px 16px;
+    display: inline-flex; align-items: center; justify-content: center; gap: 8px; text-align: center;
+    cursor: pointer; touch-action: manipulation; transition: background-color 0.15s, border-color 0.15s;
+  }
+  button:active { background: var(--surface-3); }
+  @media (hover: hover) { button:hover { background: var(--surface-3); border-color: #4a5862; } }
+  button:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+  button svg { width: 20px; height: 20px; flex: none; }
+  button.primary { background: var(--primary); border-color: var(--primary); color: #fff; font-size: 20px; font-weight: 700; min-height: 60px; letter-spacing: 0.01em; }
+  @media (hover: hover) { button.primary:hover { background: var(--primary-hi); border-color: var(--primary-hi); } }
+  button.primary:active { background: #1d64b5; }
+  button.danger { background: transparent; color: var(--bad-ink); border-color: rgba(255, 138, 127, 0.38); }
+  @media (hover: hover) { button.danger:hover { background: rgba(198, 42, 31, 0.14); border-color: rgba(255, 138, 127, 0.6); } }
+  button.quiet { background: transparent; border-color: transparent; color: var(--ink-2); padding-inline: 10px; }
+  @media (hover: hover) { button.quiet:hover { background: var(--surface-2); border-color: transparent; } }
+  .actions { display: flex; flex-wrap: wrap; gap: 8px; }
+  .actions:not(:has(> button:not([hidden]))) { display: none; }
+  .actions > button { flex: 1 1 auto; }
+  .actions > button.primary { flex-basis: 100%; }
+
+  /* ---------- inicio, boxes y tiempos del día ---------- */
+  .page {
+    min-height: 100%; max-width: 720px; margin: 0 auto; display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; align-content: start;
+    padding: max(20px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(32px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+  }
+  .page p:empty { display: none; }
+  .masthead { display: grid; gap: 12px; padding: 8px 0 4px; }
+  .brand { margin: 0; display: grid; gap: 6px; }
+  .brand-kicker { display: flex; align-items: center; gap: 10px; font-size: 13px; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase; color: var(--ink-2); }
+  .brand-name { font-size: 40px; font-weight: 800; line-height: 1; letter-spacing: -0.02em; }
+  .kerb { flex: none; width: 30px; height: 8px; border-radius: 2px; background: repeating-linear-gradient(90deg, var(--kerb) 0 7.5px, #fff 7.5px 15px); }
+  .lede { color: var(--ink-2); font-size: 15px; max-width: 60ch; }
+  .page-head { display: grid; gap: 6px; }
+  .title { margin: 0; font-size: 32px; font-weight: 800; line-height: 1.05; letter-spacing: -0.015em; }
+  h2 { margin: 0; font-size: 13px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-2); }
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg); padding: 16px; display: grid; gap: 12px; min-width: 0; }
+  .card:empty { display: none; }
   .muted { color: var(--muted); font-size: 14px; }
-  .status { display: grid; gap: 6px; font-size: 15px; }
-  .status div { display: flex; gap: 8px; align-items: center; }
-  .dot { width: 12px; height: 12px; border-radius: 50%; background: var(--muted); flex: none; }
-  .dot.ok { background: var(--good); }
-  .dot.bad { background: var(--bad); }
-  .dot.wait { background: var(--warn); }
-  .row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
-  .switch { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-  .switch input { width: 26px; height: 26px; accent-color: var(--accent); }
-  input[type="range"] { width: 100%; accent-color: var(--accent); }
-  .pilot { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 8px 12px; align-items: center; }
-  .pilot label { font-weight: 700; }
-  .pilot input { font: 600 18px var(--sans); color: var(--ink); background: #0b0f12; border: 2px solid var(--rule); border-radius: 8px; padding: 10px 12px; width: 100%; }
-  .pilot input:focus-visible { outline: 3px solid var(--warn); outline-offset: 1px; }
-  .warnbox { border: 2px solid var(--warn); border-radius: 10px; padding: 10px 12px; font-size: 14px; }
-  .meta-map svg { width: 100%; height: auto; display: block; background: #0b0f12; border-radius: 8px; touch-action: manipulation; }
-  .m-road { fill: none; stroke: #3a444b; stroke-width: 12; stroke-linejoin: round; }
+  .start { display: grid; gap: 8px; }
+
+  /* Estado: filas con indicador. */
+  .status { display: grid; font-size: 15px; }
+  .status > div { display: flex; gap: 12px; align-items: center; padding: 10px 0; border-top: 1px solid var(--line); }
+  .status > div:first-child { border-top: 0; }
+  .card.status { padding-block: 2px; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; background: #66727a; flex: none; box-shadow: 0 0 0 3px rgba(102, 114, 122, 0.2); }
+  .dot.ok { background: #22c35f; box-shadow: 0 0 0 3px rgba(34, 195, 95, 0.22); }
+  .dot.bad { background: #ff5b4f; box-shadow: 0 0 0 3px rgba(255, 91, 79, 0.22); }
+  .dot.wait { background: #f2b300; box-shadow: 0 0 0 3px rgba(242, 179, 0, 0.22); }
+
+  /* Ajustes */
+  .group { display: grid; gap: 10px; padding-top: 14px; border-top: 1px solid var(--line); }
+  .group-title { margin: 0; font-size: 16px; font-weight: 700; }
+  .pilot { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 10px 14px; align-items: center; }
+  .pilot label { font-weight: 600; color: var(--ink-2); min-width: 4.5em; }
+  .pilot input {
+    font: 600 18px var(--sans); color: var(--ink); background: var(--field); border: 1px solid var(--line-strong);
+    border-radius: var(--r-md); min-height: 48px; padding: 10px 12px; width: 100%;
+  }
+  .pilot input::placeholder { color: #6c7880; font-weight: 500; }
+  .pilot input:focus-visible { outline: 3px solid var(--focus); outline-offset: 1px; border-color: var(--accent); }
+  .switch { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 56px; cursor: pointer; }
+  .switch-text { display: grid; gap: 2px; }
+  .switch-title { font-weight: 600; }
+  .switch input {
+    -webkit-appearance: none; appearance: none; flex: none; margin: 0; width: 52px; height: 32px; border-radius: 999px; cursor: pointer;
+    border: 1px solid var(--line-strong); background: radial-gradient(circle at 16px 50%, #cfd6db 0 11px, transparent 12px), var(--surface-3);
+    transition: background 0.15s;
+  }
+  .switch input:checked { border-color: var(--primary); background: radial-gradient(circle at 35px 50%, #fff 0 11px, transparent 12px), var(--primary); }
+  .switch input:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+  .range-label { display: block; color: var(--ink-2); font-size: 15px; }
+  .range-label b { color: var(--ink); font-variant-numeric: tabular-nums; }
+  input[type="range"] { width: 100%; height: 44px; margin: 0; accent-color: var(--primary); cursor: pointer; }
+  input[type="range"]:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; border-radius: var(--r-sm); }
+  .warnbox { margin: 0; border: 1px solid rgba(224, 161, 0, 0.55); background: rgba(224, 161, 0, 0.1); color: #f6e2b0; border-radius: var(--r-md); padding: 12px 14px; font-size: 14px; }
+  .meta-map svg { width: 100%; height: auto; display: block; background: var(--field); border: 1px solid var(--line); border-radius: var(--r-md); touch-action: manipulation; cursor: crosshair; }
+  .m-road { fill: none; stroke: #46525b; stroke-width: 12; stroke-linejoin: round; }
   .m-finish { stroke: #fff; stroke-width: 5; }
-  .m-text { font: 700 13px var(--sans); fill: #fff; text-anchor: middle; }
-  table { width: 100%; border-collapse: collapse; font-size: 16px; }
-  th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--rule); }
-  th { color: var(--muted); font-weight: 500; font-size: 13px; }
-  td.best { color: #b98ae6; font-weight: 700; }
-  .tips { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
-  .tips li { background: #0b0f12; border-radius: 10px; padding: 12px; display: grid; gap: 4px; }
-  .tips strong { font-size: 18px; }
-  .tips .loss { color: #ff7a6e; font-weight: 700; }
-  /* Tiempos del día: comparativa entre pilotos. */
-  .cmp { gap: 6px; }
-  .cmp-head { margin: 0; font-weight: 700; }
-  .cmp-title { font-size: 17px; margin: 12px 0 0; }
-  .cmp-wrap { overflow-x: auto; }
-  .cmp-table th, .cmp-table td { padding: 6px; vertical-align: top; }
-  .cmp-table small { display: block; font-size: 12px; font-weight: 500; color: var(--muted); }
-  .cmp-table th small { white-space: normal; }
-  .cmp-table .num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
-  .cmp-table td.top b { color: #c9a2f0; }
-  .cmp-table td.who { font-weight: 700; }
-  .cmp-note, .cmp-empty { margin: 4px 0; font-size: 14px; color: var(--muted); }
-  .cmp-laps { display: flex; flex-wrap: wrap; gap: 6px; align-items: baseline; margin: 4px 0; }
-  .cmp-laps .who { font-weight: 700; margin-right: 4px; }
-  .cmp-laps .lap { font-variant-numeric: tabular-nums; background: #0b0f12; border-radius: 6px; padding: 2px 7px; display: grid; text-align: center; }
+  .m-text { font: 700 13px var(--sans); fill: #fff; text-anchor: middle; paint-order: stroke; stroke: var(--field); stroke-width: 4px; }
+
+  /* Antes de salir */
+  .checklist { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; color: var(--ink-2); font-size: 15px; }
+  .checklist li { position: relative; padding-left: 22px; }
+  .checklist li::before { content: ""; position: absolute; left: 2px; top: 0.5em; width: 8px; height: 8px; border-radius: 2px; background: var(--accent); }
+
+  /* Tablas: vueltas en boxes. */
+  .table-wrap { overflow-x: auto; margin-inline: -4px; }
+  table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+  .laps th, .laps td { padding: 11px 7px; text-align: right; white-space: nowrap; border-bottom: 1px solid var(--line); }
+  .laps th:first-child, .laps td:first-child { text-align: left; padding-left: 8px; }
+  .laps th { padding-top: 2px; padding-bottom: 8px; color: var(--muted); font-size: 13px; font-weight: 600; }
+  .laps td { font-size: 16px; color: var(--ink-2); }
+  .laps td:first-child { color: var(--muted); font-weight: 600; }
+  .laps td:nth-child(2) { color: var(--ink); font-weight: 700; }
+  .laps tbody tr:last-child td { border-bottom: 0; }
+  /* Mejor marca de la tanda: morado, como en los cronometrajes. */
+  .laps td.best { color: var(--best-ink); font-weight: 700; background: linear-gradient(rgba(123, 63, 196, 0.3), rgba(123, 63, 196, 0.3)) center / calc(100% - 4px) calc(100% - 12px) no-repeat; }
+
+  /* Para la próxima vuelta */
+  .tips { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; counter-reset: tip; }
+  .tips li { counter-increment: tip; position: relative; background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--r-md); padding: 12px 14px 12px 50px; display: grid; gap: 4px; color: var(--ink-2); font-size: 15px; }
+  .tips li::before { content: counter(tip); position: absolute; left: 14px; top: 12px; width: 24px; height: 24px; border-radius: 50%; background: var(--surface-3); border: 1px solid var(--line-strong); color: var(--ink); font: 700 13px/22px var(--sans); text-align: center; }
+  .tips strong { font-size: 17px; color: var(--ink); line-height: 1.3; }
+  .tips .loss { justify-self: start; margin: 2px 0; color: var(--bad-ink); background: rgba(198, 42, 31, 0.16); border-radius: 999px; padding: 2px 10px; font-size: 14px; font-weight: 700; font-variant-numeric: tabular-nums; }
+
+  /* Tiempos del día: barra superior y comparativa entre pilotos (la pinta comparativa.js). */
+  .toolbar { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin: -8px 0 0; }
+  .toolbar button { min-height: 44px; padding-block: 8px; font-size: 15px; }
+  .toolbar .back { margin-left: -10px; }
+  /* Sin tarjeta alrededor: las tablas aprovechan todo el ancho del móvil y, si aun así no caben, se desplazan
+     dentro de su marco con la columna del piloto fija. */
+  .card.cmp { display: block; background: transparent; border: 0; border-radius: 0; padding: 0; }
+  .cmp-head { margin: 0; padding: 0 0 12px; border-bottom: 1px solid var(--line); font-weight: 700; font-size: 15px; }
+  .cmp-head::first-letter { text-transform: uppercase; }
+  .cmp-title { margin: 22px 0 8px; font-size: 12px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-2); }
+  .cmp-wrap { overflow-x: auto; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-md); overscroll-behavior-x: contain; }
+  .cmp-table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 15px; font-variant-numeric: tabular-nums; }
+  .cmp-table th, .cmp-table td { padding: 8px; text-align: left; vertical-align: top; border-bottom: 1px solid var(--line); }
+  .cmp-table th:first-child, .cmp-table td:first-child { padding-left: 10px; }
+  .cmp-table th:last-child, .cmp-table td:last-child { padding-right: 10px; }
+  .cmp-table tbody tr:last-child td { border-bottom: 0; }
+  .cmp-table th { background: var(--surface-2); color: var(--muted); font-size: 13px; font-weight: 600; }
+  .cmp-table .num { text-align: right; white-space: nowrap; min-width: 4.2em; }
+  .cmp-table td b { font-weight: 700; }
+  .cmp-table small { display: block; margin-top: 1px; font-size: 12px; font-weight: 500; color: var(--muted); }
+  .cmp-table small, .cmp-table th small { white-space: normal; }
+  .cmp-table th small { margin-top: 2px; }
+  .cmp-table td.top { background: rgba(123, 63, 196, 0.22); }
+  .cmp-table td.top b { color: var(--best-ink); }
+  .cmp-table td.top small { color: #cdbde0; }
+  .cmp-table td.who { font-weight: 700; color: var(--ink); min-width: 4.6em; max-width: 8em; overflow-wrap: anywhere; }
+  .cmp-table th:first-child, .cmp-table td:first-child { position: sticky; left: 0; z-index: 1; background: var(--surface); box-shadow: 1px 0 0 var(--line); }
+  .cmp-table th:first-child { background: var(--surface-2); }
+  .cmp-note, .cmp-empty { margin: 8px 0 0; font-size: 13px; color: var(--muted); }
+  .cmp-empty { margin: 0; padding: 8px 0; font-size: 15px; }
+  .cmp-laps { display: grid; grid-template-columns: repeat(auto-fill, minmax(80px, 1fr)); gap: 6px; margin: 0 0 10px; }
+  .cmp-laps .who { grid-column: 1 / -1; font-weight: 700; margin-top: 2px; }
+  .cmp-laps .lap { display: grid; text-align: center; background: var(--surface-2); border: 1px solid var(--line); border-radius: 8px; padding: 6px 4px; font-variant-numeric: tabular-nums; }
+  .cmp-laps .lap b { font-size: 15px; font-weight: 700; }
   .cmp-laps .lap small { font-size: 12px; color: var(--muted); }
-  .cmp-laps .lap.top small { color: #e9dcf7; }
-  .cmp-laps .lap.top { background: var(--best); }
+  .cmp-laps .lap.top { background: var(--best); border-color: var(--best); color: #fff; }
+  .cmp-laps .lap.top small { color: #ece2f8; }
 
   /* ---------- panel en pista ---------- */
-  .dash { position: fixed; inset: 0; display: grid; grid-template-rows: auto minmax(0, 1fr) auto; background: #000; transition: background-color 0.25s; user-select: none; }
+  .dash { position: fixed; inset: 0; display: grid; grid-template-rows: auto minmax(0, 1fr) auto; background: #000; transition: background-color 0.25s; user-select: none; -webkit-user-select: none; overflow: hidden; }
   .dash.good { background: var(--good); }
   .dash.bad { background: var(--bad); }
-  .dash-top { display: flex; justify-content: space-between; align-items: center; padding: max(10px, env(safe-area-inset-top)) 16px 0; font-size: 22px; font-weight: 700; }
-  .gps { display: flex; gap: 8px; align-items: baseline; }
-  .gps .dot { align-self: center; }
-  .unit { font-size: 13px; font-weight: 600; opacity: 0.85; }
-  .delta { display: grid; place-items: center; align-content: center; font-weight: 900; line-height: 0.9; font-size: min(30vw, 34vh); letter-spacing: -0.04em; text-align: center; }
-  .delta small { display: block; font-size: 0.16em; font-weight: 700; letter-spacing: 0; opacity: 0.85; margin-top: 0.2em; }
-  .dash-bottom { display: grid; gap: 10px; padding: 0 16px max(14px, env(safe-area-inset-bottom)); }
-  .laptime { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
-  .laptime b { font-size: min(14vw, 12vh); font-weight: 900; line-height: 1; }
-  .laptime span { font-size: min(5vw, 4.5vh); font-weight: 700; opacity: 0.9; text-align: right; }
+  .dash-top {
+    display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 8px;
+    padding: max(6px, env(safe-area-inset-top)) max(14px, env(safe-area-inset-right)) 6px max(14px, env(safe-area-inset-left));
+    background: rgba(0, 0, 0, 0.3); font-size: 22px; font-weight: 800; line-height: 1.1;
+  }
+  #d-lap { justify-self: start; }
+  .gps { justify-self: end; display: flex; gap: 8px; align-items: baseline; white-space: nowrap; }
+  .gps .dot { align-self: center; width: 12px; height: 12px; box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.9); }
+  .unit { font-size: 14px; font-weight: 700; opacity: 0.9; }
+  .stop {
+    min-height: 44px; padding: 8px 18px; border-radius: 999px; font-size: 15px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase;
+    color: #fff; background: rgba(0, 0, 0, 0.5); border: 2px solid rgba(255, 255, 255, 0.6);
+  }
+  @media (hover: hover) { .stop:hover { background: rgba(0, 0, 0, 0.7); border-color: #fff; } }
+  .stop:active { background: rgba(0, 0, 0, 0.75); }
+  .delta { display: grid; place-items: center; align-content: center; padding: 0 8px; font-weight: 900; line-height: 0.9; font-size: min(30vw, 34vh); letter-spacing: -0.04em; text-align: center; }
+  .delta small { display: block; font-size: 0.16em; font-weight: 700; letter-spacing: 0; line-height: 1.2; opacity: 0.92; margin-top: 0.55em; }
+  .dash-bottom { display: grid; gap: 8px; min-width: 0; padding: 0 max(14px, env(safe-area-inset-right)) max(14px, env(safe-area-inset-bottom)) max(14px, env(safe-area-inset-left)); }
+  .laptime { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+  .laptime b { font-size: min(14vw, 12vh); font-weight: 900; line-height: 1; letter-spacing: -0.02em; }
+  .laptime span { font-size: min(5vw, 4.5vh); font-weight: 700; line-height: 1.25; opacity: 0.95; text-align: right; }
   .sectors { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
-  .sectors div { height: min(6vh, 34px); border-radius: 6px; background: rgba(255, 255, 255, 0.14); display: grid; place-items: center; font-weight: 800; font-size: min(4vw, 3.4vh); }
+  .sectors div { height: min(6vh, 38px); border-radius: var(--r-sm); background: rgba(255, 255, 255, 0.16); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.1); display: grid; place-items: center; font-weight: 800; font-size: min(4vw, 3.4vh); letter-spacing: 0.04em; }
   .sectors .s-best { background: var(--best); }
   .sectors .s-good { background: #18b956; color: #000; }
   .sectors .s-bad { background: #f2c230; color: #000; }
-  .stop { position: absolute; right: 12px; top: max(52px, calc(env(safe-area-inset-top) + 44px)); font-size: 14px; padding: 8px 12px; background: rgba(0, 0, 0, 0.4); border-color: rgba(255, 255, 255, 0.3); }
   /* Lo que mide el móvil ahora: inclinación y g. */
-  .live { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
-  .live div { background: rgba(0, 0, 0, 0.35); border-radius: 8px; padding: 4px 10px; display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
-  .live b { font-size: min(9vw, 6.5vh); font-weight: 900; line-height: 1.05; white-space: nowrap; }
-  .live small { font-size: min(3.6vw, 2.6vh); font-weight: 700; opacity: 0.85; }
+  .live { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  /* Como en un display de datos: etiqueta arriba a la izquierda y valor grande a la derecha. Así la etiqueta
+     nunca aprieta al valor y la casilla no cambia de alto cuando cambia el texto («g», «g freno», «g gas»). */
+  .live div { min-width: 0; background: rgba(0, 0, 0, 0.42); border: 1px solid rgba(255, 255, 255, 0.14); border-radius: var(--r-md); padding: 4px 12px 5px; display: grid; align-content: center; }
+  .live b { justify-self: end; font-size: min(9vw, 6.5vh); font-weight: 900; line-height: 1; white-space: nowrap; }
+  .live small { justify-self: start; font-size: min(3.6vw, 2.6vh); font-weight: 700; line-height: 1.15; opacity: 0.9; min-width: 0; }
   /* Resumen de la curva que acabas de pasar (para leerlo en la recta). */
-  .recap { background: rgba(0, 0, 0, 0.45); border: 2px solid transparent; border-radius: 10px; padding: 6px 10px; display: grid; gap: 4px; }
+  .recap { background: rgba(0, 0, 0, 0.5); border: 2px solid rgba(255, 255, 255, 0.14); border-radius: 12px; padding: 6px 12px 8px; display: grid; gap: 4px; }
   .recap.fresh { border-color: var(--ink); }
-  .recap-h { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; font-size: min(4.2vw, 3vh); font-weight: 800; }
-  .recap-h b { font-size: min(6.5vw, 4.6vh); font-weight: 900; }
+  .recap-h { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; padding-bottom: 4px; border-bottom: 1px solid rgba(255, 255, 255, 0.14); font-size: min(4.2vw, 3vh); font-weight: 800; }
+  .recap-h b { font-size: min(6.5vw, 4.6vh); font-weight: 900; white-space: nowrap; }
   .recap-g { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; text-align: center; }
   .recap-g div { display: grid; }
-  .recap-g small { font-size: min(3.1vw, 2.2vh); font-weight: 700; opacity: 0.8; }
-  .recap-g b { font-size: min(6vw, 4.2vh); font-weight: 900; line-height: 1.1; }
+  .recap-g small { font-size: min(3.1vw, 2.2vh); font-weight: 700; opacity: 0.82; }
+  .recap-g b { font-size: min(6vw, 4.2vh); font-weight: 900; line-height: 1.1; white-space: nowrap; }
   .recap-g i { font-style: normal; font-size: min(3.4vw, 2.4vh); font-weight: 800; min-height: 1.2em; }
   .up { color: #6df29b; }
-  .down { color: #ff9a8f; }
+  .down { color: #ffaaa1; }
   @media (orientation: landscape) {
     .dash { grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
     .dash-top { grid-column: 1 / -1; }
-    .stop { top: max(4px, env(safe-area-inset-top)); left: 50%; right: auto; transform: translateX(-50%); }
-    .delta { font-size: min(20vw, 52vh); }
-    .dash-bottom { align-content: center; gap: 6px; padding-bottom: max(10px, env(safe-area-inset-bottom)); }
-    .laptime { flex-direction: row; align-items: baseline; }
+    .delta { font-size: min(20vw, 52vh); padding-left: max(8px, env(safe-area-inset-left)); }
+    .dash-bottom { align-content: center; gap: 6px; padding-top: 8px; padding-bottom: max(10px, env(safe-area-inset-bottom)); padding-left: 0; }
     .laptime b { font-size: min(7vw, 11vh); }
     .laptime span { font-size: min(2.4vw, 4vh); }
     .live b { font-size: min(4.6vw, 8vh); }
@@ -141,62 +261,72 @@
     .sectors div { height: min(8vh, 30px); }
   }
   /* Avisos a pantalla completa: vuelta, sector y frenada. */
-  .flash { position: fixed; inset: 0; display: grid; place-items: center; text-align: center; font-weight: 900; pointer-events: none; }
-  .flash.lap { background: #000; font-size: min(22vw, 26vh); line-height: 1; }
+  .flash { position: fixed; inset: 0; display: grid; place-items: center; align-content: center; padding: 16px; text-align: center; font-weight: 900; pointer-events: none; }
+  .flash.lap { background: #000; font-size: min(22vw, 26vh); line-height: 1; letter-spacing: -0.02em; }
   .flash.lap.best { background: var(--best); }
-  .flash.lap small { display: block; font-size: 0.28em; margin-top: 0.3em; }
+  .flash.lap small { display: block; font-size: 0.28em; margin-top: 0.3em; letter-spacing: 0; }
   .flash.brake { background: #fff; animation: brake 0.5s steps(2, end) 1; }
   @keyframes brake { 0% { background: #fff; } 50% { background: var(--bad); } 100% { background: #fff; } }
-  @media (prefers-reduced-motion: reduce) { .dash { transition: none; } .flash.brake { animation: none; } }
+  @media (prefers-reduced-motion: reduce) {
+    .dash, button, .switch input { transition: none; }
+    .flash.brake { animation: none; }
+  }
 </style>
 </head>
 <body>
   <!-- Inicio -->
   <main class="page" id="home">
-    <h1>Modo pista<br><span>Maspalomas</span></h1>
-    <p class="muted">Delta en directo frente a tu mejor vuelta, inclinación y frenada medidas con el móvil, el resumen de cada curva, tiempo por vuelta y sectores. Al parar en boxes, el análisis de la tanda.</p>
+    <header class="masthead">
+      <h1 class="brand"><span class="brand-kicker"><span class="kerb" aria-hidden="true"></span>Modo pista</span> <span class="brand-name">Maspalomas</span></h1>
+      <p class="lede">Delta en directo frente a tu mejor vuelta, inclinación y frenada medidas con el móvil, el resumen de cada curva, tiempo por vuelta y sectores. Al parar en boxes, el análisis de la tanda.</p>
+    </header>
     <div class="card status" id="status">
       <div><span class="dot" id="st-gps"></span><span id="st-gps-t">GPS: se activará al salir</span></div>
       <div><span class="dot" id="st-imu"></span><span id="st-imu-t">Pantalla y sensores: se activarán al salir</span></div>
       <div><span class="dot" id="st-best"></span><span id="st-best-t">Mejor vuelta guardada: ninguna</span></div>
     </div>
-    <button class="primary" id="go">Salir a pista</button>
-    <button id="sim">Probar con el simulador</button>
+    <div class="start">
+      <button class="primary" id="go">Salir a pista</button>
+      <button id="sim">Probar con el simulador</button>
+    </div>
     <section class="card" aria-labelledby="mac-h">
       <h2 id="mac-h">Tus tandas y el Mac</h2>
       <div class="status">
         <div><span class="dot" id="st-cola"></span><span id="st-cola-t">Tandas guardadas en el móvil: ninguna</span></div>
         <div><span class="dot" id="st-mac"></span><span id="st-mac-t">Mac sin conectar.</span></div>
       </div>
-      <div class="row">
+      <div class="actions">
         <button id="home-export" hidden>Exportar la última tanda (.zip)</button>
         <button id="garage-day" hidden>Tiempos del día</button>
         <button id="garage-sync" hidden>Subir ahora</button>
-        <button id="garage-forget" hidden>Desconectar el Mac</button>
+        <button class="danger" id="garage-forget" hidden>Desconectar el Mac</button>
       </div>
     </section>
     <section class="card" aria-labelledby="set-h">
       <h2 id="set-h">Ajustes</h2>
       <div class="pilot">
         <label for="piloto">Piloto</label><input id="piloto" type="text" maxlength="30" autocomplete="nickname" placeholder="Tu nombre">
-        <label for="objetivo">Objetivo</label><input id="objetivo" type="text" inputmode="decimal" autocomplete="off" spellcheck="false" placeholder="1:05,0">
+        <label for="objetivo">Objetivo</label><input id="objetivo" class="num" type="text" inputmode="decimal" autocomplete="off" spellcheck="false" placeholder="1:05,0">
       </div>
       <p class="muted">Cada piloto tiene su mejor vuelta y su objetivo por vuelta. Si compartís móvil, cambiad el nombre antes de salir.</p>
-      <label class="switch" for="cue"><span>Aviso de frenada (prueba)<br><span class="muted">Destello blanco antes de donde frenaste en tu mejor vuelta.</span></span><input type="checkbox" id="cue"></label>
-      <div id="cue-opts" hidden>
-        <label for="lead" class="muted">Avisar <b id="lead-v">20</b> m antes</label>
-        <input type="range" id="lead" min="0" max="80" step="5" value="20">
-        <p class="warnbox">El GPS del móvil llega con retraso y el aviso puede ir hasta ~50 m tarde. Úsalo como referencia, nunca como tu punto de frenada. Tu referencia sigue siendo la pista.</p>
+      <div class="group">
+        <label class="switch" for="cue"><span class="switch-text"><span class="switch-title">Aviso de frenada (prueba)</span><span class="muted">Destello blanco antes de donde frenaste en tu mejor vuelta.</span></span><input type="checkbox" id="cue" role="switch"></label>
+        <div id="cue-opts" hidden>
+          <label for="lead" class="range-label">Avisar <b id="lead-v">20</b> m antes</label>
+          <input type="range" id="lead" min="0" max="80" step="5" value="20">
+          <p class="warnbox">El GPS del móvil llega con retraso y el aviso puede ir hasta ~50 m tarde. Úsalo como referencia, nunca como tu punto de frenada. Tu referencia sigue siendo la pista.</p>
+        </div>
       </div>
-      <div class="meta-map">
-        <p class="muted">Línea de meta: toca la pista para ponerla donde la tenga el cronometraje del circuito o RaceChrono.</p>
+      <div class="group meta-map">
+        <h3 class="group-title">Línea de meta</h3>
+        <p class="muted">Toca la pista para ponerla donde la tenga el cronometraje del circuito o RaceChrono.</p>
         <svg id="meta-svg" role="img" aria-label="Mapa del circuito para elegir la línea de meta"></svg>
-        <div class="row"><button id="meta-reset">Meta por defecto</button><button id="best-reset">Borrar mejor vuelta guardada</button></div>
+        <div class="actions"><button id="meta-reset">Meta por defecto</button><button class="danger" id="best-reset">Borrar mejor vuelta guardada</button></div>
       </div>
     </section>
-    <section class="card">
-      <h2>Antes de salir</h2>
-      <ul class="muted">
+    <section class="card" aria-labelledby="tips-h">
+      <h2 id="tips-h">Antes de salir</h2>
+      <ul class="checklist">
         <li>Móvil en un soporte con amortiguador de vibraciones, bien a la vista sin bajar la cabeza.</li>
         <li>Brillo al máximo. La pantalla se mantiene encendida mientras esta página esté abierta.</li>
         <li>No leas en frenada ni en curva: el panel está hecho para verse con el rabillo del ojo (verde ganas, rojo pierdes). Lee en las rectas o en boxes.</li>
@@ -208,7 +338,11 @@
 
   <!-- En pista -->
   <section class="dash" id="dash" hidden aria-live="off">
-    <div class="dash-top"><span class="num" id="d-lap">Vuelta —</span><span class="gps"><span class="dot" id="d-gps"></span><span class="num" id="d-speed">0</span><small class="unit">km/h</small></span></div>
+    <div class="dash-top">
+      <span class="num" id="d-lap">Vuelta —</span>
+      <button class="stop" id="stop">Boxes</button>
+      <span class="gps"><span class="dot" id="d-gps"></span><span class="num" id="d-speed">0</span><small class="unit">km/h</small></span>
+    </div>
     <div class="delta num" id="d-delta">—<small id="d-delta-sub">esperando meta</small></div>
     <div class="dash-bottom">
       <div class="live">
@@ -227,30 +361,42 @@
       <div class="laptime"><b class="num" id="d-time">0:00,0</b><span class="num" id="d-info">Mejor —<br>Última —</span></div>
       <div class="sectors" id="d-sectors"><div>S1</div><div>S2</div><div>S3</div><div>S4</div></div>
     </div>
-    <button class="stop" id="stop">Boxes</button>
   </section>
 
   <!-- Boxes -->
   <main class="page" id="pits" hidden>
-    <h1>Boxes</h1>
-    <p class="muted" id="p-sub"></p>
-    <p class="muted" id="p-store"></p>
-    <section class="card"><h2>Vueltas</h2><table><thead><tr><th>Vuelta</th><th>Tiempo</th><th>Δ mejor</th><th>Incl. máx</th><th>Punta</th></tr></thead><tbody id="p-laps"></tbody></table><p class="muted" id="p-ideal"></p></section>
-    <section class="card"><h2>Para la próxima vuelta</h2><ol class="tips" id="p-tips"></ol></section>
-    <div class="row">
+    <header class="page-head">
+      <h1 class="title">Boxes</h1>
+      <p class="muted" id="p-sub"></p>
+      <p class="muted" id="p-store"></p>
+    </header>
+    <section class="card" aria-labelledby="laps-h">
+      <h2 id="laps-h">Vueltas</h2>
+      <div class="table-wrap">
+        <table class="laps"><thead><tr><th>Vuelta</th><th>Tiempo</th><th>Δ mejor</th><th>Incl. máx</th><th>Punta</th></tr></thead><tbody id="p-laps"></tbody></table>
+      </div>
+      <p class="muted num" id="p-ideal"></p>
+    </section>
+    <section class="card" aria-labelledby="next-h"><h2 id="next-h">Para la próxima vuelta</h2><ol class="tips" id="p-tips"></ol></section>
+    <div class="actions">
       <button class="primary" id="resume">Volver a pista</button>
       <button id="pits-day" hidden>Tiempos del día</button>
       <button id="export">Exportar tanda (.zip)</button>
-      <button id="finish">Terminar</button>
+      <button class="danger" id="finish">Terminar</button>
     </div>
     <p class="muted">Mientras no termines, la grabación sigue: al arrancar, la pantalla vuelve sola al panel. Con el garaje del Mac conectado, la tanda completa se analiza allí; el .zip sirve para «Telemetría Maspalomas».</p>
   </main>
 
   <!-- Tiempos del día de todos los pilotos que suben al garaje -->
   <main class="page" id="dia" hidden>
-    <h1>Tiempos del día</h1>
-    <p class="muted" id="dia-status"></p>
-    <div class="row"><button id="dia-back">Volver</button><button id="dia-refresh">Actualizar</button></div>
+    <div class="toolbar">
+      <button class="quiet back" id="dia-back"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg>Volver</button>
+      <button id="dia-refresh"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.34-5.66"/><path d="M20 4v5h-5"/></svg>Actualizar</button>
+    </div>
+    <header class="page-head">
+      <h1 class="title">Tiempos del día</h1>
+      <p class="muted" id="dia-status"></p>
+    </header>
     <section class="card cmp" id="dia-body" aria-live="polite"></section>
   </main>
 
