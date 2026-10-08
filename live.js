@@ -1214,7 +1214,9 @@
         "Este móvil no tiene giroscopio: no habrá inclinación en la moto.",
         "note-bad",
       );
-    else if (S.swing > 30 && S.maxDiff > 8)
+    // Girado a mano el móvil también cabecea, y eso separa algo las dos medidas (hasta 9° medido en un Pixel
+    // 10 Pro con giroscopio bueno). Un giroscopio malo o «virtual» se separa mucho más.
+    else if (S.swing > 30 && S.maxDiff > Math.max(15, 0.25 * S.swing))
       note(
         "sen-tilt-note",
         "El giroscopio se separa de la gravedad (hasta " +
@@ -1257,8 +1259,9 @@
       "sen-lag",
       Number.isFinite(S.lag) ? fmt(S.lag / 1000, 1) + " s" : "—",
     );
+    // Bajo techo llega una posición cada 5–6 s: perdida solo si pasan más de 10 s sin ninguna.
     const fresh =
-      S.fixes.length && Date.now() - S.fixes[S.fixes.length - 1] < 3000;
+      S.fixes.length && Date.now() - S.fixes[S.fixes.length - 1] < 10000;
     if (S.gpsErr) note("sen-gps-note", S.gpsErr, "note-bad");
     else if (!S.fixes.length)
       note("sen-gps-note", "Buscando señal… (mejor al aire libre)");
