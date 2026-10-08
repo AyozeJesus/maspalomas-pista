@@ -10,8 +10,12 @@ abierto, se sube sola a tu Mac.
 
 1. Abre la página en Chrome del móvil y, en el menú, «Añadir a pantalla de inicio». Así se abre a pantalla completa
    y funciona sin cobertura.
-2. Monta el móvil en el soporte antes de salir y no lo muevas: la inclinación y la frenada se calibran solas en la
-   vuelta de salida (si lo coges en boxes, se recalibra al volver a rodar).
+2. Monta el móvil en el soporte antes de salir y no lo muevas: de pie o plano sobre la moto, con la pantalla en
+   vertical u horizontal, pero con la parte de arriba de lo que se ve hacia delante (la pantalla mirándote). La
+   inclinación sale desde la primera recta con el eje que dicen la postura y la orientación de la pantalla; si la
+   pantalla no dice la verdad (giro automático desactivado), se corrige sola en las primeras curvas, y la frenada y
+   la inclinación se afinan con el GPS en la vuelta de salida (si lo coges en boxes, se recalibra al volver a rodar).
+   La orientación de la pantalla se fija al echar a rodar, no al pulsar «Salir».
 3. «Salir a pista» y acepta el permiso de ubicación. La pantalla se queda encendida mientras la página esté abierta.
 4. Al parar en boxes la pantalla cambia sola al análisis.
 
@@ -27,6 +31,12 @@ dibujar en 3D, lo dice y el panel sigue igual.
 - **Inclinación**: giroscopio. En curva la moto gira alrededor de la vertical del mundo y, vista desde la moto
   tumbada, ese giro se reparte entre su vertical y su eje lateral: de ahí sale el ángulo, sin depender de la
   gravedad (que en un giro equilibrado apunta al suelo de la moto). En curvas rápidas se ayuda de la velocidad.
+  El eje adelante sale de cómo va montado el móvil (`mountAxes` en `telemetry.js`): de pie, la espalda del móvil;
+  plano, la parte de arriba de la pantalla (que en ejes del móvil depende de si se ve en vertical u horizontal);
+  inclinado, las dos cosas. En las curvas se comprueba (el giro de la curva cae siempre hacia el lado derecho de
+  la moto tumbada, nunca sobre su eje adelante) y, si el eje está girado 90° o 180°, se corrige.
+- **Prueba de sensores**: detecta la postura (de pie / plano, pantalla vertical / horizontal) y mide la tumbada
+  como en la moto, girando sobre ese eje adelante, por gravedad y por giroscopio.
 - **Resumen de cada curva** (se ve en la recta siguiente): tiempo ganado o perdido en esa curva, inclinación
   máxima, frenada máxima en g, velocidad mínima y punto de frenada, comparados con tu mejor vuelta.
 - **Frenadas**: de cada una, el pico y la media en g, la «mordida» (lo que tardas en llegar al 80 % del pico),

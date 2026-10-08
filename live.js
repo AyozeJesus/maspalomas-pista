@@ -260,7 +260,13 @@
       // Orden de los ejes del giro: el simulador ya los da en x, y, z; el navegador, según cuál sea.
       axes: new T.GyroAxes(sim ? 0 : axesPrior()),
       leanDeg: NaN,
+      // Ejes de la inclinación: 0 sin ejes; el número de calibración del GPS; o «montaje»/«curvas» mientras
+      // tanto (eje adelante por la postura del móvil y la orientación de la pantalla, comprobado en las curvas).
       leanAxes: 0,
+      axesVer: 0,
+      screenAngle: screenAngle(),
+      mount: null,
+      mountChk: null,
       // Lado de la inclinación comprobado con el rumbo del GPS (algunos móviles, como el iPhone, dan los
       // sensores con el signo al revés): +1 normal, −1 al revés.
       leanSign: 1,
@@ -313,6 +319,7 @@
     E.lean = new T.LeanEstimator();
     E.lean.bias = bias;
     E.leanAxes = 0;
+    E.mountChk = null;
     E.leanDeg = NaN;
     E.aEma = 0;
     E.moved = false;
@@ -731,6 +738,19 @@
     if (E.hasGyro && cal.f && cal.upSN >= 100 && E.leanAxes !== cal.fVer) {
       E.lean.setAxes(cal.f, cal.upS);
       E.leanAxes = cal.fVer;
+      E.axesVer++;
+      E.mountChk = null;
+    } else if (E.hasGyro && !cal.f && !E.leanAxes && cal.upSN >= 100) {
+      // Mientras el GPS no calibra (hace falta acelerar y frenar): desde la primera recta, el eje adelante que
+      // dicen la postura del móvil y la orientación de la pantalla (plano en horizontal, de pie…).
+      const m = T.mountAxes(cal.upS, E.screenAngle);
+      if (m) {
+        E.lean.setAxes(m.f, m.u);
+        E.leanAxes = "montaje";
+        E.axesVer++;
+        E.mount = { postura: m.posture, pantalla: m.screen };
+        E.mountChk = { uu: 0, fu: 0, lu: 0 };
+      }
     }
     const p = E.track && E.fix && E.fix.on ? predicted(t) : null;
     const vNow = p ? p.v : E.fix ? E.fix.v : NaN;
@@ -750,15 +770,67 @@
     }
   }
 
+  // Comprueba con las curvas el eje adelante del montaje. En curva la moto gira sobre la vertical del mundo, que
+  // vista desde la moto tumbada cae en su vertical y en su eje lateral, y siempre hacia el mismo lado: a
+  // derechas (giro −Ω, tumbada φ > 0) ω·l = −Ω·sen φ; a izquierdas (+Ω, φ < 0) ω·l = Ω·sen φ: negativo en las
+  // dos. Sobre el eje adelante solo cae el balanceo, que se anula (se tumba y se levanta). Si el giro de las
+  // curvas cae sobre el «adelante» supuesto (giro automático de la pantalla desactivado, móvil al revés…), el
+  // eje lateral de verdad es el que lo explica: se corrige con él.
+  // w: giro sin sesgo (rad/s, ejes del móvil); v: velocidad (m/s).
+  function mountCheck(w, v, dt) {
+    const k = E.mountChk;
+    const L = E.lean;
+    if (!L.f || !(v > 8)) return;
+    const wu = Math.abs(dot3(w, L.u));
+    if (wu < 0.15) return;
+    k.uu += wu * wu * dt;
+    k.fu += dot3(w, L.f) * wu * dt;
+    k.lu += dot3(w, L.l) * wu * dt;
+    // Unas cuantas curvas (una de 3 s a 0,4 rad/s da ~0,5).
+    if (k.uu < 1) return;
+    E.mountChk = { uu: 0, fu: 0, lu: 0 };
+    // Puntuación de cada eje lateral posible (−Σ ω·l·|ω·u| / Σ ω·u²): con el bueno sale tan φ de media (0,5–1
+    // en la tanda de ejemplo); con los otros, solo el balanceo, que en un par de curvas aún no se anula (±0,7).
+    // Por eso no se busca un ángulo fino: el montaje solo puede equivocarse en saltos de 90° (la orientación
+    // de la pantalla), y se cambia solo si el eje actual no lo explica y otro claramente sí.
+    const sl = -k.lu / k.uu;
+    if (sl > 0.3) return;
+    const cands = [
+      [-sl, L.l.map((x) => -x)],
+      [-k.fu / k.uu, L.f],
+      [k.fu / k.uu, L.f.map((x) => -x)],
+    ];
+    cands.sort((a, b) => b[0] - a[0]);
+    if (cands[0][0] < 0.45) return;
+    const lt = cands[0][1];
+    const u = L.u;
+    // adelante = lateral × vertical (con l = u × f).
+    L.setAxes(
+      [
+        lt[1] * u[2] - lt[2] * u[1],
+        lt[2] * u[0] - lt[0] * u[2],
+        lt[0] * u[1] - lt[1] * u[0],
+      ],
+      u,
+    );
+    E.leanAxes = "curvas";
+    E.axesVer++;
+    // Los ejes ya están bien por la física de las curvas: lo que hubiera votado el GPS sobre el signo
+    // (pensando en estos ejes girados) ya no vale.
+    E.leanSign = 1;
+    E.leanVote = 0;
+  }
+
   // ---------- recorrido: trazada, curvas de cualquier carretera, cabeceo y caballitos ----------
   function rideStep(t, dt, gyro, lin, grav, p, vNow) {
     const cal = E.calib;
-    if (E.leanAxes && E.pitchAxes !== cal.fVer) {
-      E.pitch.setAxes(cal.f, cal.upS);
-      E.pitchAxes = cal.fVer;
+    if (E.leanAxes && E.pitchAxes !== E.axesVer) {
+      E.pitch.setAxes(E.lean.f, E.lean.u);
+      E.pitchAxes = E.axesVer;
     }
     const b = E.lean.bias;
     const w = [gyro[0] - b[0], gyro[1] - b[1], gyro[2] - b[2]];
+    if (E.mountChk) mountCheck(w, vNow, dt);
     const sf = [lin[0] + grav[0], lin[1] + grav[1], lin[2] + grav[2]];
     const pr = E.hasGyro ? E.pitch.step(dt, w, sf, E.aGps, E.leanDeg) : null;
     E.pitchDeg = pr ? pr.pitch : NaN;
@@ -1253,6 +1325,10 @@
       mejor: eng.best ? eng.best.time : null,
       retrasoGps: eng.lagR2 !== null ? eng.lag : null,
       calibrado: !!eng.calib.f,
+      // Postura del móvil al empezar (de pie / plano, pantalla vertical / horizontal) y orientación de la pantalla.
+      montaje: eng.mount
+        ? Object.assign({ angulo: eng.screenAngle }, eng.mount)
+        : null,
       vueltas: eng.laps.map((l) => ({
         num: l.num,
         time: Math.round(l.time * 1000) / 1000,
@@ -1304,9 +1380,42 @@
   }
 
   // ---------- prueba de sensores (en cualquier sitio, con el móvil de verdad) ----------
-  // Inclinación del móvil en el plano de la pantalla por gravedad (atan2(gx, gy), + a la izquierda vista de
-  // frente) y la misma integrando el giroscopio alrededor de z: si no van juntas, el giroscopio no sirve.
+  // La inclinación que mediría en la moto: el giro alrededor del eje adelante de la postura del móvil (de pie,
+  // inclinado o plano; con la pantalla en vertical u horizontal: T.mountAxes), por la gravedad y por el
+  // giroscopio. Si no van juntas, el giroscopio no sirve. La postura de referencia se toma al empezar, con
+  // «Poner a cero» y cuando el móvil se deja quieto en otra postura: cabeceado (de pie ↔ plano) o, plano, con
+  // la pantalla girada. Tumbarlo (lo que se prueba) no cambia la referencia aunque se quede quieto.
   let sensor = null;
+  function screenAngle() {
+    const o = screen.orientation;
+    if (o && typeof o.angle === "number") return o.angle;
+    return typeof window.orientation === "number" ? window.orientation : 0;
+  }
+  // «Móvil plano, pantalla en horizontal: hacia delante, la parte de arriba de la pantalla».
+  function mountText(m) {
+    return (
+      "Móvil " +
+      m.posture +
+      ", pantalla en " +
+      m.screen +
+      ": hacia delante, " +
+      (m.posture === "de pie"
+        ? "la espalda del móvil."
+        : m.posture === "plano"
+          ? "la parte de arriba de la pantalla."
+          : "la parte de arriba de la pantalla (y la espalda del móvil).")
+    );
+  }
+  function sensorRef(S, grav) {
+    const angle = screenAngle();
+    const m = T.mountAxes(grav, angle);
+    if (!m) return;
+    S.ref = Object.assign(m, { angle });
+    S.leanW = 0;
+    S.swing = 0;
+    S.diff = 0;
+    S.maxDiff = 0;
+  }
   function sensorMotion(ev) {
     markMotion(ev);
     const S = sensor;
@@ -1322,36 +1431,65 @@
       a && a.x !== null ? [g.x - a.x, g.y - a.y, g.z - a.z] : [g.x, g.y, g.z];
     S.grav = grav;
     S.lin = a && a.x !== null ? [a.x, a.y, a.z] : null;
-    const tiltG = (Math.atan2(grav[0], grav[1]) * 180) / Math.PI;
-    const upright = Math.hypot(grav[0], grav[1]) > 0.5 * G;
-    S.tiltG = upright ? tiltG : NaN;
-    S.pitch =
-      (Math.atan2(grav[2], Math.hypot(grav[0], grav[1])) * 180) / Math.PI;
+    const dt = S.last === null ? 0 : Math.min(0.1, (now - S.last) / 1000);
+    S.last = now;
+    // Gravedad media (0,25 s): la referencia sale de ella, no de una lectura suelta con su ruido.
+    if (!S.gravS) {
+      S.gravS = grav.slice();
+      S.gravN = 0;
+    }
+    const kg = 1 - Math.exp(-dt / 0.25);
+    for (let i = 0; i < 3; i++) S.gravS[i] += (grav[i] - S.gravS[i]) * kg;
+    S.gravN++;
+    if (!S.ref && S.gravN >= 30) sensorRef(S, S.gravS);
+    if (!S.ref) return;
+    let leanG = T.mountLean(grav, S.ref);
+    // Morro arriba (+) / abajo respecto a la referencia, como cabecearía la moto.
+    let pitch =
+      (Math.atan2(dot3(grav, S.ref.f), dot3(grav, S.ref.u)) * 180) / Math.PI;
+    // Quieto 1,5 s en otra postura: esa es la nueva referencia.
+    const spin =
+      r && r.alpha !== null ? Math.hypot(r.alpha, r.beta, r.gamma) : 0;
+    if (spin > 8) S.stillSince = null;
+    else if (S.stillSince === null) S.stillSince = now;
+    if (S.stillSince !== null && now - S.stillSince > 1500) {
+      const cur = T.mountAxes(grav, screenAngle());
+      const turned =
+        cur &&
+        cur.tilt < 20 &&
+        screenAngle() !== S.ref.angle &&
+        Math.abs(leanG) < 15;
+      if (cur && (Math.abs(pitch) > 25 || turned)) {
+        sensorRef(S, S.gravS);
+        leanG = T.mountLean(grav, S.ref);
+        pitch =
+          (Math.atan2(dot3(grav, S.ref.f), dot3(grav, S.ref.u)) * 180) /
+          Math.PI;
+      }
+    }
+    S.leanG = leanG;
+    S.pitch = pitch;
     if (r && r.alpha !== null) {
       S.hasGyro = true;
-      S.rot = Math.hypot(r.alpha, r.beta, r.gamma);
+      S.rot = spin;
       const DEG = Math.PI / 180;
       S.axes.add(now / 1000, grav, [
         r.alpha * DEG,
         r.beta * DEG,
         r.gamma * DEG,
       ]);
-      // Giro alrededor del eje que sale de la pantalla (z), con el orden de ejes ya comprobado.
-      const wz = S.axes.map([r.alpha, r.beta, r.gamma])[2];
-      const dt = S.last === null ? 0 : Math.min(0.1, (now - S.last) / 1000);
-      if (S.tiltW === null && upright) S.tiltW = tiltG;
-      if (S.tiltW !== null) S.tiltW += wz * dt;
-      if (upright && S.tiltW !== null) {
-        let d = S.tiltW - tiltG;
+      // Giro alrededor del eje adelante (°/s), con el orden de ejes ya comprobado: tumbar a derechas es positivo.
+      S.leanW += dot3(S.axes.map([r.alpha, r.beta, r.gamma]), S.ref.f) * dt;
+      if (Number.isFinite(leanG)) {
+        let d = S.leanW - leanG;
         while (d > 180) d -= 360;
         while (d < -180) d += 360;
         S.diff = d;
         // La mayor separación durante el giro: al volver al centro un giroscopio malo también vuelve a cero.
         S.maxDiff = Math.max(S.maxDiff || 0, Math.abs(d));
-        S.swing = Math.max(S.swing, Math.abs(tiltG - S.tilt0));
+        S.swing = Math.max(S.swing, Math.abs(leanG));
       }
     }
-    S.last = now;
   }
   function sensorFix(pos) {
     const S = sensor;
@@ -1376,13 +1514,12 @@
     S.prevPos = { lat: c.latitude, lon: c.longitude, t: pos.timestamp };
     S.gpsErr = "";
   }
+  // La postura de ahora es la de la moto derecha (la del primer dato, si aún no ha llegado ninguno).
   function sensorZero() {
     if (!sensor) return;
-    sensor.tiltW = Number.isFinite(sensor.tiltG) ? sensor.tiltG : null;
-    sensor.tilt0 = Number.isFinite(sensor.tiltG) ? sensor.tiltG : 0;
-    sensor.swing = 0;
-    sensor.diff = 0;
-    sensor.maxDiff = 0;
+    sensor.ref = null;
+    sensor.stillSince = null;
+    if (sensor.gravS) sensorRef(sensor, sensor.gravS);
   }
   function note(id, text, cls) {
     setText(id, text);
@@ -1391,27 +1528,35 @@
   function renderSensors() {
     const S = sensor;
     if (!S) return;
+    // Como en la moto: + a derechas.
     const side = (deg) =>
       Math.abs(deg) < 1
         ? "0°"
-        : fmt(Math.abs(deg), 0) + "° " + (deg > 0 ? "izq." : "der.");
-    setText("sen-tilt-g", Number.isFinite(S.tiltG) ? side(S.tiltG) : "—");
+        : fmt(Math.abs(deg), 0) + "° " + (deg > 0 ? "der." : "izq.");
+    const ref = S.ref;
+    setText("sen-tilt-g", Number.isFinite(S.leanG) ? side(S.leanG) : "—");
     setText(
       "sen-tilt-w",
-      S.hasGyro && S.tiltW !== null ? side(((S.tiltW + 540) % 360) - 180) : "—",
+      S.hasGyro && ref ? side(((S.leanW + 540) % 360) - 180) : "—",
     );
     setText(
       "sen-pitch",
-      Number.isFinite(S.pitch) ? fmt(S.pitch, 0) + "°" : "—",
+      ref && Number.isFinite(S.pitch)
+        ? fmt(Math.abs(S.pitch), 0) +
+            "°" +
+            (Math.abs(S.pitch) < 1 ? "" : S.pitch > 0 ? " arriba" : " abajo")
+        : "—",
     );
     $("sen-level").style.transform =
-      "rotate(" + (Number.isFinite(S.tiltG) ? S.tiltG : 0) + "deg)";
+      "rotate(" + (Number.isFinite(S.leanG) ? S.leanG : 0) + "deg)";
+    setText("sen-mount", ref ? mountText(ref) : "");
     if (S.motionDenied) note("sen-tilt-note", sensorBlockText(), "note-bad");
-    else if (!S.grav) note("sen-tilt-note", "Esperando a los sensores…");
-    else if (!Number.isFinite(S.tiltG))
+    else if (!S.grav || !ref)
+      note("sen-tilt-note", "Esperando a los sensores…");
+    else if (!Number.isFinite(S.leanG))
       note(
         "sen-tilt-note",
-        "El móvil está tumbado: ponlo de pie (vertical) para medir el giro.",
+        "Así no se puede medir: el móvil apunta hacia el cielo o hacia el suelo. Colócalo como irá en la moto y pulsa «Poner a cero».",
       );
     else if (!S.hasGyro)
       note(
@@ -1443,7 +1588,9 @@
     else
       note(
         "sen-tilt-note",
-        "Gíralo como un volante, a un lado y a otro, unos 45°.",
+        ref.posture === "plano"
+          ? "Inclínalo a un lado y a otro como tumbaría la moto (girando sobre el eje que apunta hacia delante), unos 45°."
+          : "Gíralo como un volante, a un lado y a otro, unos 45°.",
       );
     // GPS
     const hz =
@@ -1533,9 +1680,10 @@
       fixes: [],
       grav: null,
       lin: null,
-      tiltG: NaN,
-      tiltW: null,
-      tilt0: 0,
+      ref: null,
+      leanG: NaN,
+      leanW: 0,
+      stillSince: null,
       swing: 0,
       diff: 0,
       pitch: NaN,
@@ -2566,6 +2714,23 @@
     }
   }
 
+  // Al echar a rodar, la orientación de la pantalla se queda fija: al tumbar en curva, el giro automático de
+  // Android podría cambiar el panel de vertical a horizontal a mitad de curva. No al pulsar «Salir»: el móvil
+  // aún puede ir en la mano y luego colocarse plano y en horizontal. Esa orientación es también la que dice
+  // hacia dónde está adelante con el móvil plano (T.mountAxes).
+  async function lockOrientation() {
+    E.orientTried = true;
+    E.screenAngle = screenAngle();
+    try {
+      if (screen.orientation && screen.orientation.lock) {
+        await screen.orientation.lock(screen.orientation.type);
+        if (E) E.orientLock = screen.orientation.type;
+      }
+    } catch (e) {
+      /* sin pantalla completa o navegador sin bloqueo: queda el giro automático */
+    }
+  }
+
   // free: ruta libre por cualquier carretera (sin circuito).
   async function startReal(free) {
     const motionOk = await askMotion();
@@ -2589,17 +2754,8 @@
     } catch (e) {
       /* pantalla completa opcional */
     }
-    // La orientación con la que se sale se queda fija: al tumbar en curva, el giro automático de Android
-    // podría cambiar el panel de vertical a horizontal a mitad de curva. Los sensores no dependen de esto.
     E.orientLock = null;
-    try {
-      if (screen.orientation && screen.orientation.lock) {
-        await screen.orientation.lock(screen.orientation.type);
-        E.orientLock = screen.orientation.type;
-      }
-    } catch (e) {
-      /* sin pantalla completa o navegador sin bloqueo: queda el giro automático */
-    }
+    E.orientTried = false;
     await keepAwake();
     window.addEventListener("devicemotion", onMotionEvent);
     watchId = navigator.geolocation.watchPosition(
@@ -2613,6 +2769,9 @@
           c.speed,
           c.accuracy,
         );
+        const v =
+          c.speed !== null && c.speed >= 0 ? c.speed : E.fix ? E.fix.v : 0;
+        if (E && !E.orientTried && v > 4) lockOrientation();
       },
       (err) => {
         const msg =
