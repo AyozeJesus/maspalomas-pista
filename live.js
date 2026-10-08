@@ -69,6 +69,7 @@
       garaje: null,
       piloto: "",
       objetivo: 65.0,
+      mapa: true,
     },
     load("pista-ajustes", {}),
   );
@@ -190,9 +191,37 @@
     return ios ? 1 : 0;
   }
 
-  function newEngine(sim) {
+  // free: ruta libre (cualquier carretera, sin circuito ni vueltas).
+  function newEngine(sim, free) {
+    const route = new window.MaspaRecorrido.Recorrido();
+    // Al cerrar una curva o un caballito, el panel enseña su resumen unos segundos.
+    route.onCurve = (c) => {
+      if (E && E.route === route) {
+        E.curveRecap = c;
+        E.curveT = now();
+      }
+    };
+    route.onWheelie = (w) => {
+      if (E && E.route === route) {
+        E.wheelieRecap = w;
+        E.wheelieT = now();
+      }
+    };
     return {
       sim,
+      free: !!free,
+      // Trazada, curvas, caballitos y máximos (en ruta libre y en el circuito).
+      route,
+      pitch: new T.PitchEstimator(),
+      pitchAxes: 0,
+      pitchDeg: NaN,
+      aW: NaN,
+      aGps: NaN,
+      lapTrail: 0,
+      curveRecap: null,
+      curveT: -Infinity,
+      wheelieRecap: null,
+      wheelieT: -Infinity,
       t0: null,
       loc: new Series(["t", "lat", "lon", "speed", "hacc"]),
       acc: new Series(["t", "x", "y", "z"]),
@@ -328,6 +357,15 @@
     if (Math.abs(E.votes) >= 5) setupTrack(E.votes > 0 ? "osm" : "rev");
   }
 
+  // Fijo bueno (ya sin rebotes): aceleración según el GPS (referencia del cabeceo) y trazada del recorrido.
+  function acceptFix(prev, fix) {
+    if (prev && fix.t > prev.t && fix.t - prev.t < 3) {
+      const inst = (fix.v - prev.v) / (fix.t - prev.t);
+      E.aGps = E.aGps === E.aGps ? E.aGps + (inst - E.aGps) * 0.5 : inst;
+    }
+    E.route.onFix(fix.t, fix.x, fix.y, fix.v);
+  }
+
   function onFix(t, lat, lon, speed, hacc) {
     E.loc.push({
       t,
@@ -345,14 +383,18 @@
       v = Math.hypot(x - E.fix.x, y - E.fix.y) / Math.max(0.2, t - E.fix.t);
     if (v === null) v = 0;
     if (!E.track) {
-      detectDir(x, y, v);
+      // En ruta libre no se busca el circuito: cualquier carretera vale.
+      if (!E.free) detectDir(x, y, v);
       if (!E.track) {
         const fix = { t, x, y, v, s: null, i: null, on: false };
+        acceptFix(E.fix, fix);
         calibPair(E.fix, fix);
         E.fix = fix;
         // Lejos del circuito (prueba en coche o por la calle): el panel lo dice en vez de «buscando la pista».
-        E.far = T.nearestOn(GEO.main, x, y, 0, GEO.main.length - 1).dist > 300;
-        pitsCheck(t, v, false);
+        E.far =
+          E.free ||
+          T.nearestOn(GEO.main, x, y, 0, GEO.main.length - 1).dist > 300;
+        if (!E.free) pitsCheck(t, v, false);
         return;
       }
     }
@@ -385,6 +427,7 @@
       }
     }
     const fix = { t, x, y, v, s, i: m.i, on };
+    acceptFix(prev, fix);
     // Lado de la inclinación: en una curva a derechas (en el plano, con y hacia el sur, el rumbo crece) la moto
     // va tumbada a derechas (+). Si los votos dicen lo contrario, el móvil da los sensores con el signo al revés.
     if (prev && prev.on && on && t - prev.t < 2.5) {
@@ -476,6 +519,7 @@
     E.lapSpeeds = [];
     E.lapOk = true;
     E.lapCorners = [];
+    E.lapTrail = E.route.trail.length;
     E.cueDone.clear();
     E.prevCueS = null;
   }
@@ -691,6 +735,7 @@
     const vNow = p ? p.v : E.fix ? E.fix.v : NaN;
     E.leanDeg = E.hasGyro ? E.leanSign * E.lean.step(dt, gyro, vNow) : NaN;
     cornerTrack(t, p);
+    rideStep(t, dt, gyro, lin, grav, p, vNow);
     if (t - E.canalT >= 0.1) {
       E.canalT = t;
       E.canal.push({
@@ -702,6 +747,64 @@
         lap: E.lapNum,
       });
     }
+  }
+
+  // ---------- recorrido: trazada, curvas de cualquier carretera, cabeceo y caballitos ----------
+  function rideStep(t, dt, gyro, lin, grav, p, vNow) {
+    const cal = E.calib;
+    if (E.leanAxes && E.pitchAxes !== cal.fVer) {
+      E.pitch.setAxes(cal.f, cal.upS);
+      E.pitchAxes = cal.fVer;
+    }
+    const b = E.lean.bias;
+    const w = [gyro[0] - b[0], gyro[1] - b[1], gyro[2] - b[2]];
+    const sf = [lin[0] + grav[0], lin[1] + grav[1], lin[2] + grav[2]];
+    const pr = E.hasGyro ? E.pitch.step(dt, w, sf, E.aGps, E.leanDeg) : null;
+    E.pitchDeg = pr ? pr.pitch : NaN;
+    E.aW = pr ? pr.a / G : NaN;
+    // Velocidad ahora: en el circuito, la del encaje; fuera, la del GPS adelantada con el acelerómetro.
+    let v = vNow;
+    if (!p && E.fix) {
+      const lagDt = Math.max(0, Math.min(2.5, t - (E.fix.t - E.lag)));
+      v = Math.max(0, E.fix.v + (cal.f ? E.aEma : 0) * lagDt);
+    }
+    // Giro alrededor de la vertical (para las curvas): sin la parte de balanceo si ya se conoce el eje.
+    let yaw = Math.hypot(w[0], w[1], w[2]);
+    if (cal.f) {
+      const wf = dot3(w, cal.f);
+      yaw = Math.hypot(
+        w[0] - wf * cal.f[0],
+        w[1] - wf * cal.f[1],
+        w[2] - wf * cal.f[2],
+      );
+    }
+    // Giro con signo alrededor de la vertical del mundo, para que la trazada siga la curva entre fijos del
+    // GPS: ω_z = ω·u·cos φ + ω·l·sen φ (φ, la inclinación en los ejes del estimador). En el plano (y hacia el
+    // sur) el rumbo crece al girar a derechas: rumbo' = −ω_z. El recorrido comprueba el signo con el GPS.
+    let yawRate = NaN;
+    if (E.leanAxes && E.lean.u && isFinite(E.leanDeg)) {
+      const phi = (E.leanDeg * E.leanSign * Math.PI) / 180;
+      yawRate = -(
+        dot3(w, E.lean.u) * Math.cos(phi) +
+        dot3(w, E.lean.l) * Math.sin(phi)
+      );
+    } else if (E.hasGyro) {
+      // Antes de calibrar: giro alrededor de la gravedad que da el móvil (tumbado mide algo menos; el GPS
+      // lo va corrigiendo), mejor que seguir solo al GPS, que va a saltos.
+      const gn = Math.hypot(grav[0], grav[1], grav[2]);
+      if (gn > 5) yawRate = -dot3(w, grav) / gn;
+    }
+    E.rideV = v;
+    E.route.step(t, {
+      a: cal.f ? E.aEma / G : E.aGps === E.aGps ? E.aGps / G : NaN,
+      aW: E.aW,
+      lean: E.leanDeg,
+      v,
+      yaw: E.hasGyro ? yaw : 0,
+      yawRate,
+      lag: E.lag,
+      pitch: E.pitchDeg,
+    });
   }
 
   // ---------- curva a curva ----------
@@ -1053,6 +1156,9 @@
       estado,
       sim: !!eng.sim,
       app: APP_VERSION,
+      // «ruta»: ruta libre por cualquier carretera (sin vueltas); «pista»: el circuito.
+      tipo: eng.free ? "ruta" : "pista",
+      recorrido: eng.route.summary(),
       piloto: settings.piloto || null,
       objetivo: target(),
       sentido: eng.dir,
@@ -1098,7 +1204,15 @@
 
   // ---------- pantalla ----------
   function show(which) {
-    for (const id of ["home", "dash", "pits", "dia", "sensores"])
+    for (const id of [
+      "home",
+      "dash",
+      "pits",
+      "dia",
+      "sensores",
+      "ruta",
+      "ruta-fin",
+    ])
       $(id).hidden = id !== which;
   }
 
@@ -1622,6 +1736,8 @@
     for (let k = 0; k < 4; k++)
       boxes[k].className = E.sectorState[k] ? "s-" + E.sectorState[k] : "";
     renderLive(t);
+    renderMiniMap(t);
+    renderWheelie("d-wh", t);
   }
 
   function setText(id, text) {
@@ -1719,9 +1835,339 @@
     setCls("r-bp", "num " + bpCls);
   }
 
+  // ---------- mapas: circuito en el panel y ruta libre ----------
+  const mapView = {
+    follow: true,
+    span: 600,
+    colorBy: "fase",
+    drawnAt: 0,
+    miniAt: 0,
+    legendBy: null,
+  };
+  let summaryColor = "fase";
+
+  function fmtClock(sec) {
+    const s = Math.max(0, Math.floor(sec));
+    const h = Math.floor(s / 3600);
+    const m = Math.floor((s % 3600) / 60);
+    const r = s % 60;
+    const mm = h ? String(m).padStart(2, "0") : String(m);
+    return (h ? h + ":" : "") + mm + ":" + String(r).padStart(2, "0");
+  }
+  function curveMarks(curves) {
+    return curves
+      .slice(-60)
+      .filter((c) => c.apex && c.leanMax)
+      .map((c) => ({
+        x: c.apex.x,
+        y: c.apex.y,
+        text: fmt(c.leanMax, 0) + "°",
+      }));
+  }
+  function wheelieText(w) {
+    return (
+      "Caballito · " +
+      fmt(w.dur, 1) +
+      " s · " +
+      w.dist +
+      " m · " +
+      fmt(w.max, 0) +
+      "° · ≈" +
+      fmt(w.lost, 2) +
+      " s perdidos"
+    );
+  }
+  // Aviso de caballito: 8 s después de bajar la rueda.
+  function renderWheelie(id, t) {
+    const w = E.wheelieRecap;
+    const on = !!w && t - E.wheelieT < 8;
+    if ($(id).hidden === on) $(id).hidden = !on;
+    if (on) setText(id, wheelieText(w));
+  }
+
+  // Punto del eje del circuito a una distancia s de meta, con su rumbo.
+  function trackPoint(tr, s) {
+    const L = tr.L;
+    const ss = ((s % L) + L) % L;
+    let lo = 0;
+    let hi = tr.n;
+    while (hi - lo > 1) {
+      const mid = (lo + hi) >> 1;
+      if (tr.cs[mid] <= ss) lo = mid;
+      else hi = mid;
+    }
+    const a = tr.C[lo];
+    const b = tr.C[(lo + 1) % tr.n];
+    const f = (ss - tr.cs[lo]) / (tr.cs[lo + 1] - tr.cs[lo] || 1);
+    return {
+      x: a[0] + (b[0] - a[0]) * f,
+      y: a[1] + (b[1] - a[1]) * f,
+      heading: Math.atan2(b[1] - a[1], b[0] - a[0]),
+    };
+  }
+  function sectorPaths(tr, bounds) {
+    return bounds.map((b0, k) => {
+      const b1 = bounds[(k + 1) % bounds.length];
+      const len = (((b1 - b0) % tr.L) + tr.L) % tr.L;
+      const pts = [];
+      for (let d = 0; d <= len; d += 8) {
+        const p = trackPoint(tr, b0 + d);
+        pts.push([p.x, p.y]);
+      }
+      return pts;
+    });
+  }
+
+  // Circuito en el panel: tu trazada de esta vuelta, sectores, frenadas de la mejor vuelta y dónde vas.
+  function renderMiniMap(t) {
+    const cv = $("d-map");
+    const want = settings.mapa !== false && !!E.track;
+    if (cv.hidden === want) cv.hidden = !want;
+    if (!want) return;
+    const nowMs = performance.now();
+    if (nowMs - mapView.miniAt < 200) return;
+    mapView.miniAt = nowMs;
+    const tr = E.track;
+    if (!E.mapSectors || E.mapSectorsFor !== tr) {
+      E.mapSectors = sectorPaths(tr, E.bounds);
+      E.mapSectorsFor = tr;
+    }
+    const p = E.fix && E.fix.on ? predicted(t) : null;
+    const brakes =
+      E.best && E.best.brakeS
+        ? E.best.brakeS
+            .filter((s) => s !== null)
+            .map((s) => {
+              const q = trackPoint(tr, s);
+              return [q.x, q.y];
+            })
+        : [];
+    window.MaspaMapa.draw(cv, {
+      outline: tr.C,
+      width: 12,
+      sectors: E.mapSectors.map((pts, k) => ({ pts, state: E.sectorState[k] })),
+      brakes,
+      trail: E.route.trail.slice(E.lapTrail),
+      pos: p ? trackPoint(tr, p.s) : E.route.position(t, E.rideV, E.lag),
+      follow: false,
+      colorBy: "fase",
+    });
+  }
+
+  // Ruta libre: mapa que sigue a la moto, lo que mide el móvil, la última curva y los totales.
+  function renderRoute() {
+    if (!E || $("ruta").hidden) return;
+    const t = now();
+    const fresh = E.lastFixT !== null && t - E.lastFixT < 2.5 && !E.gpsBad;
+    setCls(
+      "ru-gps",
+      "dot " + (fresh ? "ok" : E.lastFixT === null ? "wait" : "bad"),
+    );
+    const v = E.rideV === E.rideV ? E.rideV : E.fix ? E.fix.v : 0;
+    setText("ru-speed", fmt(v * 3.6, 0));
+    const moving = v > 3;
+    const lean = E.leanDeg;
+    if (E.motionDenied) {
+      setText("ru-lean", "—");
+      setText("ru-lean-l", "sin permiso");
+    } else if (!isFinite(lean) || !moving) {
+      setText("ru-lean", "—");
+      setText("ru-lean-l", E.leanAxes ? "inclinación" : "calibrando…");
+    } else {
+      setText("ru-lean", fmt(Math.abs(lean), 0) + "°");
+      setText(
+        "ru-lean-l",
+        Math.abs(lean) < 3 ? "recto" : lean > 0 ? "derecha" : "izquierda",
+      );
+    }
+    if (E.calib.f && moving) {
+      const g = E.aEma / G;
+      setText("ru-g", fmtSigned(g, 2));
+      setText("ru-g-l", g < -0.15 ? "g freno" : g > 0.1 ? "g gas" : "g");
+    } else {
+      setText("ru-g", "—");
+      setText("ru-g-l", E.calib.f ? "g" : "calibrando…");
+    }
+    setText(
+      "ru-pitch",
+      isFinite(E.pitchDeg) && moving ? fmtSigned(E.pitchDeg, 0) + "°" : "—",
+    );
+    const c = E.curveRecap;
+    $("ru-recap").hidden = !c;
+    if (c) {
+      setCls("ru-recap", "recap" + (t - E.curveT < 3 ? " fresh" : ""));
+      setText(
+        "ru-name",
+        "Curva " +
+          c.num +
+          (c.lean === null ? "" : c.lean > 0 ? " · derecha" : " · izquierda"),
+      );
+      setText("ru-dead", fmt(c.dur, 1) + " s en curva");
+      setText("ru-c-lean", c.leanMax ? fmt(c.leanMax, 0) + "°" : "—");
+      setText("ru-c-g", c.brakeG ? fmt(c.brakeG, 2) + " g" : "sin freno");
+      setText("ru-c-v", fmt(c.vEntry, 0) + "→" + fmt(c.vMin, 0));
+      setText("ru-c-dead", fmt(c.dead, 1) + " s");
+      setCls(
+        "ru-c-dead",
+        "num " + (c.dead > 1.5 ? "down" : c.dead < 0.6 ? "up" : ""),
+      );
+    }
+    renderWheelie("ru-wh", t);
+    const st = E.route.stats;
+    setText("rs-dist", fmt(st.dist / 1000, 1) + " km");
+    setText("rs-time", st.t0 !== null ? fmtClock(st.t1 - st.t0) : "0:00");
+    const lm = Math.max(st.leanL, st.leanR);
+    setText("rs-lean", "máx " + (lm ? fmt(lm, 0) + "°" : "—"));
+    setText("rs-top", "punta " + (st.vMax ? fmt(st.vMax * 3.6, 0) : "—"));
+    const nowMs = performance.now();
+    if (nowMs - mapView.drawnAt < 160) return;
+    mapView.drawnAt = nowMs;
+    const pos = E.route.position(t, v, E.lag);
+    window.MaspaMapa.draw($("ru-map"), {
+      trail: E.route.trail,
+      pos,
+      follow: mapView.follow && !!pos,
+      span: mapView.span,
+      colorBy: mapView.colorBy,
+      marks: curveMarks(E.route.curves),
+    });
+    if (mapView.legendBy !== mapView.colorBy) {
+      window.MaspaMapa.legend($("ru-legend"), mapView.colorBy);
+      mapView.legendBy = mapView.colorBy;
+    }
+    setText("ru-color", mapView.colorBy === "fase" ? "Fases" : "Incl.");
+    setText("ru-fit", mapView.follow ? "Toda" : "Seguir");
+  }
+
+  // Resumen al terminar la ruta: mapa entero, totales, las curvas más tumbadas y los caballitos.
+  function showRouteSummary(eng) {
+    show("ruta-fin");
+    const r = eng.route;
+    const s = r.summary();
+    const d = new Date(eng.rec ? eng.rec.epoch : Date.now());
+    setText(
+      "ruf-sub",
+      d.toLocaleDateString("es-ES", {
+        weekday: "long",
+        day: "numeric",
+        month: "long",
+      }) +
+        " · " +
+        fmt(s.distancia / 1000, 1) +
+        " km · " +
+        fmtClock(s.duracion),
+    );
+    window.MaspaMapa.draw($("ruf-map"), {
+      trail: r.trail,
+      follow: false,
+      colorBy: summaryColor,
+      marks: curveMarks(r.curves),
+    });
+    window.MaspaMapa.legend($("ruf-legend"), summaryColor);
+    setText(
+      "ruf-color",
+      "Color: " + (summaryColor === "fase" ? "fases" : "inclinación"),
+    );
+    const box = $("ruf-stats");
+    box.textContent = "";
+    const add = (label, value) => {
+      const div = document.createElement("div");
+      const sm = document.createElement("small");
+      sm.textContent = label;
+      const b = document.createElement("b");
+      b.className = "num";
+      b.textContent = value;
+      div.append(sm, b);
+      box.appendChild(div);
+    };
+    add("Distancia", fmt(s.distancia / 1000, 1) + " km");
+    add("Tiempo", fmtClock(s.duracion));
+    add("Punta", fmt(s.punta, 0) + " km/h");
+    add("Incl. derecha", s.inclDerecha ? fmt(s.inclDerecha, 0) + "°" : "—");
+    add(
+      "Incl. izquierda",
+      s.inclIzquierda ? fmt(s.inclIzquierda, 0) + "°" : "—",
+    );
+    add("Frenada máx.", s.frenadaMax ? fmt(s.frenadaMax, 2) + " g" : "—");
+    add(
+      "Aceleración máx.",
+      s.aceleracionMax ? fmt(s.aceleracionMax, 2) + " g" : "—",
+    );
+    add("Curvas", String(s.curvas));
+    add(
+      "Sin gas en curva (media)",
+      s.tiempoMuertoMedio !== null ? fmt(s.tiempoMuertoMedio, 1) + " s" : "—",
+    );
+    add(
+      "Caballitos",
+      s.caballitos
+        ? s.caballitos +
+            " · " +
+            s.caballitosMetros +
+            " m · ≈" +
+            fmt(s.caballitosPerdido, 2) +
+            " s"
+        : "ninguno",
+    );
+    const top = r.curves
+      .filter((c) => c.leanMax)
+      .slice()
+      .sort((a, b) => b.leanMax - a.leanMax)
+      .slice(0, 15);
+    setText(
+      "ruf-c-note",
+      r.curves.length > top.length
+        ? "Las " +
+            top.length +
+            " curvas más tumbadas de " +
+            r.curves.length +
+            "."
+        : r.curves.length
+          ? ""
+          : "No se ha detectado ninguna curva.",
+    );
+    const tb = $("ruf-curves");
+    tb.textContent = "";
+    const row = (cells) => {
+      const tr = document.createElement("tr");
+      cells.forEach((txt, k) => {
+        const td = document.createElement("td");
+        if (k) td.className = "num";
+        td.textContent = txt;
+        tr.appendChild(td);
+      });
+      return tr;
+    };
+    for (const c of top)
+      tb.appendChild(
+        row([
+          c.num + (c.lean > 0 ? " der." : " izq."),
+          fmt(c.leanMax, 0) + "°",
+          fmt(c.vEntry, 0) + " → " + fmt(c.vMin, 0),
+          c.brakeG ? fmt(c.brakeG, 2) + " g" : "—",
+          fmt(c.dead, 1) + " s",
+        ]),
+      );
+    const wb = $("ruf-wh");
+    wb.textContent = "";
+    $("ruf-w").hidden = !r.wheelies.length;
+    for (const w of r.wheelies)
+      wb.appendChild(
+        row([
+          String(w.num),
+          fmt(w.dur, 1) + " s",
+          w.dist + " m",
+          fmt(w.max, 0) + "°",
+          w.v0 + " km/h",
+          "≈" + fmt(w.lost, 2) + " s",
+        ]),
+      );
+  }
+
   function loop() {
     if (E && E.sim) simStep();
-    render();
+    if (E && E.free) renderRoute();
+    else render();
     if (E) recFlush(false);
     requestAnimationFrame(loop);
   }
@@ -1754,13 +2200,16 @@
         d.loc.hacc[i],
       );
     }
-    if (sim.iL >= d.loc.t.length && E.mode === "ride") enterPits();
+    if (sim.iL >= d.loc.t.length && E.mode === "ride") {
+      if (E.free) stopAll();
+      else enterPits();
+    }
   }
 
   // Solo para pruebas automáticas: opts.grabar guarda la tanda simulada como una de verdad y opts.session
   // reproduce otra grabación (por ejemplo, con un GPS peor).
   function startSim(speedFactor, opts) {
-    E = newEngine(true);
+    E = newEngine(true, opts && opts.free);
     E.t0 = 0;
     sim.data =
       opts && opts.session ? opts.session : T.demoSession({ seed: 7 }).session;
@@ -1770,7 +2219,7 @@
     sim.last = null;
     sim.speed = speedFactor || 1;
     if (opts && opts.grabar) recStart(Date.now());
-    show("dash");
+    show(E.free ? "ruta" : "dash");
   }
 
   // ---------- en pista de verdad ----------
@@ -1840,13 +2289,14 @@
     }
   }
 
-  async function startReal() {
+  // free: ruta libre por cualquier carretera (sin circuito).
+  async function startReal(free) {
     const motionOk = await askMotion();
     if (!("geolocation" in navigator)) {
       setStatus("st-gps", "bad", "Este navegador no da acceso al GPS.");
       return;
     }
-    E = newEngine(false);
+    E = newEngine(false, free === true);
     E.t0 = Date.now() / 1000;
     E.motionDenied = !motionOk;
     recStart(Math.round(E.t0 * 1000));
@@ -1895,7 +2345,7 @@
       { enableHighAccuracy: true, maximumAge: 0, timeout: 15000 },
     );
     setStatus("st-gps", "wait", "GPS: buscando señal…");
-    show("dash");
+    show(E.free ? "ruta" : "dash");
   }
 
   function stopAll() {
@@ -1918,8 +2368,12 @@
       document.exitFullscreen().catch(() => {});
     lastE = E;
     E = null;
-    show("home");
-    renderHome();
+    // Al terminar una ruta libre, su resumen con el mapa entero.
+    if (lastE && lastE.free) showRouteSummary(lastE);
+    else {
+      show("home");
+      renderHome();
+    }
   }
 
   // ---------- exportar ----------
@@ -2006,6 +2460,7 @@
     if (document.activeElement !== $("objetivo"))
       $("objetivo").value = fmtLap(target(), 1);
     $("cue").checked = !!settings.cue;
+    $("mapopt").checked = settings.mapa !== false;
     $("cue-opts").hidden = !settings.cue;
     $("lead").value = settings.lead;
     $("lead-v").textContent = settings.lead;
@@ -2155,6 +2610,54 @@
 
   function wire() {
     $("go").addEventListener("click", startReal);
+    $("free").addEventListener("click", () => startReal(true));
+    $("mapopt").addEventListener("change", () => {
+      settings.mapa = $("mapopt").checked;
+      saveSettings();
+    });
+    let rideArmed = false;
+    $("ru-stop").addEventListener("click", () => {
+      const btn = $("ru-stop");
+      if (!rideArmed) {
+        rideArmed = true;
+        btn.textContent = "¿Terminar? Otra vez";
+        setTimeout(() => {
+          rideArmed = false;
+          btn.textContent = "Terminar";
+        }, 4000);
+        return;
+      }
+      rideArmed = false;
+      btn.textContent = "Terminar";
+      stopAll();
+    });
+    $("ru-color").addEventListener("click", () => {
+      mapView.colorBy = mapView.colorBy === "fase" ? "incl" : "fase";
+      mapView.drawnAt = 0;
+    });
+    $("ru-fit").addEventListener("click", () => {
+      mapView.follow = !mapView.follow;
+      mapView.drawnAt = 0;
+    });
+    $("ru-zin").addEventListener("click", () => {
+      mapView.span = Math.max(150, mapView.span / 1.6);
+      mapView.follow = true;
+      mapView.drawnAt = 0;
+    });
+    $("ru-zout").addEventListener("click", () => {
+      mapView.span = Math.min(8000, mapView.span * 1.6);
+      mapView.follow = true;
+      mapView.drawnAt = 0;
+    });
+    $("ruf-color").addEventListener("click", () => {
+      summaryColor = summaryColor === "fase" ? "incl" : "fase";
+      if (lastE) showRouteSummary(lastE);
+    });
+    $("ruf-home").addEventListener("click", () => {
+      show("home");
+      renderHome();
+    });
+    $("ruf-export").addEventListener("click", () => exportSession(lastE));
     $("sim").addEventListener("click", () => startSim(1));
     $("sensors").addEventListener("click", startSensors);
     $("sen-back").addEventListener("click", stopSensors);

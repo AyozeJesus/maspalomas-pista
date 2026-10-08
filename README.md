@@ -27,6 +27,21 @@ abierto, se sube sola a tu Mac.
 - **Resumen de cada curva** (se ve en la recta siguiente): tiempo ganado o perdido en esa curva, inclinación
   máxima, frenada máxima en g, velocidad mínima y punto de frenada, comparados con tu mejor vuelta.
 
+## Ruta libre (cualquier carretera)
+
+Va dibujando tu línea de trazada sobre un mapa que te sigue: en rojo donde frenas, en verde donde aceleras, en
+ámbar el tiempo sin gas en curva (entre soltar el freno y volver a dar gas) y en morado los caballitos. Las curvas
+se detectan solas por el giroscopio; de cada una, la tumbada máxima, la frenada, la velocidad de entrada y la
+mínima, y el tiempo sin gas. Los caballitos se miden por el cabeceo de la moto (morro arriba más de ~6°): duración,
+metros, ángulo y tiempo perdido aproximado. Al terminar, el mapa entero con las curvas más tumbadas.
+
+La trazada mezcla el giroscopio (entre posiciones del GPS) y el GPS (que la corrige poco a poco): sale suave y,
+en las pruebas, a ~2,5 m de la posición real frente a ~5 m usando solo el GPS. En carretera, respeta las normas:
+el mapa es para mirarlo parado o después.
+
+En el circuito, el panel lleva también un mapa pequeño con tu trazada de la vuelta, los sectores y dónde frenaste
+en tu mejor vuelta (se quita en Ajustes).
+
 ## Garaje en el Mac
 
 Guarda todas tus tandas en `~/Maspalomas-telemetria` (hasta que tú borres la carpeta) y las analiza allí.

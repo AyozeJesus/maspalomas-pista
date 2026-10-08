@@ -444,6 +444,60 @@
     return (this.phi * 180) / Math.PI;
   };
 
+  // ---------- cabeceo (caballitos) ----------
+  // Ángulo de morro de la moto (+ morro arriba, grados). El giroscopio da el cabeceo rápido (giro alrededor del
+  // eje lateral: morro arriba = −ω·izquierda). El acelerómetro con gravedad (fuerza específica) da la referencia
+  // lenta: su ángulo en el plano adelante-vertical es θ + atan(a/g), y la aceleración real a se toma del GPS.
+  // Con θ se corrige además la aceleración: a = sf·f·cos θ − sf·u·sen θ.
+  function PitchEstimator() {
+    this.f = null;
+    this.u = null;
+    this.l = null;
+    this.theta = 0;
+  }
+  PitchEstimator.prototype.setAxes = function (f, u) {
+    const uu = norm3(u);
+    const fu = dot3(f, uu);
+    this.u = uu;
+    this.f = norm3([f[0] - fu * uu[0], f[1] - fu * uu[1], f[2] - fu * uu[2]]);
+    this.l = cross3(this.u, this.f);
+  };
+  // w: giro (rad/s, ejes del móvil, sin sesgo); sf: fuerza específica (m/s², +arriba); aRef: aceleración de la
+  // moto según el GPS (m/s², NaN si no hay); leanDeg: inclinación (con la moto muy tumbada no se corrige).
+  // Devuelve { pitch (grados), a (m/s², aceleración corregida) } o null sin ejes.
+  PitchEstimator.prototype.step = function (dt, w, sf, aRef, leanDeg) {
+    if (!this.f) return null;
+    const h = clamp(dt, 0, 0.1);
+    // Tumbado en curva, el giro de la curva cae en parte sobre el eje lateral de la moto (ω·l = ω·u·tan φ):
+    // no es cabeceo. Cabeceo de verdad = ω·l·cos φ − ω·u·sen φ.
+    const phi = leanDeg === leanDeg ? (leanDeg * Math.PI) / 180 : 0;
+    const q = dot3(w, this.l) * Math.cos(phi) - dot3(w, this.u) * Math.sin(phi);
+    this.theta += -q * h;
+    // La moto pasa casi todo el tiempo con el morro cerca de 0: vuelta lenta a 0 (10 s). Así el sesgo que
+    // quede en el giroscopio no se acumula (en pista casi nunca hay un tramo estable para corregir con la
+    // gravedad), y un caballito de 2 s conserva más del 80 % de su ángulo.
+    this.theta -= this.theta * (1 - Math.exp(-h / 10));
+    const sfF = dot3(sf, this.f);
+    const sfU = dot3(sf, this.u);
+    // La aceleración del GPS llega con ~1 s de retraso: en cambios bruscos (frenar → acelerar) metería errores
+    // de decenas de grados. Solo se corrige rodando a ritmo estable (o parado), cuando la gravedad es limpia.
+    // Y el acelerómetro también tiene que decir «estable» (al empezar a frenar o acelerar el GPS aún no lo sabe;
+    // con la rueda arriba sf·f ≈ g·sen θ, así que tampoco se corrige en pleno caballito).
+    if (
+      aRef === aRef &&
+      Math.abs(aRef) < 1.0 &&
+      Math.abs(sfF) < 1.5 &&
+      !(Math.abs(leanDeg) > 20)
+    ) {
+      const meas = Math.atan2(sfF, sfU) - Math.atan2(aRef, G);
+      this.theta += (meas - this.theta) * (1 - Math.exp(-h / 2));
+    }
+    this.theta = clamp(this.theta, -0.6, 1.2);
+    const c = Math.cos(this.theta);
+    const s = Math.sin(this.theta);
+    return { pitch: (this.theta * 180) / Math.PI, a: sfF * c - sfU * s };
+  };
+
   // ---------- ejes del giroscopio ----------
   // El giro que da cada navegador (rotationRate) no siempre viene en los ejes x, y, z del acelerómetro: Chrome en
   // Android da alpha, beta, gamma = x, y, z (medido en un Pixel 10 Pro con Chrome 154); la norma y Safari, z, x, y.
@@ -1609,6 +1663,11 @@
       truth: {
         lapTimes: truth,
         crossings: crossT,
+        // Posición verdadera (metros locales) en el instante t, para comprobar la trazada.
+        posAt: (t) => {
+          const st = stateAt(t);
+          return { x: st.x, y: st.y };
+        },
         // Inclinación verdadera (grados, + a derechas) en el instante t, para comprobar la medida.
         leanAt: (t) => {
           const st = stateAt(t);
@@ -1631,6 +1690,7 @@
     toLocal,
     toLatLon,
     LeanEstimator,
+    PitchEstimator,
     GyroAxes,
     AXIS_PERMS,
     STEP_M,

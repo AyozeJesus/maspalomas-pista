@@ -123,10 +123,22 @@
   }
 
   // ---------- tandas ----------
-  function stateTag(meta) {
+  function stateTag(meta, r) {
     if (!meta) return ["tag", "sin resumen"];
     if (meta.estado === "grabando") return ["tag live", "grabando"];
     if (meta.estado === "cortada") return ["tag cut", "cortada"];
+    // Ruta libre: kilómetros y tumbada máxima en la etiqueta (no hay vueltas).
+    if (meta.tipo === "ruta")
+      return [
+        "tag",
+        "ruta libre" +
+          (r && r.distancia ? " · " + fmt(r.distancia / 1000, 1) + " km" : "") +
+          (r && (r.inclDerecha || r.inclIzquierda)
+            ? " · máx " +
+              fmt(Math.max(r.inclDerecha || 0, r.inclIzquierda || 0), 0) +
+              "°"
+            : ""),
+      ];
     return ["tag", meta.sim ? "simulador" : "terminada"];
   }
 
@@ -157,7 +169,7 @@
       el("td", "", fmtDate(t.id, t.meta && t.meta.inicio), tr);
       el("td", "", pilotOf(t) || "—", tr);
       const tdState = el("td", "", null, tr);
-      const [cls, label] = stateTag(t.meta);
+      const [cls, label] = stateTag(t.meta, t.resumen);
       el("span", cls, label, tdState);
       const valid =
         r && r.vueltas ? r.vueltas.filter((v) => v.valid).length : null;
@@ -188,7 +200,8 @@
       el("td", "num", fmt(t.bytes / 1024 / 1024, 1) + " MB", tr);
       const act = el("td", "", null, tr);
       const box = el("div", "actions", null, act);
-      if (t.trozos) {
+      // El análisis detallado es del circuito: para una ruta libre, sus datos van en el .zip del móvil.
+      if (t.trozos && !(t.meta && t.meta.tipo === "ruta")) {
         const a = el("a", "btn primary", "Analizar", box);
         a.href = "/analisis?tanda=" + encodeURIComponent(t.id);
       }

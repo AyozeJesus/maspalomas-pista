@@ -257,7 +257,26 @@
   .recap-g i { font-style: normal; font-size: min(3.4vw, 2.4vh); font-weight: 800; min-height: 1.2em; }
   .up { color: #6df29b; }
   .down { color: #ffaaa1; }
+  /* Mapa del circuito en el panel y aviso de caballito. */
+  .mini-map { display: block; width: 100%; height: 17vh; border-radius: var(--r-md); background: rgba(0, 0, 0, 0.42); border: 1px solid rgba(255, 255, 255, 0.14); }
+  .wh { background: rgba(123, 63, 196, 0.85); border-radius: var(--r-md); padding: 6px 12px; font-weight: 800; font-size: min(4.4vw, 3.2vh); text-align: center; }
+  /* Ruta libre: el mapa manda; abajo, lo que mide el móvil y la última curva. */
+  .ride { grid-template-rows: auto minmax(0, 1fr) auto; }
+  #ru-title { justify-self: start; }
+  .ride-map { position: relative; min-height: 0; margin: 6px max(10px, env(safe-area-inset-right)) 8px max(10px, env(safe-area-inset-left)); border-radius: var(--r-lg); background: #0a0d10; border: 1px solid rgba(255, 255, 255, 0.12); overflow: hidden; }
+  .ride-map canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+  .map-ctl { position: absolute; top: 8px; right: 8px; display: grid; gap: 6px; }
+  .map-ctl button { min-height: 44px; min-width: 44px; padding: 6px 10px; font-size: 15px; background: rgba(5, 6, 7, 0.78); border-color: rgba(255, 255, 255, 0.28); }
+  .legend { position: absolute; left: 8px; bottom: 8px; margin: 0; padding: 4px 8px; border-radius: var(--r-sm); background: rgba(5, 6, 7, 0.78); font-size: 12px; font-weight: 600; display: flex; flex-wrap: wrap; gap: 4px 10px; max-width: calc(100% - 80px); }
+  .legend span::before { content: ""; display: inline-block; width: 10px; height: 4px; border-radius: 2px; margin-right: 4px; vertical-align: middle; background: var(--c); }
+  .live.three { grid-template-columns: 1fr 1fr 1fr; }
+  .ride-stats { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; font-weight: 800; font-size: min(4.2vw, 3vh); opacity: 0.95; }
+  .route-map { display: block; width: 100%; height: min(62vh, 520px); border-radius: var(--r-md); background: #0a0d10; }
+  #ruta-fin .legend { position: static; max-width: none; background: none; padding: 0; }
   @media (orientation: landscape) {
+    .mini-map { height: 24vh; }
+    .ride-map { margin-right: 6px; }
+    .ride-stats, .wh { font-size: min(2.2vw, 4vh); }
     .dash { grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
     .dash-top { grid-column: 1 / -1; }
     .delta { font-size: min(20vw, 52vh); padding-left: max(8px, env(safe-area-inset-left)); }
@@ -299,11 +318,12 @@
     </div>
     <div class="start">
       <button class="primary" id="go">Salir a pista</button>
+      <button id="free">Ruta libre (cualquier carretera)</button>
       <div class="actions">
         <button id="sensors">Probar los sensores</button>
         <button id="sim">Ver una vuelta de ejemplo</button>
       </div>
-      <p class="muted">«Probar los sensores» usa el GPS y los sensores de este móvil en cualquier sitio. La vuelta de ejemplo es una tanda grabada: no usa tu móvil.</p>
+      <p class="muted">«Ruta libre» va dibujando tu trazada por cualquier carretera: dónde frenas, aceleras o dejas tiempo muerto, la inclinación de cada curva y los caballitos. «Probar los sensores» comprueba el GPS y los sensores de este móvil. La vuelta de ejemplo es una tanda grabada: no usa tu móvil.</p>
     </div>
     <section class="card" aria-labelledby="mac-h">
       <h2 id="mac-h">Tus tandas y el Mac</h2>
@@ -326,6 +346,7 @@
       </div>
       <p class="muted">Cada piloto tiene su mejor vuelta y su objetivo por vuelta. Si compartís móvil, cambiad el nombre antes de salir.</p>
       <div class="group">
+        <label class="switch" for="mapopt"><span class="switch-text"><span class="switch-title">Mapa del circuito en el panel</span><span class="muted">Tu trazada de la vuelta, los sectores y dónde frenaste en tu mejor vuelta.</span></span><input type="checkbox" id="mapopt" role="switch"></label>
         <label class="switch" for="cue"><span class="switch-text"><span class="switch-title">Aviso de frenada (prueba)</span><span class="muted">Destello blanco antes de donde frenaste en tu mejor vuelta.</span></span><input type="checkbox" id="cue" role="switch"></label>
         <div id="cue-opts" hidden>
           <label for="lead" class="range-label">Avisar <b id="lead-v">20</b> m antes</label>
@@ -361,10 +382,12 @@
     </div>
     <div class="delta num" id="d-delta">—<small id="d-delta-sub">esperando meta</small></div>
     <div class="dash-bottom">
+      <canvas class="mini-map" id="d-map" hidden aria-hidden="true"></canvas>
       <div class="live">
         <div><small id="d-lean-l">inclinación</small><b class="num" id="d-lean">—</b></div>
         <div><small id="d-g-l">g</small><b class="num" id="d-g">—</b></div>
       </div>
+      <div class="wh" id="d-wh" hidden></div>
       <div class="recap" id="d-recap" hidden>
         <div class="recap-h"><span id="r-name"></span><b class="num" id="r-dt"></b></div>
         <div class="recap-g">
@@ -378,6 +401,68 @@
       <div class="sectors" id="d-sectors"><div>S1</div><div>S2</div><div>S3</div><div>S4</div></div>
     </div>
   </section>
+
+  <!-- Ruta libre: cualquier carretera, la trazada se va dibujando -->
+  <section class="dash ride" id="ruta" hidden aria-live="off">
+    <div class="dash-top">
+      <span id="ru-title">Ruta libre</span>
+      <button class="stop" id="ru-stop">Terminar</button>
+      <span class="gps"><span class="dot" id="ru-gps"></span><span class="num" id="ru-speed">0</span><small class="unit">km/h</small></span>
+    </div>
+    <div class="ride-map">
+      <canvas id="ru-map" aria-label="Mapa con tu trazada"></canvas>
+      <div class="map-ctl">
+        <button id="ru-color" aria-label="Color de la trazada">Fases</button>
+        <button id="ru-fit" aria-label="Ver toda la ruta o seguir a la moto">Toda</button>
+        <button id="ru-zin" aria-label="Acercar">+</button>
+        <button id="ru-zout" aria-label="Alejar">−</button>
+      </div>
+      <p class="legend" id="ru-legend"></p>
+    </div>
+    <div class="dash-bottom">
+      <div class="live three">
+        <div><small id="ru-lean-l">inclinación</small><b class="num" id="ru-lean">—</b></div>
+        <div><small id="ru-g-l">g</small><b class="num" id="ru-g">—</b></div>
+        <div><small>morro</small><b class="num" id="ru-pitch">—</b></div>
+      </div>
+      <div class="recap" id="ru-recap" hidden>
+        <div class="recap-h"><span id="ru-name"></span><b class="num" id="ru-dead"></b></div>
+        <div class="recap-g">
+          <div><small>Tumbada</small><b class="num" id="ru-c-lean">—</b></div>
+          <div><small>Frenada</small><b class="num" id="ru-c-g">—</b></div>
+          <div><small>Entra → mín.</small><b class="num" id="ru-c-v">—</b></div>
+          <div><small>Sin gas</small><b class="num" id="ru-c-dead">—</b></div>
+        </div>
+      </div>
+      <div class="wh" id="ru-wh" hidden></div>
+      <div class="ride-stats num"><span id="rs-dist">0,0 km</span><span id="rs-time">0:00</span><span id="rs-lean">máx —</span><span id="rs-top">punta —</span></div>
+    </div>
+  </section>
+
+  <!-- Resumen de la ruta -->
+  <main class="page" id="ruta-fin" hidden>
+    <header class="page-head">
+      <h1 class="title">Tu ruta</h1>
+      <p class="muted" id="ruf-sub"></p>
+    </header>
+    <section class="card">
+      <canvas class="route-map" id="ruf-map" aria-label="Mapa de toda la ruta"></canvas>
+      <div class="actions"><button id="ruf-color">Color: fases</button></div>
+      <p class="legend" id="ruf-legend"></p>
+    </section>
+    <section class="card" aria-labelledby="ruf-sum-h"><h2 id="ruf-sum-h">Resumen</h2><div class="readouts" id="ruf-stats"></div></section>
+    <section class="card" aria-labelledby="ruf-c-h"><h2 id="ruf-c-h">Curvas</h2><p class="muted" id="ruf-c-note"></p>
+      <div class="cmp-wrap"><table class="cmp-table"><thead><tr><th>Curva</th><th class="num">Tumb.</th><th class="num">Entra→mín</th><th class="num">Freno</th><th class="num">Sin gas</th></tr></thead><tbody id="ruf-curves"></tbody></table></div>
+    </section>
+    <section class="card" aria-labelledby="ruf-w-h" id="ruf-w"><h2 id="ruf-w-h">Caballitos</h2>
+      <div class="cmp-wrap"><table class="cmp-table"><thead><tr><th>#</th><th class="num">Duración</th><th class="num">Metros</th><th class="num">Morro</th><th class="num">Desde</th><th class="num">≈ Perdido</th></tr></thead><tbody id="ruf-wh"></tbody></table></div>
+    </section>
+    <p class="muted">En carretera respeta las normas y los límites: el mapa y estos datos son para revisarlos parado.</p>
+    <div class="actions">
+      <button class="primary" id="ruf-home">Volver al inicio</button>
+      <button id="ruf-export">Exportar la ruta (.zip)</button>
+    </div>
+  </main>
 
   <!-- Boxes -->
   <main class="page" id="pits" hidden>
@@ -467,6 +552,8 @@
   <script src="formato.js"></script>
   <script src="store.js"></script>
   <script src="comparativa.js"></script>
+  <script src="mapa.js"></script>
+  <script src="recorrido.js"></script>
   <script src="live.js"></script>
 </body>
 </html>

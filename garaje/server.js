@@ -264,7 +264,7 @@ function dayOf(id) {
 function realTandas() {
   return listIds()
     .map((id) => ({ id, meta: readJson(path.join(tandaDir(id), "meta.json")) }))
-    .filter((t) => !(t.meta && t.meta.sim));
+    .filter((t) => !(t.meta && (t.meta.sim || t.meta.tipo === "ruta")));
 }
 function daysAvailable() {
   return [...new Set(realTandas().map((t) => dayOf(t.id)))];
@@ -461,8 +461,12 @@ function summaryOf(id) {
   const dir = tandaDir(id);
   const meta = readJson(path.join(dir, "meta.json"));
   const stamp = stampOf(id);
-  let resumen = readJson(path.join(dir, "resumen.json"));
-  const fresh = isFresh(resumen, stamp);
+  // Ruta libre (cualquier carretera): no hay vueltas que analizar; el resumen es el del móvil.
+  const ruta = !!meta && meta.tipo === "ruta";
+  let resumen = ruta
+    ? Object.assign({ tipo: "ruta" }, meta.recorrido || {})
+    : readJson(path.join(dir, "resumen.json"));
+  const fresh = ruta || isFresh(resumen, stamp);
   if (!fresh && stamp.trozos) queueAnalysis(id);
   return {
     id,
@@ -472,6 +476,7 @@ function summaryOf(id) {
           fin: meta.fin,
           estado: meta.estado,
           sim: meta.sim,
+          tipo: meta.tipo === "ruta" ? "ruta" : "pista",
           piloto:
             typeof meta.piloto === "string" ? meta.piloto.slice(0, 30) : null,
           objetivo: Number.isFinite(meta.objetivo) ? meta.objetivo : null,
