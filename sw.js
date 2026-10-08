@@ -1,6 +1,7 @@
 // Funciona sin cobertura en el circuito: la página se guarda en el móvil la primera vez que se abre.
 // La página principal se pide primero a la red (para recibir las actualizaciones) y, si no hay red, sale de la copia.
-const CACHE = "pista-v13";
+// Igual que BUILD en live.js (se ve en la portada).
+const CACHE = "pista-v14";
 const FILES = [
   "./",
   "index.html",
@@ -22,11 +23,16 @@ const FILES = [
   "icon-512.png",
 ];
 
+// GitHub Pages sirve con max-age=600: sin esto, en los 10 minutos después de publicar, tanto la copia como las
+// recargas podían seguir dando los archivos viejos. Se pide siempre al servidor (que contesta «sin cambios»
+// barato si no los hay).
 self.addEventListener("install", (e) => {
   e.waitUntil(
     caches
       .open(CACHE)
-      .then((c) => c.addAll(FILES))
+      .then((c) =>
+        c.addAll(FILES.map((f) => new Request(f, { cache: "reload" }))),
+      )
       .then(() => self.skipWaiting()),
   );
 });
@@ -49,7 +55,7 @@ self.addEventListener("fetch", (e) => {
   const url = new URL(e.request.url);
   if (url.origin !== location.origin) return;
   e.respondWith(
-    fetch(e.request)
+    fetch(e.request, { cache: "no-cache" })
       .then((res) => {
         if (res.ok) {
           const copy = res.clone();

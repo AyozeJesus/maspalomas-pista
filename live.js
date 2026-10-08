@@ -7,6 +7,8 @@
   const F = window.MaspaFormato;
   const ST = window.PistaStore;
   const APP_VERSION = 2;
+  // Versión publicada (la misma que la copia de sw.js, «pista-vN»): se ve en la portada.
+  const BUILD = 14;
   const G = 9.80665;
   const REC_EVERY = 10; // segundos entre trozos guardados en el móvil
   const $ = (id) => document.getElementById(id);
@@ -1478,8 +1480,26 @@
         r.beta * DEG,
         r.gamma * DEG,
       ]);
-      // Giro alrededor del eje adelante (°/s), con el orden de ejes ya comprobado: tumbar a derechas es positivo.
-      S.leanW += dot3(S.axes.map([r.alpha, r.beta, r.gamma]), S.ref.f) * dt;
+      // Giro (°/s) con el orden de ejes ya comprobado y sin el sesgo del giroscopio.
+      const wm = S.axes.map([r.alpha, r.beta, r.gamma]);
+      const axesKey = S.axes.choice * 2 + S.axes.sign;
+      if (S.biasKey !== axesKey) {
+        S.gbias = [0, 0, 0];
+        S.biasKey = axesKey;
+      }
+      const gb = S.gbias;
+      const wc = [wm[0] - gb[0], wm[1] - gb[1], wm[2] - gb[2]];
+      // Quieto (sobre la mesa): lo que marque el giroscopio es su sesgo, que se aprende y se resta; y su tumbada
+      // se va alineando con la de la gravedad. Si no, el sesgo la haría derivar grados por minuto sin moverlo.
+      S.stillG = Math.hypot(wc[0], wc[1], wc[2]) < 5 ? (S.stillG || 0) + dt : 0;
+      if (S.stillG > 0.5) {
+        const kb = 1 - Math.exp(-dt / 2);
+        for (let i = 0; i < 3; i++) gb[i] += (wm[i] - gb[i]) * kb;
+        if (Number.isFinite(leanG))
+          S.leanW += (leanG - S.leanW) * (1 - Math.exp(-dt / 0.5));
+      }
+      // Giro alrededor del eje adelante: tumbar a derechas es positivo.
+      S.leanW += dot3(wc, S.ref.f) * dt;
       if (Number.isFinite(leanG)) {
         let d = S.leanW - leanG;
         while (d > 180) d -= 360;
@@ -1684,6 +1704,9 @@
       leanG: NaN,
       leanW: 0,
       stillSince: null,
+      gbias: [0, 0, 0],
+      biasKey: null,
+      stillG: 0,
       swing: 0,
       diff: 0,
       pitch: NaN,
@@ -3262,8 +3285,20 @@
   }
 
   if ("serviceWorker" in navigator && location.protocol === "https:") {
+    // Si llega una versión nueva mientras la página está abierta (en otra pestaña se recargó, o al volver a
+    // abrirla), se recarga sola, pero solo en la portada o en la prueba de sensores: nunca rodando.
+    const hadController = !!navigator.serviceWorker.controller;
+    navigator.serviceWorker.addEventListener("controllerchange", () => {
+      if (
+        hadController &&
+        !E &&
+        ($("home").hidden === false || $("sensores").hidden === false)
+      )
+        location.reload();
+    });
     navigator.serviceWorker.register("sw.js").catch(() => {});
   }
+  setText("home-build", "Versión " + BUILD);
   // Acceso para pruebas automáticas del simulador (no afecta al uso normal).
   window.MaspaPista = {
     startSim,
