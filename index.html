@@ -162,6 +162,18 @@
   .toolbar { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin: -8px 0 0; }
   .toolbar button { min-height: 44px; padding-block: 8px; font-size: 15px; }
   .toolbar .back { margin-left: -10px; }
+
+  /* Prueba de sensores: lecturas grandes y un nivel que gira con el móvil. */
+  .readouts { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px; }
+  .readouts > div { background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--r-md); padding: 10px 12px; display: grid; gap: 2px; }
+  .readouts small { font-size: 12px; font-weight: 600; color: var(--muted); }
+  .readouts b { font-size: 26px; font-weight: 800; line-height: 1.1; white-space: nowrap; }
+  .level { position: relative; height: 96px; border-radius: var(--r-md); background: var(--field); border: 1px solid var(--line); overflow: hidden; display: grid; place-items: center; }
+  .level::before { content: ""; position: absolute; left: 50%; top: 10px; bottom: 10px; width: 1px; background: var(--line-strong); }
+  .level-bar { width: 70%; height: 6px; border-radius: 3px; background: var(--accent); transition: transform 0.08s linear; }
+  .note-bad { color: var(--bad-ink); }
+  .note-ok { color: var(--good-ink); }
+  @media (prefers-reduced-motion: reduce) { .level-bar { transition: none; } }
   /* Sin tarjeta alrededor: las tablas aprovechan todo el ancho del móvil y, si aun así no caben, se desplazan
      dentro de su marco con la columna del piloto fija. */
   .card.cmp { display: block; background: transparent; border: 0; border-radius: 0; padding: 0; }
@@ -287,7 +299,11 @@
     </div>
     <div class="start">
       <button class="primary" id="go">Salir a pista</button>
-      <button id="sim">Probar con el simulador</button>
+      <div class="actions">
+        <button id="sensors">Probar los sensores</button>
+        <button id="sim">Ver una vuelta de ejemplo</button>
+      </div>
+      <p class="muted">«Probar los sensores» usa el GPS y los sensores de este móvil en cualquier sitio. La vuelta de ejemplo es una tanda grabada: no usa tu móvil.</p>
     </div>
     <section class="card" aria-labelledby="mac-h">
       <h2 id="mac-h">Tus tandas y el Mac</h2>
@@ -388,6 +404,47 @@
   </main>
 
   <!-- Tiempos del día de todos los pilotos que suben al garaje -->
+  <!-- Prueba de sensores: el GPS y los sensores reales de este móvil, en cualquier sitio -->
+  <main class="page" id="sensores" hidden>
+    <div class="toolbar">
+      <button class="quiet back" id="sen-back"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg>Volver</button>
+      <button id="sen-zero">Poner a cero</button>
+    </div>
+    <header class="page-head">
+      <h1 class="title">Prueba de sensores</h1>
+      <p class="muted">Con el GPS y los sensores de este móvil, aquí mismo. Ponlo de pie y gíralo como un volante: las dos inclinaciones deben ir juntas. En marcha (coche o moto), mira la velocidad.</p>
+    </header>
+    <section class="card" aria-labelledby="sen-tilt-h">
+      <h2 id="sen-tilt-h">Inclinación del móvil</h2>
+      <div class="level" aria-hidden="true"><div class="level-bar" id="sen-level"></div></div>
+      <div class="readouts">
+        <div><small>Por gravedad</small><b class="num" id="sen-tilt-g">—</b></div>
+        <div><small>Por giroscopio</small><b class="num" id="sen-tilt-w">—</b></div>
+        <div><small>Adelante / atrás</small><b class="num" id="sen-pitch">—</b></div>
+      </div>
+      <p class="muted" id="sen-tilt-note"></p>
+    </section>
+    <section class="card" aria-labelledby="sen-gps-h">
+      <h2 id="sen-gps-h">GPS</h2>
+      <div class="readouts">
+        <div><small>Velocidad</small><b class="num" id="sen-speed">—</b></div>
+        <div><small>Precisión</small><b class="num" id="sen-acc">—</b></div>
+        <div><small>Posiciones por segundo</small><b class="num" id="sen-hz">—</b></div>
+        <div><small>Retraso</small><b class="num" id="sen-lag">—</b></div>
+      </div>
+      <p class="muted" id="sen-gps-note">Buscando señal…</p>
+    </section>
+    <section class="card" aria-labelledby="sen-imu-h">
+      <h2 id="sen-imu-h">Movimiento</h2>
+      <div class="readouts">
+        <div><small>Lecturas por segundo</small><b class="num" id="sen-mhz">—</b></div>
+        <div><small>Aceleración</small><b class="num" id="sen-g">—</b></div>
+        <div><small>Giro</small><b class="num" id="sen-rot">—</b></div>
+      </div>
+      <p class="muted" id="sen-imu-note"></p>
+    </section>
+  </main>
+
   <main class="page" id="dia" hidden>
     <div class="toolbar">
       <button class="quiet back" id="dia-back"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg>Volver</button>

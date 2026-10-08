@@ -243,7 +243,7 @@ function analyzeTanda(id, finishOverride) {
 }
 
 // Si cambia lo que guarda el resumen, sube la versión y los resúmenes viejos se recalculan solos.
-const RESUMEN_V = 2;
+const RESUMEN_V = 3;
 function isFresh(resumen, stamp) {
   return (
     !!resumen &&

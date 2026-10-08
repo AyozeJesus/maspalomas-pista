@@ -180,6 +180,16 @@
   let E = null;
   let lastE = null;
 
+  // Orden de partida de alpha, beta, gamma: Chrome en Android los da en x, y, z (medido en un Pixel 10 Pro);
+  // Safari en iPhone, según la norma, en z, x, y. Luego se comprueba con los datos (T.GyroAxes).
+  function axesPrior() {
+    const ua = navigator.userAgent || "";
+    const ios =
+      /iPhone|iPad|iPod/.test(ua) ||
+      (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
+    return ios ? 1 : 0;
+  }
+
   function newEngine(sim) {
     return {
       sim,
@@ -218,6 +228,8 @@
       aLong: new Series(["t", "a"]),
       // Inclinación con el giroscopio (grados, + derecha) y lo que calcula el móvil, a 10 Hz.
       lean: new T.LeanEstimator(),
+      // Orden de los ejes del giro: el simulador ya los da en x, y, z; el navegador, según cuál sea.
+      axes: new T.GyroAxes(sim ? 0 : axesPrior()),
       leanDeg: NaN,
       leanAxes: 0,
       // Lado de la inclinación comprobado con el rumbo del GPS (algunos móviles, como el iPhone, dan los
@@ -335,7 +347,9 @@
     if (!E.track) {
       detectDir(x, y, v);
       if (!E.track) {
-        E.fix = { t, x, y, v, s: null, i: null, on: false };
+        const fix = { t, x, y, v, s: null, i: null, on: false };
+        calibPair(E.fix, fix);
+        E.fix = fix;
         pitsCheck(t, v, false);
         return;
       }
@@ -585,10 +599,11 @@
   // ---------- sensores ----------
   function calibPair(prev, fix) {
     const c = E.calib;
+    // Vale cualquier tramo en marcha con buen GPS (circuito, carretera o en coche), no solo el trazado.
     if (
       prev &&
-      prev.on &&
-      fix.on &&
+      prev.v > 4 &&
+      fix.v > 4 &&
       c.n > 5 &&
       fix.t - prev.t < 2.5 &&
       fix.t > prev.t
@@ -614,11 +629,20 @@
     c.n = 0;
   }
 
-  function onMotion(t, lin, grav, gyro) {
+  // gyroRaw: giro en rad/s en el orden que da el navegador (se graba así; el análisis también lo comprueba).
+  function onMotion(t, lin, grav, gyroRaw) {
     E.acc.push({ t, x: lin[0], y: lin[1], z: lin[2] });
     E.grav.push({ t, x: grav[0], y: grav[1], z: grav[2] });
-    E.gyro.push({ t, x: gyro[0], y: gyro[1], z: gyro[2] });
-    if (gyro[0] || gyro[1] || gyro[2]) E.hasGyro = true;
+    E.gyro.push({ t, x: gyroRaw[0], y: gyroRaw[1], z: gyroRaw[2] });
+    if (gyroRaw[0] || gyroRaw[1] || gyroRaw[2]) E.hasGyro = true;
+    const before = E.axes.choice * 2 + E.axes.sign;
+    E.axes.add(t, grav, gyroRaw);
+    if (E.axes.choice * 2 + E.axes.sign !== before) {
+      // Ejes corregidos: la inclinación vuelve a empezar con los buenos.
+      E.lean = new T.LeanEstimator();
+      E.leanAxes = 0;
+    }
+    const gyro = E.axes.map(gyroRaw);
     const c = E.calib;
     c.sum[0] += lin[0];
     c.sum[1] += lin[1];
@@ -1066,8 +1090,291 @@
 
   // ---------- pantalla ----------
   function show(which) {
-    for (const id of ["home", "dash", "pits", "dia"])
+    for (const id of ["home", "dash", "pits", "dia", "sensores"])
       $(id).hidden = id !== which;
+  }
+
+  // ---------- prueba de sensores (en cualquier sitio, con el móvil de verdad) ----------
+  // Inclinación del móvil en el plano de la pantalla por gravedad (atan2(gx, gy), + a la izquierda vista de
+  // frente) y la misma integrando el giroscopio alrededor de z: si no van juntas, el giroscopio no sirve.
+  let sensor = null;
+  function sensorMotion(ev) {
+    const S = sensor;
+    if (!S) return;
+    const now = performance.now();
+    const g = ev.accelerationIncludingGravity;
+    const a = ev.acceleration;
+    const r = ev.rotationRate;
+    if (!g || g.x === null) return;
+    S.times.push(now);
+    while (S.times.length && now - S.times[0] > 2000) S.times.shift();
+    const grav =
+      a && a.x !== null ? [g.x - a.x, g.y - a.y, g.z - a.z] : [g.x, g.y, g.z];
+    S.grav = grav;
+    S.lin = a && a.x !== null ? [a.x, a.y, a.z] : null;
+    const tiltG = (Math.atan2(grav[0], grav[1]) * 180) / Math.PI;
+    const upright = Math.hypot(grav[0], grav[1]) > 0.5 * G;
+    S.tiltG = upright ? tiltG : NaN;
+    S.pitch =
+      (Math.atan2(grav[2], Math.hypot(grav[0], grav[1])) * 180) / Math.PI;
+    if (r && r.alpha !== null) {
+      S.hasGyro = true;
+      S.rot = Math.hypot(r.alpha, r.beta, r.gamma);
+      const DEG = Math.PI / 180;
+      S.axes.add(now / 1000, grav, [
+        r.alpha * DEG,
+        r.beta * DEG,
+        r.gamma * DEG,
+      ]);
+      // Giro alrededor del eje que sale de la pantalla (z), con el orden de ejes ya comprobado.
+      const wz = S.axes.map([r.alpha, r.beta, r.gamma])[2];
+      const dt = S.last === null ? 0 : Math.min(0.1, (now - S.last) / 1000);
+      if (S.tiltW === null && upright) S.tiltW = tiltG;
+      if (S.tiltW !== null) S.tiltW += wz * dt;
+      if (upright && S.tiltW !== null) {
+        let d = S.tiltW - tiltG;
+        while (d > 180) d -= 360;
+        while (d < -180) d += 360;
+        S.diff = d;
+        // La mayor separación durante el giro: al volver al centro un giroscopio malo también vuelve a cero.
+        S.maxDiff = Math.max(S.maxDiff || 0, Math.abs(d));
+        S.swing = Math.max(S.swing, Math.abs(tiltG - S.tilt0));
+      }
+    }
+    S.last = now;
+  }
+  function sensorFix(pos) {
+    const S = sensor;
+    if (!S) return;
+    const now = Date.now();
+    S.fixes.push(now);
+    while (S.fixes.length && now - S.fixes[0] > 10000) S.fixes.shift();
+    const c = pos.coords;
+    S.acc = c.accuracy;
+    S.lag = now - pos.timestamp;
+    if (c.speed !== null && c.speed >= 0) {
+      S.speed = c.speed;
+      S.speedFrom = "gps";
+    } else if (S.prevPos) {
+      const [x0, y0] = T.toLocal(S.prevPos.lat, S.prevPos.lon);
+      const [x1, y1] = T.toLocal(c.latitude, c.longitude);
+      S.speed =
+        Math.hypot(x1 - x0, y1 - y0) /
+        Math.max(0.2, (pos.timestamp - S.prevPos.t) / 1000);
+      S.speedFrom = "posiciones";
+    }
+    S.prevPos = { lat: c.latitude, lon: c.longitude, t: pos.timestamp };
+    S.gpsErr = "";
+  }
+  function sensorZero() {
+    if (!sensor) return;
+    sensor.tiltW = Number.isFinite(sensor.tiltG) ? sensor.tiltG : null;
+    sensor.tilt0 = Number.isFinite(sensor.tiltG) ? sensor.tiltG : 0;
+    sensor.swing = 0;
+    sensor.diff = 0;
+    sensor.maxDiff = 0;
+  }
+  function note(id, text, cls) {
+    setText(id, text);
+    setCls(id, "muted" + (cls ? " " + cls : ""));
+  }
+  function renderSensors() {
+    const S = sensor;
+    if (!S) return;
+    const side = (deg) =>
+      Math.abs(deg) < 1
+        ? "0°"
+        : fmt(Math.abs(deg), 0) + "° " + (deg > 0 ? "izq." : "der.");
+    setText("sen-tilt-g", Number.isFinite(S.tiltG) ? side(S.tiltG) : "—");
+    setText(
+      "sen-tilt-w",
+      S.hasGyro && S.tiltW !== null ? side(((S.tiltW + 540) % 360) - 180) : "—",
+    );
+    setText(
+      "sen-pitch",
+      Number.isFinite(S.pitch) ? fmt(S.pitch, 0) + "°" : "—",
+    );
+    $("sen-level").style.transform =
+      "rotate(" + (Number.isFinite(S.tiltG) ? S.tiltG : 0) + "deg)";
+    if (S.motionDenied)
+      note(
+        "sen-tilt-note",
+        "Sin permiso para los sensores de movimiento.",
+        "note-bad",
+      );
+    else if (!S.grav) note("sen-tilt-note", "Esperando a los sensores…");
+    else if (!Number.isFinite(S.tiltG))
+      note(
+        "sen-tilt-note",
+        "El móvil está tumbado: ponlo de pie (vertical) para medir el giro.",
+      );
+    else if (!S.hasGyro)
+      note(
+        "sen-tilt-note",
+        "Este móvil no tiene giroscopio: no habrá inclinación en la moto.",
+        "note-bad",
+      );
+    else if (S.swing > 30 && S.maxDiff > 8)
+      note(
+        "sen-tilt-note",
+        "El giroscopio se separa de la gravedad (hasta " +
+          fmt(S.maxDiff, 0) +
+          "°): puede ser un giroscopio poco fiable.",
+        "note-bad",
+      );
+    else if (S.swing > 30)
+      note(
+        "sen-tilt-note",
+        "Giroscopio y gravedad van juntos: bien." +
+          (S.axes.checked
+            ? " Ejes comprobados (" +
+              fmt(S.axes.r2 * 100, 0) +
+              " % de acuerdo)."
+            : ""),
+        "note-ok",
+      );
+    else
+      note(
+        "sen-tilt-note",
+        "Gíralo como un volante, a un lado y a otro, unos 45°.",
+      );
+    // GPS
+    const hz =
+      S.fixes.length > 1
+        ? (S.fixes.length - 1) /
+          ((S.fixes[S.fixes.length - 1] - S.fixes[0]) / 1000)
+        : null;
+    setText(
+      "sen-speed",
+      Number.isFinite(S.speed) ? fmt(S.speed * 3.6, 0) + " km/h" : "—",
+    );
+    setText(
+      "sen-acc",
+      Number.isFinite(S.acc) ? "±" + fmt(S.acc, 0) + " m" : "—",
+    );
+    setText("sen-hz", hz ? fmt(hz, 1) : "—");
+    setText(
+      "sen-lag",
+      Number.isFinite(S.lag) ? fmt(S.lag / 1000, 1) + " s" : "—",
+    );
+    const fresh =
+      S.fixes.length && Date.now() - S.fixes[S.fixes.length - 1] < 3000;
+    if (S.gpsErr) note("sen-gps-note", S.gpsErr, "note-bad");
+    else if (!S.fixes.length)
+      note("sen-gps-note", "Buscando señal… (mejor al aire libre)");
+    else if (!fresh)
+      note("sen-gps-note", "Se ha perdido la señal.", "note-bad");
+    else if (S.acc > 15)
+      note(
+        "sen-gps-note",
+        "Precisión baja: al aire libre y lejos de edificios mejora.",
+        "note-bad",
+      );
+    else if (Date.now() - S.started > 10000 && (hz === null || hz < 0.8))
+      // En casa o bajo techo el móvil da una posición cada varios segundos (medido: cada 5–6 s en un Pixel 10 Pro).
+      note(
+        "sen-gps-note",
+        "Menos de una posición por segundo" +
+          (S.acc > 10 ? " (bajo techo es normal: prueba al aire libre)" : "") +
+          ". Al aire libre, si sigue igual, activa «Forzar mediciones GNSS completas» en Opciones para desarrolladores.",
+        "note-bad",
+      );
+    else
+      note(
+        "sen-gps-note",
+        S.speedFrom === "posiciones"
+          ? "Este GPS no da la velocidad: la calculo con las posiciones (menos fina)."
+          : "GPS bien.",
+        S.speedFrom === "posiciones" ? "" : "note-ok",
+      );
+    // Movimiento
+    const mhz =
+      S.times.length > 1
+        ? (S.times.length - 1) /
+          ((S.times[S.times.length - 1] - S.times[0]) / 1000)
+        : null;
+    setText("sen-mhz", mhz ? fmt(mhz, 0) : "—");
+    setText(
+      "sen-g",
+      S.lin ? fmt(Math.hypot(S.lin[0], S.lin[1], S.lin[2]) / G, 2) + " g" : "—",
+    );
+    setText(
+      "sen-rot",
+      S.hasGyro && Number.isFinite(S.rot) ? fmt(S.rot, 0) + " °/s" : "—",
+    );
+    if (!S.grav) note("sen-imu-note", "");
+    else if (mhz !== null && mhz < 30)
+      note(
+        "sen-imu-note",
+        "Pocas lecturas por segundo (" +
+          fmt(mhz, 0) +
+          "): la frenada y la inclinación saldrán más bastas.",
+        "note-bad",
+      );
+    else if (!S.lin)
+      note(
+        "sen-imu-note",
+        "Sin aceleración separada de la gravedad: la calculo con un filtro (menos fina).",
+      );
+    else note("sen-imu-note", "Sensores bien.", "note-ok");
+  }
+  async function startSensors() {
+    const motionOk = await askMotion();
+    sensor = {
+      times: [],
+      fixes: [],
+      grav: null,
+      lin: null,
+      tiltG: NaN,
+      tiltW: null,
+      tilt0: 0,
+      swing: 0,
+      diff: 0,
+      pitch: NaN,
+      rot: NaN,
+      hasGyro: false,
+      last: null,
+      speed: NaN,
+      speedFrom: "",
+      acc: NaN,
+      lag: NaN,
+      prevPos: null,
+      gpsErr: "",
+      started: Date.now(),
+      motionDenied: !motionOk,
+      axes: new T.GyroAxes(axesPrior()),
+    };
+    show("sensores");
+    window.addEventListener("devicemotion", sensorMotion);
+    if ("geolocation" in navigator)
+      sensor.watch = navigator.geolocation.watchPosition(
+        sensorFix,
+        (err) => {
+          if (sensor)
+            sensor.gpsErr =
+              err.code === 1
+                ? "Sin permiso de ubicación: actívalo para esta web en los ajustes de Chrome."
+                : "GPS sin señal todavía…";
+        },
+        { enableHighAccuracy: true, maximumAge: 0, timeout: 15000 },
+      );
+    else sensor.gpsErr = "Este navegador no da acceso al GPS.";
+    sensor.timer = setInterval(renderSensors, 100);
+    keepAwake();
+  }
+  function stopSensors() {
+    if (!sensor) return;
+    window.removeEventListener("devicemotion", sensorMotion);
+    if (sensor.watch !== undefined)
+      navigator.geolocation.clearWatch(sensor.watch);
+    clearInterval(sensor.timer);
+    sensor = null;
+    if (!E && wakeLock) {
+      wakeLock.release().catch(() => {});
+      wakeLock = null;
+    }
+    show("home");
+    renderHome();
   }
 
   // ---------- tiempos del día (todos los pilotos del garaje) ----------
@@ -1496,10 +1803,12 @@
       grav = E.lp.slice();
       lin = [g.x - grav[0], g.y - grav[1], g.z - grav[2]];
     }
+    // Giro tal cual lo da el navegador (alpha, beta, gamma en °/s → rad/s); a qué eje corresponde cada uno lo
+    // decide E.axes comprobándolo con la gravedad.
     const DEG = Math.PI / 180;
     const gyro =
       r && r.alpha !== null
-        ? [r.beta * DEG, r.gamma * DEG, r.alpha * DEG]
+        ? [r.alpha * DEG, r.beta * DEG, r.gamma * DEG]
         : [0, 0, 0];
     onMotion(t, lin, grav, gyro);
   }
@@ -1815,6 +2124,9 @@
   function wire() {
     $("go").addEventListener("click", startReal);
     $("sim").addEventListener("click", () => startSim(1));
+    $("sensors").addEventListener("click", startSensors);
+    $("sen-back").addEventListener("click", stopSensors);
+    $("sen-zero").addEventListener("click", sensorZero);
     $("stop").addEventListener("click", () => {
       if (E && E.lapNum > 0) enterPits();
       else stopAll();
