@@ -1221,6 +1221,7 @@
   // frente) y la misma integrando el giroscopio alrededor de z: si no van juntas, el giroscopio no sirve.
   let sensor = null;
   function sensorMotion(ev) {
+    markMotion(ev);
     const S = sensor;
     if (!S) return;
     const now = performance.now();
@@ -1318,12 +1319,7 @@
     );
     $("sen-level").style.transform =
       "rotate(" + (Number.isFinite(S.tiltG) ? S.tiltG : 0) + "deg)";
-    if (S.motionDenied)
-      note(
-        "sen-tilt-note",
-        "Sin permiso para los sensores de movimiento.",
-        "note-bad",
-      );
+    if (S.motionDenied) note("sen-tilt-note", sensorBlockText(), "note-bad");
     else if (!S.grav) note("sen-tilt-note", "Esperando a los sensores…");
     else if (!Number.isFinite(S.tiltG))
       note(
@@ -1469,6 +1465,9 @@
       motionDenied: !motionOk,
       axes: new T.GyroAxes(axesPrior()),
     };
+    sensorsBlocked().then((b) => {
+      if (b && sensor) sensor.motionDenied = true;
+    });
     show("sensores");
     window.addEventListener("devicemotion", sensorMotion);
     if ("geolocation" in navigator)
@@ -1719,7 +1718,9 @@
       }
       E.prevCueS = p.s;
     }
-    dash.className = "dash " + cls;
+    dash.className =
+      "dash" + (E.replay ? " replay" : "") + (cls ? " " + cls : "");
+    if (E.replay) render3D(t);
     if (deltaEl.firstChild.nodeValue !== main)
       deltaEl.firstChild.nodeValue = main;
     $("d-delta-sub").textContent = sub;
@@ -2219,7 +2220,85 @@
     sim.last = null;
     sim.speed = speedFactor || 1;
     if (opts && opts.grabar) recStart(Date.now());
+    // La vuelta de ejemplo se ve en 3D (casco, detrás o arriba) con todas las métricas del panel.
+    E.replay = !E.free && !(opts && opts.no3d);
+    $("d-3d").hidden = !E.replay;
+    $("d-speedx").textContent = "×" + sim.speed;
+    if (E.replay) prepare3D();
     show(E.free ? "ruta" : "dash");
+  }
+
+  // ---------- vuelta de ejemplo en 3D ----------
+  const loaded = {};
+  function loadScript(src) {
+    if (!loaded[src])
+      loaded[src] = new Promise((res, rej) => {
+        const s = document.createElement("script");
+        s.src = src;
+        s.onload = res;
+        s.onerror = () => {
+          delete loaded[src];
+          rej(new Error("no se ha podido cargar " + src));
+        };
+        document.head.appendChild(s);
+      });
+    return loaded[src];
+  }
+  let view3d = null;
+  let view3dCam = "casco";
+  async function prepare3D() {
+    setText("d-3d-wait", "Cargando el circuito en 3D…");
+    $("d-3d-wait").hidden = false;
+    try {
+      await loadScript("three.min.js");
+      await loadScript("vista3d.js");
+    } catch (e) {
+      setText(
+        "d-3d-wait",
+        "No se ha podido cargar la vista 3D (sin conexión la primera vez).",
+      );
+    }
+  }
+  // Se crea cuando ya se sabe el sentido de marcha (el trazado depende de él) y se pinta en cada fotograma.
+  function render3D(t) {
+    if (!window.MaspaVista3D || !E.track) return;
+    if (view3d && view3d.failed) return;
+    if (!view3d || view3d.track !== E.track) {
+      if (view3d) view3d.v.dispose();
+      view3d = null;
+      const v = window.MaspaVista3D.create($("d-3d"), E.track, {
+        corners: E.corners,
+        bounds: E.bounds,
+      });
+      if (!v) {
+        // Un solo intento: sin WebGL no se vuelve a probar en cada fotograma.
+        view3d = { failed: true };
+        setText("d-3d-wait", "Este móvil no puede dibujar en 3D.");
+        return;
+      }
+      v.setMode(view3dCam);
+      view3d = { v, track: E.track, brakes: null, last: null };
+      $("d-3d-wait").hidden = true;
+    }
+    const brakes = E.best ? E.best.brakeS : null;
+    if (view3d.brakes !== brakes) {
+      view3d.v.setBrakes(brakes || []);
+      view3d.brakes = brakes;
+    }
+    const p = E.fix && E.fix.on ? predicted(t) : null;
+    if (!p) return;
+    const nowMs = performance.now();
+    const dt =
+      view3d.last === null
+        ? 0.016
+        : Math.min(0.1, (nowMs - view3d.last) / 1000);
+    view3d.last = nowMs;
+    view3d.v.update({ s: p.s, lean: E.leanDeg, v: p.v }, dt);
+  }
+  function close3D() {
+    if (view3d && view3d.v) view3d.v.dispose();
+    view3d = null;
+    $("d-3d").hidden = true;
   }
 
   // ---------- en pista de verdad ----------
@@ -2248,6 +2327,7 @@
   }
 
   function onMotionEvent(ev) {
+    markMotion(ev);
     if (!E || E.sim) return;
     const t = (performance.timeOrigin + ev.timeStamp) / 1000 - E.t0;
     const g = ev.accelerationIncludingGravity;
@@ -2277,6 +2357,46 @@
     onMotion(t, lin, grav, gyro);
   }
 
+  // Navegadores que bloquean los sensores de movimiento (Brave lo hace por defecto, contra el rastreo; medido
+  // en un Pixel 10 Pro: acelerómetro y giroscopio «denied» y un solo evento vacío). Se detecta y se dice qué hacer.
+  function isBrave() {
+    return !!(navigator.brave && navigator.brave.isBrave);
+  }
+  function sensorBlockText() {
+    return isBrave()
+      ? "Brave bloquea los sensores de movimiento (inclinación, g y caballitos). Ábrela en Chrome (recomendado) o, en Brave: Ajustes → Configuración de sitios → Sensores de movimiento → Permitir, y vuelve a abrirla."
+      : "El navegador bloquea los sensores de movimiento (inclinación, g y caballitos): permítelos en los ajustes de este sitio y vuelve a abrirla.";
+  }
+  // Lo que manda son los datos: con el permiso «denied» hay navegadores que siguen enviándolos.
+  // Bloqueado = permiso negado y ningún dato de movimiento en 1,5 s.
+  let motionSeen = false;
+  function markMotion(e) {
+    const a = e && e.accelerationIncludingGravity;
+    if (a && a.x !== null && a.x !== undefined) motionSeen = true;
+  }
+  async function sensorsBlocked() {
+    if (motionSeen) return false;
+    let denied = false;
+    try {
+      const st = await navigator.permissions.query({ name: "accelerometer" });
+      denied = st.state === "denied";
+    } catch (e) {
+      denied = false;
+    }
+    if (!denied) return false;
+    window.addEventListener("devicemotion", markMotion);
+    await new Promise((r) => setTimeout(r, 1500));
+    window.removeEventListener("devicemotion", markMotion);
+    return !motionSeen;
+  }
+  async function checkSensorBlock() {
+    const blocked = await sensorsBlocked();
+    const el = $("sensor-block");
+    el.hidden = !blocked;
+    if (blocked) el.textContent = sensorBlockText();
+    return blocked;
+  }
+
   // iPhone: los sensores de movimiento piden permiso, y solo se puede pedir justo al tocar un botón
   // (antes de cualquier otra espera). En Android no hace falta.
   async function askMotion() {
@@ -2299,6 +2419,9 @@
     E = newEngine(false, free === true);
     E.t0 = Date.now() / 1000;
     E.motionDenied = !motionOk;
+    sensorsBlocked().then((b) => {
+      if (b && E) E.motionDenied = true;
+    });
     recStart(Math.round(E.t0 * 1000));
     if (ST) ST.persist();
     try {
@@ -2366,6 +2489,7 @@
     }
     if (document.fullscreenElement && document.exitFullscreen)
       document.exitFullscreen().catch(() => {});
+    close3D();
     lastE = E;
     E = null;
     // Al terminar una ruta libre, su resumen con el mapa entero.
@@ -2438,6 +2562,7 @@
 
   // ---------- inicio ----------
   function renderHome() {
+    checkSensorBlock();
     let any = false;
     const parts = ["osm", "rev"].map((dir) => {
       const b = load(bestKey(dir), null);
@@ -2659,6 +2784,18 @@
     });
     $("ruf-export").addEventListener("click", () => exportSession(lastE));
     $("sim").addEventListener("click", () => startSim(1));
+    // Cámaras y velocidad de la vuelta de ejemplo en 3D.
+    for (const b of document.querySelectorAll(".v3d-ctl [data-cam]"))
+      b.addEventListener("click", () => {
+        view3dCam = b.dataset.cam;
+        for (const x of document.querySelectorAll(".v3d-ctl [data-cam]"))
+          x.setAttribute("aria-pressed", String(x === b));
+        if (view3d && view3d.v) view3d.v.setMode(view3dCam);
+      });
+    $("d-speedx").addEventListener("click", () => {
+      sim.speed = sim.speed >= 4 ? 1 : sim.speed * 2;
+      $("d-speedx").textContent = "×" + sim.speed;
+    });
     $("sensors").addEventListener("click", startSensors);
     $("sen-back").addEventListener("click", stopSensors);
     $("sen-zero").addEventListener("click", sensorZero);
@@ -2821,6 +2958,9 @@
     sim,
     onMotion: (...a) => onMotion(...a),
     onFix: (...a) => onFix(...a),
+    get view3d() {
+      return view3d && view3d.v;
+    },
   };
   wire();
   if (ST) {

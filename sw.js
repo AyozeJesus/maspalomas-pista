@@ -1,6 +1,6 @@
 // Funciona sin cobertura en el circuito: la página se guarda en el móvil la primera vez que se abre.
 // La página principal se pide primero a la red (para recibir las actualizaciones) y, si no hay red, sale de la copia.
-const CACHE = "pista-v10";
+const CACHE = "pista-v11";
 const FILES = [
   "./",
   "index.html",
@@ -10,6 +10,8 @@ const FILES = [
   "comparativa.js",
   "mapa.js",
   "recorrido.js",
+  "vista3d.js",
+  "three.min.js",
   "telemetry.js",
   "analysis.js",
   "sim.js",

@@ -15,7 +15,10 @@ abierto, se sube sola a tu Mac.
 3. «Salir a pista» y acepta el permiso de ubicación. La pantalla se queda encendida mientras la página esté abierta.
 4. Al parar en boxes la pantalla cambia sola al análisis.
 
-«Probar con el simulador» reproduce una tanda de ejemplo generada con el modelo, sin salir de casa (no se guarda).
+«Ver una vuelta de ejemplo» reproduce una tanda generada con el modelo, sin salir de casa (no se guarda), con el
+circuito en 3D (`vista3d.js` sobre three.js r128): desde el casco, desde detrás de la moto o desde arriba, a ×1, ×2
+o ×4, con los carteles de frenada de la mejor vuelta y el mismo panel de métricas que en pista. Si el móvil no puede
+dibujar en 3D, lo dice y el panel sigue igual.
 
 ## Qué mide el móvil
 
@@ -70,7 +73,8 @@ con la misma: la que usen más pilotos o, si empatan, la puesta a mano.
 
 Funciona en Android (Chrome) y en iPhone (Safari: al salir a pista pide permiso para los sensores de movimiento;
 sin él, solo hay GPS). Si un móvil da los sensores con el signo al revés, el lado de la inclinación se corrige
-solo con el rumbo del GPS.
+solo con el rumbo del GPS. Brave bloquea los sensores de movimiento por defecto: la portada lo avisa (permiso
+negado y ningún dato en 1,5 s) y dice cómo permitirlos; lo más sencillo es abrirla en Chrome.
 
 ## Privacidad y seguridad
 

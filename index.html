@@ -257,6 +257,18 @@
   .recap-g i { font-style: normal; font-size: min(3.4vw, 2.4vh); font-weight: 800; min-height: 1.2em; }
   .up { color: #6df29b; }
   .down { color: #ffaaa1; }
+  /* Vuelta de ejemplo en 3D: la vista ocupa el sitio del delta y el delta va encima, con color en vez de fondo. */
+  .v3d { grid-row: 2; grid-column: 1; position: relative; min-height: 0; margin: 4px max(10px, env(safe-area-inset-right)) 6px max(10px, env(safe-area-inset-left)); border-radius: var(--r-lg); overflow: hidden; background: #bcd7ea; }
+  .v3d-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+  .v3d-wait { position: absolute; inset: 0; display: grid; place-items: center; margin: 0; color: #15191c; font-weight: 700; }
+  .v3d-ctl { position: absolute; right: 8px; bottom: 8px; display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+  .v3d-ctl button { min-height: 40px; padding: 6px 10px; font-size: 14px; background: rgba(5, 6, 7, 0.72); border-color: rgba(255, 255, 255, 0.3); }
+  .v3d-ctl button[aria-pressed="true"] { background: var(--primary); border-color: var(--primary); }
+  .dash.replay, .dash.replay.good, .dash.replay.bad { background: #000; }
+  .dash.replay .delta { grid-row: 2; grid-column: 1; align-self: start; z-index: 2; pointer-events: none; padding-top: 10px; font-size: min(17vw, 15vh); text-shadow: 0 2px 10px rgba(0, 0, 0, 0.75); }
+  .dash.replay.good .delta { color: #6df29b; }
+  .dash.replay.bad .delta { color: #ff9a8f; }
+  .dash.replay .delta small { color: #fff; }
   /* Mapa del circuito en el panel y aviso de caballito. */
   .mini-map { display: block; width: 100%; height: 17vh; border-radius: var(--r-md); background: rgba(0, 0, 0, 0.42); border: 1px solid rgba(255, 255, 255, 0.14); }
   .wh { background: rgba(123, 63, 196, 0.85); border-radius: var(--r-md); padding: 6px 12px; font-weight: 800; font-size: min(4.4vw, 3.2vh); text-align: center; }
@@ -316,6 +328,7 @@
       <div><span class="dot" id="st-imu"></span><span id="st-imu-t">Pantalla y sensores: se activarán al salir</span></div>
       <div><span class="dot" id="st-best"></span><span id="st-best-t">Mejor vuelta guardada: ninguna</span></div>
     </div>
+    <p class="warnbox" id="sensor-block" hidden></p>
     <div class="start">
       <button class="primary" id="go">Salir a pista</button>
       <button id="free">Ruta libre (cualquier carretera)</button>
@@ -379,6 +392,15 @@
       <span class="num" id="d-lap">Vuelta —</span>
       <button class="stop" id="stop">Boxes</button>
       <span class="gps"><span class="dot" id="d-gps"></span><span class="num" id="d-speed">0</span><small class="unit">km/h</small></span>
+    </div>
+    <div class="v3d" id="d-3d" hidden>
+      <p class="v3d-wait" id="d-3d-wait">Cargando el circuito en 3D…</p>
+      <div class="v3d-ctl" role="group" aria-label="Cámara">
+        <button data-cam="casco" aria-pressed="true">Casco</button>
+        <button data-cam="detras" aria-pressed="false">Detrás</button>
+        <button data-cam="arriba" aria-pressed="false">Arriba</button>
+        <button id="d-speedx" aria-label="Velocidad de la vuelta de ejemplo">×1</button>
+      </div>
     </div>
     <div class="delta num" id="d-delta">—<small id="d-delta-sub">esperando meta</small></div>
     <div class="dash-bottom">
