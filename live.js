@@ -350,6 +350,8 @@
         const fix = { t, x, y, v, s: null, i: null, on: false };
         calibPair(E.fix, fix);
         E.fix = fix;
+        // Lejos del circuito (prueba en coche o por la calle): el panel lo dice en vez de «buscando la pista».
+        E.far = T.nearestOn(GEO.main, x, y, 0, GEO.main.length - 1).dist > 300;
         pitsCheck(t, v, false);
         return;
       }
@@ -616,7 +618,13 @@
       }
       c.count++;
       if (c.count >= 30 && c.count % 10 === 0 && c.upN > 50) {
-        const w = solve3(c.M, c.y);
+        // Un poco de regularización: con el móvil horizontal un eje apenas recibe aceleración y la matriz
+        // queda casi singular (sin esto, no calibraría nunca).
+        const lam = 1e-3 * ((c.M[0][0] + c.M[1][1] + c.M[2][2]) / 3 || 1);
+        const Mr = c.M.map((row, r) =>
+          row.map((x, k) => x + (r === k ? lam : 0)),
+        );
+        const w = solve3(Mr, c.y);
         if (w) {
           const u = norm3(c.upSN >= 100 ? c.upS : c.up);
           const wu = dot3(w, u);
@@ -1563,7 +1571,9 @@
       ? "Vuelta " + E.lapNum
       : E.track
         ? "Hacia meta"
-        : "Buscando la pista";
+        : E.far
+          ? "Fuera del circuito"
+          : "Buscando la pista";
     const dash = $("dash");
     let cls = "";
     const deltaEl = $("d-delta");
@@ -1572,7 +1582,9 @@
       ? E.lapStart === null
         ? "esperando meta"
         : "primera vuelta: sin referencia"
-      : "detectando el sentido de marcha";
+      : E.far
+        ? "Sin tiempos fuera del circuito · velocidad, g e inclinación sí (se calibran en marcha)"
+        : "detectando el sentido de marcha";
     if (p && E.lapStart !== null && E.best) {
       const d = t - E.lapStart - gridAt(E.best.grid, p.s);
       E.deltaEma =
@@ -1847,6 +1859,17 @@
     } catch (e) {
       /* pantalla completa opcional */
     }
+    // La orientación con la que se sale se queda fija: al tumbar en curva, el giro automático de Android
+    // podría cambiar el panel de vertical a horizontal a mitad de curva. Los sensores no dependen de esto.
+    E.orientLock = null;
+    try {
+      if (screen.orientation && screen.orientation.lock) {
+        await screen.orientation.lock(screen.orientation.type);
+        E.orientLock = screen.orientation.type;
+      }
+    } catch (e) {
+      /* sin pantalla completa o navegador sin bloqueo: queda el giro automático */
+    }
     await keepAwake();
     window.addEventListener("devicemotion", onMotionEvent);
     watchId = navigator.geolocation.watchPosition(
@@ -1885,6 +1908,12 @@
     window.removeEventListener("devicemotion", onMotionEvent);
     if (wakeLock) wakeLock.release().catch(() => {});
     wakeLock = null;
+    try {
+      if (screen.orientation && screen.orientation.unlock)
+        screen.orientation.unlock();
+    } catch (e) {
+      /* nada que desbloquear */
+    }
     if (document.fullscreenElement && document.exitFullscreen)
       document.exitFullscreen().catch(() => {});
     lastE = E;
