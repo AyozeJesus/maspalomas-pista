@@ -29,6 +29,13 @@ dibujar en 3D, lo dice y el panel sigue igual.
   gravedad (que en un giro equilibrado apunta al suelo de la moto). En curvas rápidas se ayuda de la velocidad.
 - **Resumen de cada curva** (se ve en la recta siguiente): tiempo ganado o perdido en esa curva, inclinación
   máxima, frenada máxima en g, velocidad mínima y punto de frenada, comparados con tu mejor vuelta.
+- **Frenadas**: de cada una, el pico y la media en g, la «mordida» (lo que tardas en llegar al 80 % del pico),
+  metros, velocidad de entrada y salida, cuánto baja el morro (cabeceo desde justo antes de frenar, en grados y
+  ≈ mm de horquilla: batalla × tan(cabeceo) × 0,8, una estimación para comparar) y cuánto frenas tumbado (metros
+  con más de 0,25 g y más de 12°, y la inclinación a la que sueltas). Cuenta como frenada lo que pasa de 0,3 g
+  durante 0,4 s; soltar gas no. Sale en el resumen de cada curva, en boxes («Frenadas por curva», lo mejor de la
+  tanda) y en el resumen de la ruta libre. El móvil mide la deceleración total (frenos, freno motor y aire): no
+  separa delante de detrás ni mide la presión de la maneta.
 
 ## Ruta libre (cualquier carretera)
 

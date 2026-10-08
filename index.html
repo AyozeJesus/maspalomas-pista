@@ -255,6 +255,8 @@
   .recap-g small { font-size: min(3.1vw, 2.2vh); font-weight: 700; opacity: 0.82; }
   .recap-g b { font-size: min(6vw, 4.2vh); font-weight: 900; line-height: 1.1; white-space: nowrap; }
   .recap-g i { font-style: normal; font-size: min(3.4vw, 2.4vh); font-weight: 800; min-height: 1.2em; }
+  /* Cómo fue la frenada de esa curva: mordida, hundimiento y frenada tumbado. */
+  .recap-b { margin: 0; padding-top: 4px; border-top: 1px solid rgba(255, 255, 255, 0.14); font-size: min(3.5vw, 2.4vh); font-weight: 700; text-align: center; opacity: 0.92; }
   .up { color: #6df29b; }
   .down { color: #ffaaa1; }
   /* Vuelta de ejemplo en 3D: la vista ocupa el sitio del delta y el delta va encima, con color en vez de fondo. */
@@ -418,6 +420,7 @@
           <div><small>Mínima</small><b class="num" id="r-v">—</b><i class="num" id="r-v-d"></i></div>
           <div><small>Frenas</small><b class="num" id="r-bp">—</b><i>vs mejor</i></div>
         </div>
+        <p class="recap-b num" id="r-brk" hidden></p>
       </div>
       <div class="laptime"><b class="num" id="d-time">0:00,0</b><span class="num" id="d-info">Mejor —<br>Última —</span></div>
       <div class="sectors" id="d-sectors"><div>S1</div><div>S2</div><div>S3</div><div>S4</div></div>
@@ -455,6 +458,7 @@
           <div><small>Entra → mín.</small><b class="num" id="ru-c-v">—</b></div>
           <div><small>Sin gas</small><b class="num" id="ru-c-dead">—</b></div>
         </div>
+        <p class="recap-b num" id="ru-brk" hidden></p>
       </div>
       <div class="wh" id="ru-wh" hidden></div>
       <div class="ride-stats num"><span id="rs-dist">0,0 km</span><span id="rs-time">0:00</span><span id="rs-lean">máx —</span><span id="rs-top">punta —</span></div>
@@ -475,6 +479,9 @@
     <section class="card" aria-labelledby="ruf-sum-h"><h2 id="ruf-sum-h">Resumen</h2><div class="readouts" id="ruf-stats"></div></section>
     <section class="card" aria-labelledby="ruf-c-h"><h2 id="ruf-c-h">Curvas</h2><p class="muted" id="ruf-c-note"></p>
       <div class="cmp-wrap"><table class="cmp-table"><thead><tr><th>Curva</th><th class="num">Tumb.</th><th class="num">Entra→mín</th><th class="num">Freno</th><th class="num">Sin gas</th></tr></thead><tbody id="ruf-curves"></tbody></table></div>
+    </section>
+    <section class="card" aria-labelledby="ruf-b-h" id="ruf-b"><h2 id="ruf-b-h">Frenadas</h2><p class="muted" id="ruf-b-note"></p>
+      <div class="cmp-wrap"><table class="cmp-table"><thead><tr><th>#</th><th class="num">Pico</th><th class="num">Llega</th><th class="num">Entra→sale</th><th class="num">Hunde</th><th class="num">Tumbado</th></tr></thead><tbody id="ruf-brk"></tbody></table></div>
     </section>
     <section class="card" aria-labelledby="ruf-w-h" id="ruf-w"><h2 id="ruf-w-h">Caballitos</h2>
       <div class="cmp-wrap"><table class="cmp-table"><thead><tr><th>#</th><th class="num">Duración</th><th class="num">Metros</th><th class="num">Morro</th><th class="num">Desde</th><th class="num">≈ Perdido</th></tr></thead><tbody id="ruf-wh"></tbody></table></div>
@@ -499,6 +506,10 @@
         <table class="laps"><thead><tr><th>Vuelta</th><th>Tiempo</th><th>Δ mejor</th><th>Incl. máx</th><th>Punta</th></tr></thead><tbody id="p-laps"></tbody></table>
       </div>
       <p class="muted num" id="p-ideal"></p>
+    </section>
+    <section class="card" aria-labelledby="p-brk-h" id="p-brk-card" hidden><h2 id="p-brk-h">Frenadas por curva</h2>
+      <div class="cmp-wrap"><table class="cmp-table"><thead><tr><th>Curva</th><th class="num">Pico</th><th class="num">Llega</th><th class="num">Hunde</th><th class="num">Tumbado</th></tr></thead><tbody id="p-brk"></tbody></table></div>
+      <p class="muted" id="p-brk-note"></p>
     </section>
     <section class="card" aria-labelledby="next-h"><h2 id="next-h">Para la próxima vuelta</h2><ol class="tips" id="p-tips"></ol></section>
     <div class="actions">

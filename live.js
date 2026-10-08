@@ -611,6 +611,7 @@
             gMax: c.gMax,
             vMin: c.vMin,
             brakeS: c.brakeS,
+            brk: c.brk,
             time: c.time,
           }
         : null;
@@ -825,6 +826,34 @@
     return best;
   }
 
+  // Lo que se guarda y se enseña de una frenada.
+  function brakeBrief(b) {
+    return {
+      peak: b.peak,
+      bite: b.bite,
+      dist: b.dist,
+      dive: b.dive,
+      diveMm: b.diveMm,
+      trail: b.trail,
+      leanMax: b.leanMax,
+    };
+  }
+  // «Llega 0,35 s · hunde 4,1° ≈95 mm · tumbado 14 m (22°)» (lo que se sepa).
+  function brakeLine(b) {
+    if (!b) return "";
+    const parts = ["Llega " + fmt(b.bite, 2) + " s"];
+    if (b.dive !== null && b.dive !== undefined)
+      parts.push("hunde " + fmtDive(b));
+    if (b.trail > 0)
+      parts.push(
+        "tumbado " +
+          b.trail +
+          " m" +
+          (b.leanMax ? " (" + fmt(b.leanMax, 0) + "°)" : ""),
+      );
+    return parts.join(" · ");
+  }
+
   function cornerTrack(t, p) {
     if (!p || E.lapStart === null || !E.bounds) return;
     const L = E.track.L;
@@ -868,6 +897,10 @@
     if (r > rel(corner.sApex) - 60) w.vMin = Math.min(w.vMin, p.v);
     if (r < exitRel) return;
     w.done = true;
+    // La frenada de esta curva: la más fuerte de las que empiezan dentro de su tramo.
+    let brk = null;
+    for (const b of E.route.brakes)
+      if (b.t >= w.t0 && b.t <= t && (!brk || b.peak > brk.peak)) brk = b;
     const res = {
       k,
       num: corner.num,
@@ -876,6 +909,7 @@
       gMax: w.gMax !== null ? Math.round(w.gMax * 100) / 100 : null,
       vMin: isFinite(w.vMin) ? Math.round(w.vMin * 36) / 10 : null,
       brakeS: w.brakeS !== null ? Math.round(w.brakeS) : null,
+      brk: brk ? brakeBrief(brk) : null,
       time: Math.round((t - w.t0) * 1000) / 1000,
       dt: null,
       ref: null,
@@ -921,8 +955,60 @@
     };
   }
 
+  // Frenadas por curva en la tanda: el pico más alto, la mordida más rápida, el mayor hundimiento y lo más
+  // que se ha frenado tumbado, de todas las vueltas.
+  function pitsBrakes() {
+    const rows = E.bounds
+      ? E.bounds.map((_, k) => {
+          const bs = E.laps
+            .map((l) => l.corners && l.corners[k] && l.corners[k].brk)
+            .filter(Boolean);
+          if (!bs.length) return null;
+          const c = E.cornerBySector[k];
+          const top = (key, better) =>
+            bs.reduce(
+              (best, b) =>
+                b[key] !== null &&
+                b[key] !== undefined &&
+                (best === null || better(b[key], best[key]))
+                  ? b
+                  : best,
+              null,
+            );
+          return {
+            name: "C" + c.num,
+            peak: top("peak", (a, b) => a > b),
+            bite: top("bite", (a, b) => a < b),
+            dive: top("dive", (a, b) => a > b),
+            trail: top("trail", (a, b) => a > b),
+            n: bs.length,
+          };
+        })
+      : [];
+    const tb = $("p-brk");
+    tb.textContent = "";
+    const list = rows.filter(Boolean);
+    $("p-brk-card").hidden = !list.length;
+    for (const r of list)
+      tb.appendChild(
+        tableRow([
+          r.name,
+          fmt(r.peak.peak, 2) + " g",
+          fmt(r.bite.bite, 2) + " s",
+          r.dive ? diveCell(r.dive) : "—",
+          trailCell(r.trail),
+        ]),
+      );
+    setText(
+      "p-brk-note",
+      "Lo mejor de cada curva en esta tanda. «Llega»: lo que tardas en llegar al 80 % del pico de frenada. «Hunde»: cuánto baja el morro (los mm son una estimación). «Tumbado»: metros frenando con más de 12° de inclinación.",
+    );
+  }
+
   function enterPits() {
     E.mode = "pits";
+    // El aviso de vuelta terminada solo se quita desde el panel: en boxes se quedaría tapándolo todo.
+    $("flash").hidden = true;
     show("pits");
     const valid = E.laps.filter((l) => l.valid);
     $("p-sub").textContent =
@@ -986,6 +1072,7 @@
       analysis && analysis.ideal
         ? "Vuelta ideal (tus mejores sectores): " + fmtLap(analysis.ideal)
         : "";
+    pitsBrakes();
     // Con el análisis completo, la mejor vuelta del resumen es la suya (más precisa que la del directo).
     if (bestT !== null)
       $("p-sub").textContent = $("p-sub").textContent.replace(
@@ -1834,6 +1921,9 @@
     }
     setText("r-bp", bp);
     setCls("r-bp", "num " + bpCls);
+    const bl = brakeLine(r.brk);
+    $("r-brk").hidden = !bl;
+    setText("r-brk", bl);
   }
 
   // ---------- mapas: circuito en el panel y ruta libre ----------
@@ -2012,6 +2102,9 @@
         "ru-c-dead",
         "num " + (c.dead > 1.5 ? "down" : c.dead < 0.6 ? "up" : ""),
       );
+      const bl = brakeLine(c.brk);
+      $("ru-brk").hidden = !bl;
+      setText("ru-brk", bl);
     }
     renderWheelie("ru-wh", t);
     const st = E.route.stats;
@@ -2038,6 +2131,61 @@
     }
     setText("ru-color", mapView.colorBy === "fase" ? "Fases" : "Incl.");
     setText("ru-fit", mapView.follow ? "Toda" : "Seguir");
+  }
+
+  // Fila de tabla: la primera celda es texto y el resto números. Una celda [valor, detalle] lleva el detalle
+  // debajo, en pequeño (para que la tabla quepa en vertical).
+  function tableRow(cells) {
+    const tr = document.createElement("tr");
+    cells.forEach((cell, k) => {
+      const td = document.createElement("td");
+      if (k) td.className = "num";
+      if (Array.isArray(cell)) {
+        td.textContent = cell[0];
+        if (cell[1]) {
+          const sm = document.createElement("small");
+          sm.textContent = cell[1];
+          td.appendChild(sm);
+        }
+      } else td.textContent = cell;
+      tr.appendChild(td);
+    });
+    return tr;
+  }
+  const hasDive = (b) => b.dive !== null && b.dive !== undefined;
+  const fmtDive = (b) =>
+    hasDive(b) ? fmt(b.dive, 1) + "° ≈" + b.diveMm + " mm" : "—";
+  const diveCell = (b) =>
+    hasDive(b) ? [fmt(b.dive, 1) + "°", "≈" + b.diveMm + " mm"] : "—";
+  const trailCell = (b) =>
+    b.trail > 0
+      ? [b.trail + " m", b.leanMax ? fmt(b.leanMax, 0) + "°" : ""]
+      : "—";
+
+  // Las frenadas de la ruta (las más fuertes primero).
+  function routeBrakes(s) {
+    const list = s.listaFrenadas || [];
+    $("ruf-b").hidden = !list.length;
+    setText(
+      "ruf-b-note",
+      (s.frenadas > list.length
+        ? "Las " + list.length + " más fuertes de " + s.frenadas + ". "
+        : "") +
+        "«Llega»: lo que tardas en llegar al 80 % del pico (más corto, más decidido). «Hunde»: cuánto baja el morro; los mm son una estimación.",
+    );
+    const tb = $("ruf-brk");
+    tb.textContent = "";
+    for (const b of list)
+      tb.appendChild(
+        tableRow([
+          String(b.num),
+          fmt(b.peak, 2) + " g",
+          fmt(b.bite, 2) + " s",
+          b.vIn + " → " + b.vOut,
+          diveCell(b),
+          trailCell(b),
+        ]),
+      );
   }
 
   // Resumen al terminar la ruta: mapa entero, totales, las curvas más tumbadas y los caballitos.
@@ -2090,6 +2238,23 @@
       s.inclIzquierda ? fmt(s.inclIzquierda, 0) + "°" : "—",
     );
     add("Frenada máx.", s.frenadaMax ? fmt(s.frenadaMax, 2) + " g" : "—");
+    add("Frenadas", String(s.frenadas || 0));
+    add(
+      "Mejor mordida",
+      s.mordidaMejor !== null && s.mordidaMejor !== undefined
+        ? fmt(s.mordidaMejor, 2) + " s"
+        : "—",
+    );
+    add(
+      "Hundimiento máx.",
+      s.hundimientoMax !== null && s.hundimientoMax !== undefined
+        ? fmt(s.hundimientoMax, 1) + "° ≈" + s.hundimientoMaxMm + " mm"
+        : "—",
+    );
+    add(
+      "Frenando tumbado",
+      s.frenadaTumbadoMax ? s.frenadaTumbadoMax + " m (máx.)" : "—",
+    );
     add(
       "Aceleración máx.",
       s.aceleracionMax ? fmt(s.aceleracionMax, 2) + " g" : "—",
@@ -2129,16 +2294,7 @@
     );
     const tb = $("ruf-curves");
     tb.textContent = "";
-    const row = (cells) => {
-      const tr = document.createElement("tr");
-      cells.forEach((txt, k) => {
-        const td = document.createElement("td");
-        if (k) td.className = "num";
-        td.textContent = txt;
-        tr.appendChild(td);
-      });
-      return tr;
-    };
+    const row = tableRow;
     for (const c of top)
       tb.appendChild(
         row([
@@ -2149,6 +2305,7 @@
           fmt(c.dead, 1) + " s",
         ]),
       );
+    routeBrakes(s);
     const wb = $("ruf-wh");
     wb.textContent = "";
     $("ruf-w").hidden = !r.wheelies.length;

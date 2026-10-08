@@ -11,6 +11,16 @@
   const YAW_IN = 0.15; // rad/s: giro claro → empieza una curva
   const YAW_OUT = 0.08; // rad/s: por debajo un rato → se acaba
   const STEP = 3; // m entre puntos de la trazada
+  // Frenada de verdad (no soltar gas): más de 0,3 g de pico, 0,4 s y entrando a más de 20 km/h.
+  const BRK_MIN_G = 0.3;
+  // Frenando tumbado: más de 0,25 g (el freno motor y el roce de la rueda tumbada no llegan) con más de 12°.
+  const TRAIL_LEAN = 12;
+  const TRAIL_G = 0.25;
+  // Hundimiento: el móvil mide el cabeceo del chasis. Batalla × tan(cabeceo) es la diferencia de altura
+  // entre ejes; la horquilla se lleva ~80 % (el resto es la trasera estirándose, y la inclinación de la
+  // horquilla lo compensa en parte). Es una estimación para comparar frenadas, no una medida del recorrido.
+  const WHEELBASE_MM = 1440;
+  const FORK_SHARE = 0.8;
 
   // braking: si ya se estaba frenando (para el margen).
   function phaseOf(a, braking) {
@@ -32,6 +42,10 @@
     this.lastT = null;
     this.wheelies = [];
     this.wheelie = null;
+    this.brakes = [];
+    this.bk = null;
+    this.lastBrk = null;
+    this.pHist = [];
     // Posición suavizada (giroscopio + GPS) y signo del giro comprobado con el rumbo del GPS.
     this.est = null;
     this.useEst = false;
@@ -225,12 +239,19 @@
     )
       this.brake = null;
 
+    this.brakeStep(t, s, ph, pos, dt);
+
     // Curvas: giro claro sostenido.
     this.yawS += ((s.yaw || 0) - this.yawS) * (1 - Math.exp(-dt / 0.3));
     const c = this.curve;
     if (!c && this.yawS > YAW_IN && moving) {
       const b = this.brake;
+      // La frenada que acaba de terminar (hasta 6 s antes) es la de esta curva.
+      const lb =
+        this.lastBrk && t - this.lastBrk.endT < 6 ? this.lastBrk : null;
+      this.lastBrk = null;
       this.curve = {
+        brk: lb,
         num: this.curves.length + 1,
         t0: t,
         idx: this.trail.length,
@@ -331,10 +352,110 @@
       dead,
       apex: c.apex,
       brakeAt: c.brakeAt,
+      brk: c.brk || null,
       endT: t,
     };
     this.curves.push(res);
     if (this.onCurve) this.onCurve(res);
+    return res;
+  };
+
+  // Frenadas: g de cada instante, metros, velocidad, cabeceo (para el hundimiento) e inclinación (frenar
+  // tumbado). Al soltar el freno se resume y, si es de verdad, queda en la lista.
+  Recorrido.prototype.brakeStep = function (t, s, ph, pos, dt) {
+    if (s.pitch === s.pitch) {
+      this.pHist.push([t, s.pitch]);
+      while (this.pHist.length && t - this.pHist[0][0] > 1.5)
+        this.pHist.shift();
+    }
+    let b = this.bk;
+    if (ph === "freno" && s.v > 3 && s.a === s.a) {
+      if (!b) {
+        // Cabeceo de antes de frenar (mediana del último segundo, sin los 0,2 s en que ya empieza a hundirse).
+        const ps = this.pHist
+          .filter((x) => x[0] < t - 0.2)
+          .map((x) => x[1])
+          .sort((x, y) => x - y);
+        b = this.bk = {
+          t0: t,
+          pos,
+          v0: s.v,
+          g: [],
+          dist: 0,
+          pRef: ps.length ? ps[ps.length >> 1] : NaN,
+          pMin: Infinity,
+          pMinLean: Infinity,
+          trailDist: 0,
+          leanMax: 0,
+          gTurn: null,
+        };
+      }
+      const g = -s.a;
+      b.g.push([t, g]);
+      b.dist += s.v * dt;
+      const lean = Math.abs(s.lean);
+      // El hundimiento se mide con la moto casi recta: tumbada, el cabeceo que da el móvil es menos fiable.
+      // Si la frenada empieza ya tumbado (curvas enlazadas) y nunca se endereza, vale hasta 30°.
+      if (s.pitch === s.pitch && !(lean > TRAIL_LEAN))
+        b.pMin = Math.min(b.pMin, s.pitch);
+      if (s.pitch === s.pitch && !(lean > 30))
+        b.pMinLean = Math.min(b.pMinLean, s.pitch);
+      if (lean === lean && g >= TRAIL_G) b.leanMax = Math.max(b.leanMax, lean);
+      if (lean > TRAIL_LEAN && g >= TRAIL_G) {
+        b.trailDist += s.v * dt;
+        if (b.gTurn === null) b.gTurn = g;
+      }
+    } else if (b) {
+      this.bk = null;
+      this.endBrake(t, b, s.v);
+    }
+  };
+
+  Recorrido.prototype.endBrake = function (t, b, vOut) {
+    const dur = t - b.t0;
+    let peak = 0;
+    let sum = 0;
+    for (const x of b.g) {
+      sum += x[1];
+      if (x[1] > peak) peak = x[1];
+    }
+    if (peak < BRK_MIN_G || dur < 0.4 || b.v0 < 20 / 3.6) return null;
+    const t80 = b.g.find((x) => x[1] >= 0.8 * peak)[0];
+    const pMin = isFinite(b.pMin) ? b.pMin : b.pMinLean;
+    const dive =
+      b.pRef === b.pRef && isFinite(pMin) ? Math.max(0, b.pRef - pMin) : null;
+    const r1 = (x) => Math.round(x * 10) / 10;
+    const r2 = (x) => Math.round(x * 100) / 100;
+    const res = {
+      num: this.brakes.length + 1,
+      t: b.t0,
+      endT: t,
+      pos: b.pos,
+      dur: r2(dur),
+      dist: Math.round(b.dist),
+      vIn: Math.round(b.v0 * 3.6),
+      vOut: Math.round(vOut * 3.6),
+      peak: r2(peak),
+      mean: r2(sum / b.g.length),
+      bite: r2(t80 - b.t0),
+      dive: dive === null ? null : r1(dive),
+      diveMm:
+        dive === null
+          ? null
+          : Math.round(
+              WHEELBASE_MM * Math.tan((dive * Math.PI) / 180) * FORK_SHARE,
+            ),
+      trail: Math.round(b.trailDist),
+      leanMax: b.leanMax ? r1(b.leanMax) : null,
+      gTurn: b.gTurn === null ? null : r2(b.gTurn),
+    };
+    this.brakes.push(res);
+    // A la curva en la que se suelta el freno o, si aún no ha empezado, a la siguiente.
+    const c = this.curve;
+    if (c) {
+      if (!c.brk || res.peak > c.brk.peak) c.brk = res;
+    } else this.lastBrk = res;
+    if (this.onBrake) this.onBrake(res);
     return res;
   };
 
@@ -453,8 +574,45 @@
         brakeG: c.brakeG === null ? null : Math.round(c.brakeG * 100) / 100,
         dead: Math.round(c.dead * 10) / 10,
       })),
+      ...brakeSummary(this.brakes),
     };
   };
+
+  // Lo de las frenadas para el resumen: cuántas, los mejores valores y las 40 más fuertes.
+  function brakeSummary(list) {
+    const vals = (key, from) =>
+      (from || list).map((b) => b[key]).filter((x) => x !== null && x === x);
+    const hard = list.filter((b) => b.peak >= 0.6);
+    const bites = vals("bite", hard.length ? hard : list);
+    const dives = vals("dive");
+    const mms = vals("diveMm");
+    const trails = vals("trail");
+    return {
+      frenadas: list.length,
+      mordidaMejor: bites.length ? Math.min(...bites) : null,
+      hundimientoMax: dives.length ? Math.max(...dives) : null,
+      hundimientoMaxMm: mms.length ? Math.max(...mms) : null,
+      frenadaTumbadoMax: trails.length ? Math.max(...trails) : null,
+      listaFrenadas: list
+        .slice()
+        .sort((a, b) => b.peak - a.peak)
+        .slice(0, 40)
+        .map((b) => ({
+          num: b.num,
+          peak: b.peak,
+          mean: b.mean,
+          bite: b.bite,
+          dur: b.dur,
+          dist: b.dist,
+          vIn: b.vIn,
+          vOut: b.vOut,
+          dive: b.dive,
+          diveMm: b.diveMm,
+          trail: b.trail,
+          leanMax: b.leanMax,
+        })),
+    };
+  }
 
   root.MaspaRecorrido = { Recorrido, phaseOf, BRAKE, GAS };
 })(typeof window !== "undefined" ? window : globalThis);
