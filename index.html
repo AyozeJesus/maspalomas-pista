@@ -92,6 +92,9 @@
   .muted { color: var(--muted); font-size: 14px; }
   .start { display: grid; gap: 8px; }
   .install p { margin: 0; }
+  .circ-list { display: grid; gap: 8px; }
+  .circ-list > div { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+  .circ-list span { min-width: 0; overflow-wrap: anywhere; }
 
   /* Estado: filas con indicador. */
   .status { display: grid; font-size: 15px; }
@@ -293,6 +296,9 @@
   .legend { position: absolute; left: 8px; bottom: 8px; margin: 0; padding: 4px 8px; border-radius: var(--r-sm); background: rgba(5, 6, 7, 0.78); font-size: 12px; font-weight: 600; display: flex; flex-wrap: wrap; gap: 4px 10px; max-width: calc(100% - 80px); }
   .legend span::before { content: ""; display: inline-block; width: 10px; height: 4px; border-radius: 2px; margin-right: 4px; vertical-align: middle; background: var(--c); }
   .live.three { grid-template-columns: 1fr 1fr 1fr; }
+  /* Cronómetro de un circuito cualquiera en la ruta libre: vuelta y tiempo, diferencia con la mejor, la mejor. */
+  .laps-strip { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; font-weight: 800; font-size: min(4.6vw, 3.4vh); }
+  .laps-strip b { font-size: min(9vw, 6.5vh); font-weight: 900; line-height: 1; }
   .ride-stats { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; font-weight: 800; font-size: min(4.2vw, 3vh); opacity: 0.95; }
   .route-map { display: block; width: 100%; height: min(62vh, 520px); border-radius: var(--r-md); background: #0a0d10; }
   #ruta-fin .legend { position: static; max-width: none; background: none; padding: 0; }
@@ -300,6 +306,8 @@
     .mini-map { height: 24vh; }
     .ride-map { margin-right: 6px; }
     .ride-stats, .wh { font-size: min(2.2vw, 4vh); }
+    .laps-strip { font-size: min(2.2vw, 4vh); }
+    .laps-strip b { font-size: min(4.6vw, 8vh); }
     .dash { grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
     .dash-top { grid-column: 1 / -1; }
     .delta { font-size: min(20vw, 52vh); padding-left: max(8px, env(safe-area-inset-left)); overflow: hidden; }
@@ -405,6 +413,11 @@
         </div>
         <p class="muted">Con el giro automático del móvil apagado, el panel sale como esté la pantalla aunque el móvil vaya de lado. Elige cómo lo llevas montado: se fija al salir a pista o a la ruta libre. Si sale al revés, la otra horizontal.</p>
       </div>
+      <div class="group" id="circ-group" hidden>
+        <h3 class="group-title">Otros circuitos guardados</h3>
+        <div class="circ-list" id="circ-list"></div>
+        <p class="muted">En la ruta libre se reconocen solos al rodar por ellos, y el cronómetro cuenta desde la primera vuelta.</p>
+      </div>
       <div class="group meta-map">
         <h3 class="group-title">Línea de meta</h3>
         <p class="muted">Toca la pista para ponerla donde la tenga el cronometraje del circuito o RaceChrono.</p>
@@ -482,6 +495,7 @@
       <p class="legend" id="ru-legend"></p>
     </div>
     <div class="dash-bottom">
+      <div class="laps-strip" id="ru-laps" hidden><span class="num" id="ru-lap">Hacia meta</span><b class="num" id="ru-delta">—</b><span class="num" id="ru-best">Mejor —</span></div>
       <div class="live three">
         <div><small id="ru-lean-l">inclinación</small><b class="num" id="ru-lean">—</b></div>
         <div><small id="ru-g-l">g</small><b class="num" id="ru-g">—</b></div>
@@ -514,6 +528,11 @@
       <p class="legend" id="ruf-legend"></p>
     </section>
     <section class="card" aria-labelledby="ruf-sum-h"><h2 id="ruf-sum-h">Resumen</h2><div class="readouts" id="ruf-stats"></div></section>
+    <section class="card" aria-labelledby="ruf-l-h" id="ruf-l" hidden><h2 id="ruf-l-h">Vueltas</h2><p class="muted" id="ruf-l-note"></p>
+      <div class="cmp-wrap"><table class="cmp-table"><thead><tr><th>Vuelta</th><th class="num">Tiempo</th><th class="num">Frente a la mejor</th></tr></thead><tbody id="ruf-laps"></tbody></table></div>
+      <div class="pilot" id="ruf-save-box" hidden><label for="ruf-name">Nombre</label><input id="ruf-name" type="text" maxlength="40" autocomplete="off" placeholder="Nombre del circuito"></div>
+      <div class="actions"><button id="ruf-save" hidden>Guardar el circuito</button></div>
+    </section>
     <section class="card" aria-labelledby="ruf-c-h"><h2 id="ruf-c-h">Curvas</h2><p class="muted" id="ruf-c-note"></p>
       <div class="cmp-wrap"><table class="cmp-table"><thead><tr><th>Curva</th><th class="num">Tumb.</th><th class="num">Entra→mín</th><th class="num">Freno</th><th class="num">Sin gas</th></tr></thead><tbody id="ruf-curves"></tbody></table></div>
     </section>
@@ -627,6 +646,7 @@
   <script src="comparativa.js"></script>
   <script src="mapa.js"></script>
   <script src="recorrido.js"></script>
+  <script src="circuito.js"></script>
   <script src="gnss-ble.js"></script>
   <script src="gnss-usb.js"></script>
   <script src="live.js"></script>

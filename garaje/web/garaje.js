@@ -127,6 +127,19 @@
     if (!meta) return ["tag", "sin resumen"];
     if (meta.estado === "grabando") return ["tag live", "grabando"];
     if (meta.estado === "cortada") return ["tag cut", "cortada"];
+    // Ruta libre por un circuito cualquiera: su nombre, las vueltas y la mejor.
+    if (meta.tipo === "ruta" && meta.circuito) {
+      const c = meta.circuito;
+      const n = (c.vueltas || []).filter((v) => v.valid).length;
+      return [
+        "tag",
+        c.nombre +
+          " · " +
+          n +
+          (n === 1 ? " vuelta" : " vueltas") +
+          (c.mejor ? " · mejor " + fmtLap(c.mejor) : ""),
+      ];
+    }
     // Ruta libre: kilómetros y tumbada máxima en la etiqueta (no hay vueltas).
     if (meta.tipo === "ruta")
       return [

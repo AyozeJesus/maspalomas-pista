@@ -106,6 +106,18 @@ el mapa es para mirarlo parado o después.
 En el circuito, el panel lleva también un mapa pequeño con tu trazada de la vuelta, los sectores y dónde frenaste
 en tu mejor vuelta (se quita en Ajustes).
 
+### Cualquier otro circuito
+
+En otro circuito (o en un kart), sal en «Ruta libre». Con más de 1 km rodado, cada 30 s se intenta sacar el
+trazado de lo grabado (`trackbuilder.js`, en un worker para no parar el panel: en el Vivo tarda 0,5–0,9 s); en
+cuanto hay 2 vueltas iguales, aparece arriba el cronómetro (`circuito.js`): vuelta en curso, diferencia con la
+mejor por distancia recorrida y la mejor, con el aviso de vuelta terminada como en Maspalomas. Las vueltas ya dadas
+cuentan. La meta la pone el constructor (mitad de la recta más larga, mejor si pasa por boxes). Al terminar, el
+resumen trae la tabla de vueltas y «Guardar el circuito»: la próxima vez se reconoce a los pocos segundos de rodar
+por él, también en sentido contrario, y cuenta desde la primera vuelta. Con la tanda de ejemplo tratada como un
+circuito desconocido: detectado a los 192 s, vueltas a ≤ 21 ms de la verdad en su línea. No trae el modelo, el
+entrenador ni el análisis de Maspalomas (que dependen de su trazado y su trazada óptima).
+
 ## Garaje en el Mac
 
 Guarda todas tus tandas en `~/Maspalomas-telemetria` (hasta que tú borres la carpeta) y las analiza allí.

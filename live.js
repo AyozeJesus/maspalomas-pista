@@ -8,7 +8,7 @@
   const ST = window.PistaStore;
   const APP_VERSION = 2;
   // Versión publicada (la misma que la copia de sw.js, «pista-vN»): se ve en la portada.
-  const BUILD = 18;
+  const BUILD = 19;
   const G = 9.80665;
   const REC_EVERY = 10; // segundos entre trozos guardados en el móvil
   const $ = (id) => document.getElementById(id);
@@ -293,6 +293,15 @@
       // (para la fecha de la grabación).
       phoneClock: newClock(),
       wall0: null,
+      // Ruta libre por un circuito cualquiera: cronómetro (circuito.js) con el trazado detectado o guardado.
+      circ: null,
+      circTrack: null,
+      circSaved: false,
+      circList: free ? loadCircuits() : [],
+      circRecent: [],
+      circMatchAt: -Infinity,
+      circTryAt: -Infinity,
+      circBusy: false,
       hasGyro: false,
       moved: false,
       canal: new Series(["t", "s", "v", "a", "lean", "lap"]),
@@ -464,6 +473,7 @@
           E.free ||
           T.nearestOn(GEO.main, x, y, 0, GEO.main.length - 1).dist > 300;
         if (!E.free) pitsCheck(t, v, false);
+        else circStep(t, lat, lon, v);
         return;
       }
     }
@@ -1649,6 +1659,22 @@
       retrasoGps: eng.lagR2 !== null ? eng.lag : null,
       // Receptor GPS externo usado en la tanda ({fuente, nombre, hz}); null: solo el GPS del móvil.
       gps: eng.extInfo ? Object.assign({}, eng.extInfo) : null,
+      // Ruta libre por un circuito (detectado o guardado): su nombre, largo y las vueltas.
+      circuito: eng.circ
+        ? {
+            nombre: eng.circTrack.name,
+            longitud: Math.round(eng.circTrack.length),
+            guardado: eng.circSaved,
+            mejor: eng.circ.best
+              ? Math.round(eng.circ.best.time * 1000) / 1000
+              : null,
+            vueltas: eng.circ.laps.map((l) => ({
+              num: l.num,
+              time: Math.round(l.time * 1000) / 1000,
+              valid: l.valid,
+            })),
+          }
+        : null,
       calibrado: !!eng.calib.f,
       // Postura del móvil al empezar (de pie / plano, pantalla vertical / horizontal) y orientación de la pantalla.
       montaje: eng.mount
@@ -2559,10 +2585,149 @@
     });
   }
 
+  // ---------- circuito cualquiera (en la ruta libre) ----------
+  function loadCircuits() {
+    const list = load("pista-circuitos", []);
+    return Array.isArray(list) ? list.filter((c) => c && c.centerline) : [];
+  }
+
+  // Con cada fijo de la ruta libre: el cronómetro si ya hay circuito; si no, ¿pasa por uno guardado (cada 2 s)?, y
+  // cada 30 s, con más de 1 km rodado, se intenta sacar el trazado de lo grabado (necesita 2 vueltas).
+  function circStep(t, lat, lon, v) {
+    const C = window.MaspaCircuito;
+    if (!C) return;
+    if (E.circ) {
+      const lap = E.circ.onFix(t, lat, lon, v);
+      if (lap) {
+        if (lap.valid) showLapFlash(lap.time, lap.isBest, lap.prevBest);
+        saveMeta("grabando");
+      }
+      return;
+    }
+    const R = E.circRecent;
+    if (!R.length || t - R[R.length - 1].t >= 0.5) R.push({ t, lat, lon, v });
+    while (R.length && t - R[0].t > 8) R.shift();
+    if (E.circList.length && v > 4 && t - E.circMatchAt >= 2) {
+      E.circMatchAt = t;
+      const m = C.matchSaved(E.circList, R);
+      if (m) {
+        useCircuit(m.track, m.reverse, true);
+        return;
+      }
+    }
+    if (!E.circBusy && t - E.circTryAt >= 30 && E.route.stats.dist > 1000)
+      tryBuildCircuit(t);
+  }
+
+  let circWorkerObj = null;
+  let circReq = 0;
+  const circWaiting = new Map();
+  function circWorker() {
+    if (circWorkerObj === false) return null;
+    if (!circWorkerObj) {
+      try {
+        circWorkerObj = new Worker("circuito-worker.js");
+        circWorkerObj.onmessage = (e) => {
+          const d = e.data || {};
+          const done = circWaiting.get(d.id);
+          circWaiting.delete(d.id);
+          if (done) done(d);
+        };
+        circWorkerObj.onerror = () => {
+          for (const done of circWaiting.values()) done({ error: "worker" });
+          circWaiting.clear();
+        };
+      } catch (e) {
+        circWorkerObj = false;
+        return null;
+      }
+    }
+    return circWorkerObj;
+  }
+
+  // Trazado a partir de lo grabado (la última media hora, a 5 Hz como mucho), en el worker.
+  function tryBuildCircuit(t) {
+    E.circTryAt = t;
+    const w = circWorker();
+    if (!w) return;
+    const l = E.loc.view();
+    const cols = { t: [], lat: [], lon: [], speed: [], hacc: [] };
+    let last = -Infinity;
+    for (let i = 0; i < l.t.length; i++) {
+      if (l.t[i] < t - 1800 || l.t[i] - last < 0.2) continue;
+      last = l.t[i];
+      cols.t.push(l.t[i]);
+      cols.lat.push(l.lat[i]);
+      cols.lon.push(l.lon[i]);
+      cols.speed.push(l.speed[i] >= 0 ? l.speed[i] : NaN);
+      cols.hacc.push(l.hacc[i]);
+    }
+    const eng = E;
+    const id = ++circReq;
+    eng.circBusy = true;
+    circWaiting.set(id, (d) => {
+      eng.circBusy = false;
+      if (E !== eng || eng.circ || !d.track) return;
+      useCircuit(d.track, false, false);
+    });
+    const day = new Date(eng.wall0 || Date.now()).toLocaleDateString("es-ES", {
+      day: "numeric",
+      month: "short",
+    });
+    w.postMessage({ id, fixes: cols, name: "Circuito del " + day });
+  }
+
+  // A partir de ahora, cronómetro en ese circuito; lo ya rodado por él cuenta (las vueltas con que se ha detectado).
+  function useCircuit(track, reverse, saved) {
+    const timer = new window.MaspaCircuito.LapTimer(track, reverse);
+    const l = E.loc.view();
+    for (let i = 0; i < l.t.length; i++)
+      if (l.hacc[i] <= 25)
+        timer.onFix(
+          l.t[i],
+          l.lat[i],
+          l.lon[i],
+          l.speed[i] >= 0 ? l.speed[i] : 0,
+        );
+    E.circ = timer;
+    E.circTrack = track;
+    E.circSaved = saved;
+    saveMeta("grabando");
+  }
+
+  function renderCircuit(t) {
+    const c = E.circ;
+    $("ru-laps").hidden = !c;
+    if (!c) return;
+    const st = c.state(t, lagNow());
+    setText(
+      "ru-lap",
+      (st.lapNum ? "Vuelta " + st.lapNum : "Hacia meta") +
+        (st.lapTime !== null ? " · " + fmtLap(st.lapTime, 1) : ""),
+    );
+    setText("ru-best", "Mejor " + (st.best !== null ? fmtLap(st.best) : "—"));
+    setText("ru-delta", st.delta === null ? "—" : fmtSigned(st.delta, 2));
+    setCls(
+      "ru-delta",
+      "num" +
+        (st.delta === null
+          ? ""
+          : st.delta < -0.05
+            ? " up"
+            : st.delta > 0.05
+              ? " down"
+              : ""),
+    );
+    setText("ru-title", E.circTrack.name);
+  }
+
   // Ruta libre: mapa que sigue a la moto, lo que mide el móvil, la última curva y los totales.
   function renderRoute() {
     if (!E || $("ruta").hidden) return;
     const t = now();
+    const fl = $("flash");
+    if (!fl.hidden && t > E.flashUntil) fl.hidden = true;
+    renderCircuit(t);
     const fresh = E.lastFixT !== null && t - E.lastFixT < 2.5 && !E.gpsBad;
     setCls(
       "ru-gps",
@@ -2710,8 +2875,74 @@
   }
 
   // Resumen al terminar la ruta: mapa entero, totales, las curvas más tumbadas y los caballitos.
+  // Vueltas del circuito en el resumen de la ruta libre, y guardarlo para reconocerlo la próxima vez.
+  function renderRouteLaps(eng) {
+    const c = eng.circ;
+    $("ruf-l").hidden = !c;
+    if (!c) return;
+    const body = $("ruf-laps");
+    body.textContent = "";
+    const best = c.best ? c.best.time : null;
+    for (const l of c.laps) {
+      const tr = document.createElement("tr");
+      const cells = [
+        String(l.num),
+        fmtLap(l.time) + (l.valid ? "" : " *"),
+        !l.valid || best === null
+          ? "—"
+          : l.time === best
+            ? "mejor"
+            : fmtSigned(l.time - best, 2),
+      ];
+      cells.forEach((txt, k) => {
+        const td = document.createElement("td");
+        if (k) td.className = "num";
+        td.textContent = txt;
+        tr.appendChild(td);
+      });
+      body.appendChild(tr);
+    }
+    const track = eng.circTrack;
+    setText(
+      "ruf-l-note",
+      track.name +
+        " · " +
+        fmt(track.length, 0) +
+        " m · " +
+        (c.laps.length
+          ? c.laps.filter((l) => l.valid).length +
+            " vueltas completas" +
+            (c.laps.some((l) => !l.valid)
+              ? " (* sin contar: paso por boxes o fuera del circuito)"
+              : "")
+          : "aún sin vueltas completas") +
+        (eng.circSaved
+          ? ". Circuito guardado: se reconoce solo al pasar por él."
+          : ". Sacado de tus vueltas: guárdalo para que la próxima vez cuente desde la primera."),
+    );
+    $("ruf-save-box").hidden = eng.circSaved;
+    $("ruf-save").hidden = eng.circSaved;
+    if (!eng.circSaved) $("ruf-name").value = track.name;
+  }
+
+  function saveCircuit() {
+    const eng = lastE;
+    if (!eng || !eng.circTrack || eng.circSaved) return;
+    const name = $("ruf-name").value.trim() || eng.circTrack.name;
+    const saved = window.MaspaCircuito.compact(
+      Object.assign({}, eng.circTrack, { name }),
+    );
+    const list = loadCircuits().filter((c) => c.name !== name);
+    list.push(saved);
+    store("pista-circuitos", list);
+    eng.circTrack = saved;
+    eng.circSaved = true;
+    renderRouteLaps(eng);
+  }
+
   function showRouteSummary(eng) {
     show("ruta-fin");
+    renderRouteLaps(eng);
     const r = eng.route;
     const s = r.summary();
     const d = new Date(eng.rec ? eng.rec.epoch : Date.now());
@@ -3425,6 +3656,9 @@
     );
     setStatus("st-gps", "wait", "GPS: buscando señal…");
     show(E.free ? "ruta" : "dash");
+    // El worker que saca el trazado de un circuito arranca ya, parado: en el Vivo Y33s su arranque paró el panel
+    // medio segundo, que rodando se notaría.
+    if (E.free) circWorker();
   }
 
   function stopAll() {
@@ -3563,9 +3797,47 @@
     renderInstall();
   }
 
+  // Circuitos guardados (de la ruta libre), con «Borrar» de dos toques.
+  function renderCircuits() {
+    const list = loadCircuits();
+    $("circ-group").hidden = !list.length;
+    const box = $("circ-list");
+    box.textContent = "";
+    for (const c of list) {
+      const row = document.createElement("div");
+      const name = document.createElement("span");
+      name.textContent =
+        c.name + " · " + fmt((c.length || 0) / 1000, 1) + " km";
+      const del = document.createElement("button");
+      del.type = "button";
+      del.className = "danger";
+      del.textContent = "Borrar";
+      let armed = false;
+      del.addEventListener("click", () => {
+        if (!armed) {
+          armed = true;
+          del.textContent = "¿Borrar? Otra vez";
+          setTimeout(() => {
+            armed = false;
+            del.textContent = "Borrar";
+          }, 4000);
+          return;
+        }
+        store(
+          "pista-circuitos",
+          loadCircuits().filter((x) => x.name !== c.name),
+        );
+        renderCircuits();
+      });
+      row.append(name, del);
+      box.appendChild(row);
+    }
+  }
+
   function renderHome() {
     checkSensorBlock();
     renderInstall();
+    renderCircuits();
     let any = false;
     const parts = ["osm", "rev"].map((dir) => {
       const b = load(bestKey(dir), null);
@@ -3795,6 +4067,7 @@
       renderHome();
     });
     $("ruf-export").addEventListener("click", () => exportSession(lastE));
+    $("ruf-save").addEventListener("click", saveCircuit);
     $("sim").addEventListener("click", () => startSim(1));
     // Cámaras y velocidad de la vuelta de ejemplo en 3D.
     for (const b of document.querySelectorAll(".v3d-ctl [data-cam]"))
@@ -3987,6 +4260,10 @@
     sim,
     onMotion: (...a) => onMotion(...a),
     onFix: (...a) => onFix(...a),
+    // Cronómetro del circuito de la ruta libre (null si no hay).
+    get circuit() {
+      return E && E.circ;
+    },
     // Dónde cree el panel que está la moto en el instante t (null fuera del trazado).
     predicted: (t) => (E && E.track && E.fix && E.fix.on ? predicted(t) : null),
     get view3d() {
