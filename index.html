@@ -217,7 +217,9 @@
     padding: max(6px, env(safe-area-inset-top)) max(14px, env(safe-area-inset-right)) 6px max(14px, env(safe-area-inset-left));
     background: rgba(0, 0, 0, 0.3); font-size: 22px; font-weight: 800; line-height: 1.1;
   }
-  #d-lap { justify-self: start; }
+  /* A la izquierda: la vuelta (o el título de la ruta) y, con la moto parada, «Calibrar» en su sitio. */
+  .top-l { justify-self: start; min-width: 0; display: flex; align-items: center; }
+  .stop.calib { padding: 8px 12px; font-size: 14px; letter-spacing: 0.02em; white-space: nowrap; border-color: rgba(255, 255, 255, 0.85); }
   .gps { justify-self: end; display: flex; gap: 8px; align-items: baseline; white-space: nowrap; }
   .gps .dot { align-self: center; width: 12px; height: 12px; box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.9); }
   .unit { font-size: 14px; font-weight: 700; opacity: 0.9; }
@@ -276,7 +278,6 @@
   .wh { background: rgba(123, 63, 196, 0.85); border-radius: var(--r-md); padding: 6px 12px; font-weight: 800; font-size: min(4.4vw, 3.2vh); text-align: center; }
   /* Ruta libre: el mapa manda; abajo, lo que mide el móvil y la última curva. */
   .ride { grid-template-rows: auto minmax(0, 1fr) auto; }
-  #ru-title { justify-self: start; }
   .ride-map { position: relative; min-height: 0; margin: 6px max(10px, env(safe-area-inset-right)) 8px max(10px, env(safe-area-inset-left)); border-radius: var(--r-lg); background: #0a0d10; border: 1px solid rgba(255, 255, 255, 0.12); overflow: hidden; }
   .ride-map canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
   .map-ctl { position: absolute; top: 8px; right: 8px; display: grid; gap: 6px; }
@@ -382,7 +383,7 @@
         <li>Móvil en un soporte con amortiguador de vibraciones, bien a la vista sin bajar la cabeza.</li>
         <li>Brillo al máximo. La pantalla se mantiene encendida mientras esta página esté abierta.</li>
         <li>No leas en frenada ni en curva: el panel está hecho para verse con el rabillo del ojo (verde ganas, rojo pierdes). Lee en las rectas o en boxes.</li>
-        <li>Monta el móvil antes de salir y no lo muevas en el soporte: de pie o plano, en vertical u horizontal, con la parte de arriba de la pantalla hacia delante. La inclinación sale desde la primera recta y se afina sola en la vuelta de salida. Si lo coges en boxes, se recalibra al volver a rodar.</li>
+        <li>Monta el móvil antes de salir y no lo muevas en el soporte: de pie o plano, en vertical u horizontal, con la parte de arriba de la pantalla hacia delante. Si no queda recto, no pasa nada: con la moto parada y derecha (sentado en ella, no en la pata de cabra) pulsa «Calibrar» arriba a la izquierda y ese es el 0. Si no, la inclinación sale desde la primera recta y se afina sola en la vuelta de salida. Si lo coges en boxes, vuelve a calibrar.</li>
         <li>Al sol y sobre el depósito el móvil se calienta. Si se apaga, lo grabado hasta unos segundos antes queda guardado.</li>
       </ul>
     </section>
@@ -392,7 +393,7 @@
   <!-- En pista -->
   <section class="dash" id="dash" hidden aria-live="off">
     <div class="dash-top">
-      <span class="num" id="d-lap">Vuelta —</span>
+      <span class="top-l"><span class="num" id="d-lap">Vuelta —</span><button class="stop calib" id="d-calib" hidden aria-label="Calibrar la inclinación con la moto parada y derecha">Calibrar</button></span>
       <button class="stop" id="stop">Boxes</button>
       <span class="gps"><span class="dot" id="d-gps"></span><span class="num" id="d-speed">0</span><small class="unit">km/h</small></span>
     </div>
@@ -431,7 +432,7 @@
   <!-- Ruta libre: cualquier carretera, la trazada se va dibujando -->
   <section class="dash ride" id="ruta" hidden aria-live="off">
     <div class="dash-top">
-      <span id="ru-title">Ruta libre</span>
+      <span class="top-l"><span id="ru-title">Ruta libre</span><button class="stop calib" id="ru-calib" hidden aria-label="Calibrar la inclinación con la moto parada y derecha">Calibrar</button></span>
       <button class="stop" id="ru-stop">Terminar</button>
       <span class="gps"><span class="dot" id="ru-gps"></span><span class="num" id="ru-speed">0</span><small class="unit">km/h</small></span>
     </div>
@@ -515,10 +516,12 @@
     <section class="card" aria-labelledby="next-h"><h2 id="next-h">Para la próxima vuelta</h2><ol class="tips" id="p-tips"></ol></section>
     <div class="actions">
       <button class="primary" id="resume">Volver a pista</button>
+      <button id="p-calib">Calibrar inclinación</button>
       <button id="pits-day" hidden>Tiempos del día</button>
       <button id="export">Exportar tanda (.zip)</button>
       <button class="danger" id="finish">Terminar</button>
     </div>
+    <p class="muted" id="p-calib-note" aria-live="polite"></p>
     <p class="muted">Mientras no termines, la grabación sigue: al arrancar, la pantalla vuelve sola al panel. Con el garaje del Mac conectado, la tanda completa se analiza allí; el .zip sirve para «Telemetría Maspalomas».</p>
   </main>
 
@@ -527,11 +530,11 @@
   <main class="page" id="sensores" hidden>
     <div class="toolbar">
       <button class="quiet back" id="sen-back"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg>Volver</button>
-      <button id="sen-zero">Poner a cero</button>
+      <button id="sen-zero">Calibrar</button>
     </div>
     <header class="page-head">
       <h1 class="title">Prueba de sensores</h1>
-      <p class="muted">Con el GPS y los sensores de este móvil, aquí mismo. Colócalo como irá en la moto (de pie o plano, con la pantalla en vertical u horizontal y la parte de arriba hacia delante), pulsa «Poner a cero» y túmbalo a un lado y a otro como la moto: las dos inclinaciones deben ir juntas. En marcha (coche o moto), mira la velocidad.</p>
+      <p class="muted">Con el GPS y los sensores de este móvil, aquí mismo. Colócalo como irá en la moto (de pie o plano, con la pantalla en vertical u horizontal y la parte de arriba hacia delante), pulsa «Calibrar» (ese es el 0) y túmbalo a un lado y a otro como la moto: las dos inclinaciones deben ir juntas. En marcha (coche o moto), mira la velocidad.</p>
     </header>
     <section class="card" aria-labelledby="sen-tilt-h">
       <h2 id="sen-tilt-h">Inclinación del móvil</h2>

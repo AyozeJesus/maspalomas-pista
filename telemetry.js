@@ -405,8 +405,9 @@
     this.f = norm3([f[0] - fu * uu[0], f[1] - fu * uu[1], f[2] - fu * uu[2]]);
     this.l = cross3(this.u, this.f);
   };
-  // w: giro en rad/s en ejes del móvil; v: velocidad en m/s (NaN si no se sabe). Devuelve grados.
-  LeanEstimator.prototype.step = function (dt, w0, v) {
+  // w: giro en rad/s en ejes del móvil; v: velocidad en m/s (NaN si no se sabe); grav (opcional): gravedad en
+  // ejes del móvil. Devuelve grados.
+  LeanEstimator.prototype.step = function (dt, w0, v, grav) {
     const h = clamp(dt, 0, 0.1);
     const b = this.bias;
     // Parado y quieto: lo que marque el giroscopio es su sesgo.
@@ -425,13 +426,23 @@
     this.wl += (dot3(w, this.l) - this.wl) * lp;
     this.phi += wf * h;
     const yu = Math.abs(this.wu);
+    // Parada (o sin velocidad del GPS) y sin girar: la tumbada sale de la gravedad directamente. Sin curva no hay
+    // fuerza lateral, así que la gravedad marca lo que de verdad está tumbada la moto (en la pata de cabra, ~12°
+    // a la izquierda; sujeta derecha, 0). Si no, al parar se quedaría colgado el último valor.
+    const gu = grav ? dot3(grav, this.u) : 0;
+    const still =
+      grav && !(v >= 1) && gu > 3 && Math.hypot(w[0], w[1], w[2]) < 0.05;
+    if (still) {
+      const meas = Math.atan2(dot3(grav, this.l), gu);
+      this.phi += (meas - this.phi) * (1 - Math.exp(-h / 0.5));
+    }
     // Giro claro alrededor de la vertical de la moto: medida directa del ángulo.
     const kr = clamp((yu - 0.1) / 0.2, 0, 1);
     if (kr > 0) {
       const meas = Math.atan2(this.wl * Math.sign(this.wu), yu);
       this.phi += (meas - this.phi) * kr * (1 - Math.exp(-h / 0.3));
     }
-    if (kr < 1) {
+    if (kr < 1 && !still) {
       // Giro suave: por la velocidad si se sabe; si no, en recta sin giro la moto va derecha.
       if (v > 5) {
         const meas = Math.asin(clamp((-v * this.wu) / G, -0.95, 0.95));

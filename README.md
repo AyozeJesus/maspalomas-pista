@@ -16,6 +16,12 @@ abierto, se sube sola a tu Mac.
    pantalla no dice la verdad (giro automático desactivado), se corrige sola en las primeras curvas, y la frenada y
    la inclinación se afinan con el GPS en la vuelta de salida (si lo coges en boxes, se recalibra al volver a rodar).
    La orientación de la pantalla se fija al echar a rodar, no al pulsar «Salir».
+   Si el móvil no queda recto en su hueco: con la moto parada y derecha (sentado en ella o en el caballete de
+   taller, no en la pata de cabra) pulsa «Calibrar» (arriba a la izquierda en el panel y en la ruta libre, y en
+   boxes). Coge la gravedad de ~1 s con el móvil quieto como vertical de la moto: inclinación y morro a 0, y la
+   inclinación sale desde ya. Si se calibró con la moto tumbada, las rectas lo delatan (rodando recto la moto va
+   derecha): con ~5 s de rectas, si se separa más de 5° hacia un lado, se corrige sola y lo avisa. Parada, la
+   inclinación sale de la gravedad (0 sujeta derecha, ~12° en la pata de cabra).
 3. «Salir a pista» y acepta el permiso de ubicación. La pantalla se queda encendida mientras la página esté abierta.
 4. Al parar en boxes la pantalla cambia sola al análisis.
 

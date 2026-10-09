@@ -8,7 +8,7 @@
   const ST = window.PistaStore;
   const APP_VERSION = 2;
   // Versión publicada (la misma que la copia de sw.js, «pista-vN»): se ve en la portada.
-  const BUILD = 14;
+  const BUILD = 15;
   const G = 9.80665;
   const REC_EVERY = 10; // segundos entre trozos guardados en el móvil
   const $ = (id) => document.getElementById(id);
@@ -265,7 +265,12 @@
       // Ejes de la inclinación: 0 sin ejes; el número de calibración del GPS; o «montaje»/«curvas» mientras
       // tanto (eje adelante por la postura del móvil y la orientación de la pantalla, comprobado en las curvas).
       leanAxes: 0,
+      leanKey: null,
       axesVer: 0,
+      // «Calibrar»: petición en curso (gravedad de ~1 s quieto) y lo que enseña el botón.
+      calReq: null,
+      calUi: null,
+      calibManual: false,
       screenAngle: screenAngle(),
       mount: null,
       mountChk: null,
@@ -311,6 +316,10 @@
       fVer: 0,
       sum: [0, 0, 0],
       n: 0,
+      // «Calibrar»: vertical de la moto parada y derecha (manda sobre la de las rectas, que la comprueba).
+      manualU: null,
+      manualVer: 0,
+      manualChecked: false,
     };
   }
 
@@ -321,6 +330,7 @@
     E.lean = new T.LeanEstimator();
     E.lean.bias = bias;
     E.leanAxes = 0;
+    E.leanKey = null;
     E.mountChk = null;
     E.leanDeg = NaN;
     E.aEma = 0;
@@ -703,6 +713,7 @@
       // Ejes corregidos: la inclinación vuelve a empezar con los buenos.
       E.lean = new T.LeanEstimator();
       E.leanAxes = 0;
+      E.leanKey = null;
     }
     const gyro = E.axes.map(gyroRaw);
     const c = E.calib;
@@ -737,26 +748,35 @@
       E.aLong.push({ t, a: E.aEma });
     }
     const cal = E.calib;
-    if (E.hasGyro && cal.f && cal.upSN >= 100 && E.leanAxes !== cal.fVer) {
-      E.lean.setAxes(cal.f, cal.upS);
+    if (E.calReq) calibCollect(t, grav, gyro);
+    // Vertical de la moto: la de «Calibrar» (parada y derecha) o, si no, la de las rectas.
+    const upRef = cal.manualU || (cal.upSN >= 100 ? cal.upS : null);
+    const gpsKey = "gps:" + cal.fVer + ":" + cal.manualVer;
+    if (E.hasGyro && cal.f && upRef && E.leanKey !== gpsKey) {
+      E.lean.setAxes(cal.f, upRef);
       E.leanAxes = cal.fVer;
+      E.leanKey = gpsKey;
       E.axesVer++;
       E.mountChk = null;
-    } else if (E.hasGyro && !cal.f && !E.leanAxes && cal.upSN >= 100) {
-      // Mientras el GPS no calibra (hace falta acelerar y frenar): desde la primera recta, el eje adelante que
-      // dicen la postura del móvil y la orientación de la pantalla (plano en horizontal, de pie…).
-      const m = T.mountAxes(cal.upS, E.screenAngle);
+    } else if (E.hasGyro && !cal.f && !E.leanAxes && upRef) {
+      // Mientras el GPS no calibra (hace falta acelerar y frenar): desde «Calibrar» o la primera recta, el eje
+      // adelante que dicen la postura del móvil y la orientación de la pantalla (plano en horizontal, de pie…).
+      const m = mountOf(upRef);
       if (m) {
         E.lean.setAxes(m.f, m.u);
         E.leanAxes = "montaje";
+        E.leanKey = "montaje";
         E.axesVer++;
         E.mount = { postura: m.posture, pantalla: m.screen };
         E.mountChk = { uu: 0, fu: 0, lu: 0 };
       }
     }
+    checkManualCalib();
     const p = E.track && E.fix && E.fix.on ? predicted(t) : null;
     const vNow = p ? p.v : E.fix ? E.fix.v : NaN;
-    E.leanDeg = E.hasGyro ? E.leanSign * E.lean.step(dt, gyro, vNow) : NaN;
+    E.leanDeg = E.hasGyro
+      ? E.leanSign * E.lean.step(dt, gyro, vNow, grav)
+      : NaN;
     cornerTrack(t, p);
     rideStep(t, dt, gyro, lin, grav, p, vNow);
     if (t - E.canalT >= 0.1) {
@@ -821,6 +841,182 @@
     // (pensando en estos ejes girados) ya no vale.
     E.leanSign = 1;
     E.leanVote = 0;
+  }
+
+  // ---------- «Calibrar»: la moto parada y derecha es el cero ----------
+  // Para un móvil que no queda recto en su hueco: con la moto parada y derecha (sentado en ella o en el caballete
+  // de taller) y el móvil ya en el soporte, la gravedad media de ~1 s con el móvil quieto es la vertical de la
+  // moto. Tumbada y morro quedan a 0 y la inclinación sale desde ya, sin esperar a rodar.
+  const CALIB_STOPPED = 2; // m/s: por encima no se ofrece (rodando, nada de tocar el móvil)
+  // Ejes del montaje para una vertical dada en cualquier escala (suma de muestras o vector unidad): mountAxes
+  // espera m/s² y descarta lo que no llega a 3 como ruido.
+  function mountOf(up) {
+    return T.mountAxes(
+      norm3(up).map((x) => x * G),
+      E.screenAngle,
+    );
+  }
+  function isStopped() {
+    return !E.fix || !(E.fix.v >= CALIB_STOPPED);
+  }
+  // Devuelve false si no se puede ahora (y por qué en E.calUi).
+  function startCalib() {
+    if (!E || E.sim) return false;
+    const nowMs = performance.now();
+    if (E.calReq) return false;
+    if (!isStopped()) {
+      E.calUi = {
+        state: "fail",
+        why: "para la moto",
+        until: nowMs + 4000,
+      };
+      return false;
+    }
+    E.calReq = { t0: null, n: 0, sum: [0, 0, 0], started: nowMs };
+    E.calUi = { state: "busy", why: "", until: Infinity };
+    // Si en 4 s no ha habido 1 s quieto (o no llegan datos), se deja.
+    setTimeout(() => {
+      if (!E || !E.calReq) return;
+      E.calReq = null;
+      E.calUi = {
+        state: "fail",
+        why: E.hasGyro ? "no estaba quieto" : "sin sensores",
+        until: performance.now() + 5000,
+      };
+    }, 4000);
+    return true;
+  }
+  function calibCollect(t, grav, gyro) {
+    const q = E.calReq;
+    const b = E.lean.bias;
+    const spin = Math.hypot(gyro[0] - b[0], gyro[1] - b[1], gyro[2] - b[2]);
+    // Se mueve (o se está colocando): vuelta a empezar.
+    if (spin > 0.1 || !isStopped()) {
+      q.t0 = null;
+      q.n = 0;
+      q.sum = [0, 0, 0];
+      return;
+    }
+    if (q.t0 === null) q.t0 = t;
+    for (let i = 0; i < 3; i++) q.sum[i] += grav[i];
+    q.n++;
+    if (q.n >= 40 && t - q.t0 >= 0.8) {
+      E.calReq = null;
+      applyManualCalib(q.sum);
+      E.calUi = { state: "ok", why: "", until: performance.now() + 2500 };
+    }
+  }
+  function applyManualCalib(sum) {
+    const cal = E.calib;
+    const u = norm3(sum);
+    cal.manualU = u;
+    cal.manualVer++;
+    cal.manualChecked = false;
+    // El móvil ya está en su sitio: lo que se hiciera antes para colocarlo no debe borrar esta calibración al
+    // echar a rodar.
+    E.moved = false;
+    E.screenAngle = screenAngle();
+    // Adelante: el del GPS si ya lo hay; si no, el que ya se usaba; si no, el del montaje.
+    let f = cal.f || E.lean.f;
+    if (!f) {
+      const m = mountOf(u);
+      if (m) {
+        f = m.f;
+        E.mount = { postura: m.posture, pantalla: m.screen };
+      }
+    }
+    if (!f || !E.hasGyro) return;
+    E.lean.setAxes(f, u);
+    E.lean.phi = 0;
+    if (cal.f) {
+      E.leanAxes = cal.fVer;
+      E.leanKey = "gps:" + cal.fVer + ":" + cal.manualVer;
+    } else {
+      if (!E.leanAxes) {
+        E.leanAxes = "montaje";
+        E.mountChk = { uu: 0, fu: 0, lu: 0 };
+      }
+      E.leanKey = "montaje";
+    }
+    E.axesVer++;
+    E.pitch.setAxes(E.lean.f, E.lean.u);
+    E.pitch.theta = 0;
+    E.pitchAxes = E.axesVer;
+    E.leanDeg = 0;
+    E.calibManual = true;
+  }
+  // Si se calibró con la moto tumbada (en la pata de cabra), las rectas lo delatan: rodando recto, la moto va
+  // derecha por fuerza. Con unos 5 s de rectas, si la vertical de «Calibrar» se separa más de 5° hacia un lado, se
+  // corrige ese lado (el cero del morro se respeta) y se avisa.
+  function checkManualCalib() {
+    const cal = E.calib;
+    const L = E.lean;
+    if (!cal.manualU || cal.manualChecked || cal.upSN < 300 || !L.l) return;
+    cal.manualChecked = true;
+    const up = norm3(cal.upS);
+    const d = Math.atan2(dot3(up, L.l), dot3(up, L.u));
+    if (Math.abs(d) < (5 * Math.PI) / 180) return;
+    const c = Math.cos(d);
+    const s = Math.sin(d);
+    cal.manualU = norm3([
+      c * L.u[0] + s * L.l[0],
+      c * L.u[1] + s * L.l[1],
+      c * L.u[2] + s * L.l[2],
+    ]);
+    cal.manualVer++;
+    L.setAxes(L.f, cal.manualU);
+    E.leanKey = cal.f ? "gps:" + cal.fVer + ":" + cal.manualVer : "montaje";
+    E.axesVer++;
+    E.calUi = {
+      state: "note",
+      why:
+        "corregida en recta (" +
+        Math.round((Math.abs(d) * 180) / Math.PI) +
+        "°)",
+      until: performance.now() + 8000,
+    };
+  }
+  function calibUi() {
+    return E && E.calUi && E.calUi.until > performance.now() ? E.calUi : null;
+  }
+  function calibBtnText(ui) {
+    return ui && ui.state === "busy"
+      ? "Calibrando"
+      : ui && ui.state === "ok"
+        ? "Hecho ✓"
+        : "Calibrar";
+  }
+  // Botón de «Calibrar» en el panel (circuito o ruta libre): solo parado y nunca en la vuelta de ejemplo; ocupa el
+  // sitio de hideId. Lo que haya pasado se cuenta en el texto pequeño de la casilla de inclinación (labelId), que el
+  // panel ya ha puesto antes en este fotograma.
+  function renderCalib(btnId, hideId, labelId) {
+    const ui = calibUi();
+    const show = !E.sim && (isStopped() || (ui && ui.state === "busy"));
+    $(btnId).hidden = !show;
+    $(hideId).hidden = show;
+    setText(btnId, calibBtnText(ui));
+    if (ui && ui.why) setText(labelId, ui.why);
+  }
+  // En boxes (pantalla quieta): el botón y su nota se refrescan mientras dura la calibración.
+  function pitsCalib() {
+    startCalib();
+    const tick = () => {
+      if (!E || E.mode !== "pits") return;
+      const ui = calibUi();
+      setText("p-calib", calibBtnText(ui) + (ui ? "" : " inclinación"));
+      setText(
+        "p-calib-note",
+        ui && ui.state === "ok"
+          ? "Calibrado: con la moto así, inclinación y morro marcan 0."
+          : ui && ui.why
+            ? ui.why.charAt(0).toUpperCase() + ui.why.slice(1) + "."
+            : ui && ui.state === "busy"
+              ? "Moto derecha y quieta un segundo…"
+              : "",
+      );
+      if (ui) setTimeout(tick, 200);
+    };
+    tick();
   }
 
   // ---------- recorrido: trazada, curvas de cualquier carretera, cabeceo y caballitos ----------
@@ -1083,6 +1279,8 @@
     E.mode = "pits";
     // El aviso de vuelta terminada solo se quita desde el panel: en boxes se quedaría tapándolo todo.
     $("flash").hidden = true;
+    setText("p-calib", "Calibrar inclinación");
+    setText("p-calib-note", "");
     show("pits");
     const valid = E.laps.filter((l) => l.valid);
     $("p-sub").textContent =
@@ -1331,6 +1529,10 @@
       montaje: eng.mount
         ? Object.assign({ angulo: eng.screenAngle }, eng.mount)
         : null,
+      // Vertical de la moto puesta a mano con «Calibrar» (ejes del móvil), si se usó.
+      calibracionManual: eng.calib.manualU
+        ? eng.calib.manualU.map((x) => Math.round(x * 1e4) / 1e4)
+        : null,
       vueltas: eng.laps.map((l) => ({
         num: l.num,
         time: Math.round(l.time * 1000) / 1000,
@@ -1385,7 +1587,7 @@
   // La inclinación que mediría en la moto: el giro alrededor del eje adelante de la postura del móvil (de pie,
   // inclinado o plano; con la pantalla en vertical u horizontal: T.mountAxes), por la gravedad y por el
   // giroscopio. Si no van juntas, el giroscopio no sirve. La postura de referencia se toma al empezar, con
-  // «Poner a cero» y cuando el móvil se deja quieto en otra postura: cabeceado (de pie ↔ plano) o, plano, con
+  // «Calibrar» y cuando el móvil se deja quieto en otra postura: cabeceado (de pie ↔ plano) o, plano, con
   // la pantalla girada. Tumbarlo (lo que se prueba) no cambia la referencia aunque se quede quieto.
   let sensor = null;
   function screenAngle() {
@@ -1540,6 +1742,7 @@
     sensor.ref = null;
     sensor.stillSince = null;
     if (sensor.gravS) sensorRef(sensor, sensor.gravS);
+    sensor.zeroAt = performance.now();
   }
   function note(id, text, cls) {
     setText(id, text);
@@ -1576,7 +1779,7 @@
     else if (!Number.isFinite(S.leanG))
       note(
         "sen-tilt-note",
-        "Así no se puede medir: el móvil apunta hacia el cielo o hacia el suelo. Colócalo como irá en la moto y pulsa «Poner a cero».",
+        "Así no se puede medir: el móvil apunta hacia el cielo o hacia el suelo. Colócalo como irá en la moto y pulsa «Calibrar».",
       );
     else if (!S.hasGyro)
       note(
@@ -1608,9 +1811,12 @@
     else
       note(
         "sen-tilt-note",
-        ref.posture === "plano"
-          ? "Inclínalo a un lado y a otro como tumbaría la moto (girando sobre el eje que apunta hacia delante), unos 45°."
-          : "Gíralo como un volante, a un lado y a otro, unos 45°.",
+        (S.zeroAt && performance.now() - S.zeroAt < 3000
+          ? "Calibrado: así es 0°. "
+          : "") +
+          (ref.posture === "plano"
+            ? "Inclínalo a un lado y a otro como tumbaría la moto (girando sobre el eje que apunta hacia delante), unos 45°."
+            : "Gíralo como un volante, a un lado y a otro, unos 45°."),
       );
     // GPS
     const hz =
@@ -2018,16 +2224,18 @@
     } else if (!E.hasGyro) {
       setText("d-lean", "—");
       setText("d-lean-l", "sin giroscopio");
-    } else if (!isFinite(lean) || !moving) {
+    } else if (!isFinite(lean)) {
       setText("d-lean", "—");
       setText("d-lean-l", E.leanAxes ? "inclinación" : "calibrando…");
     } else {
+      // También parada: entonces sale de la gravedad (sujeta derecha, 0; en la pata de cabra, ~12°).
       setText("d-lean", fmt(Math.abs(lean), 0) + "°");
       setText(
         "d-lean-l",
         Math.abs(lean) < 3 ? "recto" : lean > 0 ? "derecha" : "izquierda",
       );
     }
+    renderCalib("d-calib", "d-lap", "d-lean-l");
     if (E.calib.f && moving) {
       const g = E.aEma / G;
       setText("d-g", fmtSigned(g, 2));
@@ -2232,7 +2440,7 @@
     if (E.motionDenied) {
       setText("ru-lean", "—");
       setText("ru-lean-l", "sin permiso");
-    } else if (!isFinite(lean) || !moving) {
+    } else if (!isFinite(lean)) {
       setText("ru-lean", "—");
       setText("ru-lean-l", E.leanAxes ? "inclinación" : "calibrando…");
     } else {
@@ -2242,6 +2450,7 @@
         Math.abs(lean) < 3 ? "recto" : lean > 0 ? "derecha" : "izquierda",
       );
     }
+    renderCalib("ru-calib", "ru-title", "ru-lean-l");
     if (E.calib.f && moving) {
       const g = E.aEma / G;
       setText("ru-g", fmtSigned(g, 2));
@@ -2252,7 +2461,12 @@
     }
     setText(
       "ru-pitch",
-      isFinite(E.pitchDeg) && moving ? fmtSigned(E.pitchDeg, 0) + "°" : "—",
+      // También parada (tras «Calibrar», 0; sin «+0» ni «−0»).
+      !isFinite(E.pitchDeg)
+        ? "—"
+        : Math.abs(E.pitchDeg) < 0.5
+          ? "0°"
+          : fmtSigned(E.pitchDeg, 0) + "°",
     );
     const c = E.curveRecap;
     $("ru-recap").hidden = !c;
@@ -3138,6 +3352,9 @@
     $("sensors").addEventListener("click", startSensors);
     $("sen-back").addEventListener("click", stopSensors);
     $("sen-zero").addEventListener("click", sensorZero);
+    $("d-calib").addEventListener("click", startCalib);
+    $("ru-calib").addEventListener("click", startCalib);
+    $("p-calib").addEventListener("click", pitsCalib);
     $("stop").addEventListener("click", () => {
       if (E && E.lapNum > 0) enterPits();
       else stopAll();
