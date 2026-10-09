@@ -139,6 +139,15 @@ Guarda todas tus tandas en `~/Maspalomas-telemetria` (hasta que tú borres la ca
    (.mp4 si el navegador sabe, si no .webm), grabándola en tiempo real. La HERO12 no lleva GPS. Las grabaciones
    largas que la GoPro parte en varios archivos se importan cada una por su lado.
 
+6. «Informe de la IA» (en el análisis de una tanda del garaje): un ingeniero de pista virtual (Claude,
+   `claude-opus-5-5`) escribe en castellano dónde se va el tiempo, tres cosas medibles para la próxima tanda, lo que
+   ya va bien y la regularidad. Lee los números del análisis y del entrenador (vueltas, sectores, curvas, lo que
+   pierde la mejor vuelta frente al objetivo y por qué, frenadas); no le llegan posiciones ni tu nombre. La primera
+   vez pide tu clave de la API de Anthropic (console.anthropic.com → API Keys), que se queda en este Mac
+   (`~/Maspalomas-telemetria/ia.json`, solo legible por tu usuario; o la variable `ANTHROPIC_API_KEY`; otro modelo
+   con `MASPA_IA_MODELO`). Cada informe cuesta unos céntimos de tu cuenta y se guarda con la tanda; si la tanda
+   recibe datos nuevos, lo avisa. Si Anthropic rechaza la clave, no hay saldo, hay límite o está saturado, lo dice.
+
 El código cambia cada vez que abres el garaje: escanéalo antes de salir hacia el circuito. Para cerrarlo, cierra
 la ventana de Terminal.
 
@@ -200,7 +209,8 @@ Android 13, Chrome 146, Helio G85, conectado por cable al Mac (adb y DevTools):
 
 Todo se procesa en el móvil y en tu Mac. Lo único que sale a internet es el túnel hacia el garaje, que pide la
 clave del emparejado (guardada en `~/Maspalomas-telemetria/config.json`) y solo deja añadir tandas: no permite
-leerlas ni borrarlas. La página del garaje solo se abre desde el propio Mac.
+leerlas ni borrarlas. La página del garaje solo se abre desde el propio Mac. Si pides un informe de la IA, el Mac
+manda a Anthropic las métricas de esa tanda (sin posiciones ni nombre); el túnel no llega a esa parte.
 
 ## Seguridad en pista
 

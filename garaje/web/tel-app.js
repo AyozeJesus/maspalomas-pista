@@ -152,6 +152,7 @@
       state.epoch = null;
       if (videoCtl) videoCtl.resetSync();
       state.source = "file";
+      state.tandaId = null;
       state.fileName =
         files.length === 1 ? files[0].name : files.length + " archivos";
       runAnalysis();
@@ -323,13 +324,167 @@
   function loadDemo() {
     state.session = T.demoSession({ seed: 7 }).session;
     state.source = "demo";
+    state.tandaId = null;
     state.fileName = "Ejemplo";
     state.epoch = null;
     if (videoCtl) videoCtl.resetSync();
     runAnalysis();
   }
 
+  // ---------- informe con IA (solo tandas del garaje: el informe lo pide el Mac) ----------
+  // Markdown sencillo (## títulos, listas con - o 1., **negrita**) a nodos: el texto de la IA nunca va como HTML.
+  function mdInto(box, text) {
+    let list = null;
+    let para = null;
+    const inline = (el, s) => {
+      s.split(/(\*\*[^*]+\*\*)/).forEach((part) => {
+        if (/^\*\*[^*]+\*\*$/.test(part)) {
+          const b = document.createElement("strong");
+          b.textContent = part.slice(2, -2);
+          el.appendChild(b);
+        } else if (part) el.appendChild(document.createTextNode(part));
+      });
+    };
+    for (const raw of String(text).split("\n")) {
+      const line = raw.trim();
+      const h = /^#{1,4}\s+(.*)$/.exec(line);
+      const li = /^(?:[-*•]|\d+[.)])\s+(.*)$/.exec(line);
+      if (!line) {
+        list = null;
+        para = null;
+      } else if (h) {
+        list = null;
+        para = null;
+        const el = document.createElement("h3");
+        inline(el, h[1]);
+        box.appendChild(el);
+      } else if (li) {
+        para = null;
+        const ordered = /^\d/.test(line);
+        if (!list || list.tagName !== (ordered ? "OL" : "UL")) {
+          list = document.createElement(ordered ? "ol" : "ul");
+          box.appendChild(list);
+        }
+        const el = document.createElement("li");
+        inline(el, li[1]);
+        list.appendChild(el);
+      } else {
+        list = null;
+        if (!para) {
+          para = document.createElement("p");
+          box.appendChild(para);
+        } else para.appendChild(document.createTextNode(" "));
+        inline(para, line);
+      }
+    }
+  }
+
+  function renderIa(inf, cfg) {
+    const box = $("ia-text");
+    box.textContent = "";
+    $("ia-key").hidden = !!cfg.configurada;
+    $("ia-go").disabled = !cfg.configurada;
+    if (inf) {
+      mdInto(box, inf.texto);
+      $("ia-go").textContent = "Pedir otro informe";
+      $("ia-status").textContent =
+        "Informe del " +
+        new Date(inf.creado).toLocaleString("es-ES", {
+          day: "numeric",
+          month: "long",
+          hour: "2-digit",
+          minute: "2-digit",
+        }) +
+        (inf.cortado ? " · salió cortado: pide otro" : "") +
+        (inf.viejo
+          ? " · la tanda ha recibido datos nuevos desde entonces: pide otro"
+          : "");
+    } else {
+      $("ia-go").textContent = "Pedir el informe";
+      $("ia-status").textContent = cfg.configurada
+        ? "Aún no hay informe de esta tanda: tarda medio minuto, más o menos."
+        : "Para el informe hace falta tu clave de la API de Anthropic (console.anthropic.com → API Keys).";
+    }
+  }
+
+  async function loadIa() {
+    const id = state.tandaId;
+    $("ia-sec").hidden = !id;
+    if (!id) return;
+    let cfg = { configurada: false };
+    let inf = null;
+    try {
+      cfg = await (await fetch("/api/ia", { cache: "no-store" })).json();
+      const r = await fetch(
+        "/api/tandas/" + encodeURIComponent(id) + "/informe",
+        { cache: "no-store" },
+      );
+      if (r.ok) inf = (await r.json()).informe;
+    } catch (e) {
+      /* garaje cerrado: sin informe */
+    }
+    if (state.tandaId !== id) return;
+    state.iaCfg = cfg;
+    renderIa(inf, cfg);
+  }
+
+  async function askIa() {
+    const id = state.tandaId;
+    if (!id) return;
+    const btn = $("ia-go");
+    btn.disabled = true;
+    $("ia-status").textContent =
+      "Escribiendo el informe… (medio minuto, más o menos)";
+    try {
+      const r = await fetch(
+        "/api/tandas/" + encodeURIComponent(id) + "/informe",
+        {
+          method: "POST",
+          headers: { "X-Garaje": "1" },
+        },
+      );
+      const j = await r.json().catch(() => ({}));
+      if (state.tandaId !== id) return;
+      if (!r.ok || !j.informe) {
+        $("ia-status").textContent =
+          j.error || "No se ha podido hacer el informe: prueba otra vez.";
+        btn.disabled = false;
+        return;
+      }
+      renderIa(j.informe, state.iaCfg || { configurada: true });
+    } catch (e) {
+      if (state.tandaId !== id) return;
+      $("ia-status").textContent =
+        "Sin conexión con el garaje: ¿sigue abierto?";
+      btn.disabled = false;
+    }
+  }
+
+  async function saveIaKey() {
+    const clave = $("ia-clave").value.trim();
+    if (!clave) return;
+    try {
+      const r = await fetch("/api/ia", {
+        method: "POST",
+        headers: { "X-Garaje": "1", "Content-Type": "application/json" },
+        body: JSON.stringify({ clave }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        $("ia-status").textContent =
+          j.error || "No se ha podido guardar la clave.";
+        return;
+      }
+      $("ia-clave").value = "";
+      loadIa();
+    } catch (e) {
+      $("ia-status").textContent =
+        "Sin conexión con el garaje: ¿sigue abierto?";
+    }
+  }
+
   function runAnalysis() {
+    loadIa();
     setStatus("Procesando la tanda…");
     setTimeout(() => {
       try {
@@ -1579,6 +1734,11 @@
       if (state.result && validLaps().length) renderDetail();
     });
     $("save-btn").addEventListener("click", saveCurrent);
+    $("ia-go").addEventListener("click", askIa);
+    $("ia-save").addEventListener("click", saveIaKey);
+    $("ia-clave").addEventListener("keydown", (ev) => {
+      if (ev.key === "Enter") saveIaKey();
+    });
     $("r3d-open").addEventListener("click", () => {
       if (state.r3dOpen) closeReplay();
       else openReplay();
