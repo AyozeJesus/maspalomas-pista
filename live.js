@@ -8,7 +8,7 @@
   const ST = window.PistaStore;
   const APP_VERSION = 2;
   // Versión publicada (la misma que la copia de sw.js, «pista-vN»): se ve en la portada.
-  const BUILD = 15;
+  const BUILD = 16;
   const G = 9.80665;
   const REC_EVERY = 10; // segundos entre trozos guardados en el móvil
   const $ = (id) => document.getElementById(id);
@@ -1340,10 +1340,8 @@
       }
       body.appendChild(tr);
     });
-    $("p-ideal").textContent =
-      analysis && analysis.ideal
-        ? "Vuelta ideal (tus mejores sectores): " + fmtLap(analysis.ideal)
-        : "";
+    // La vuelta ideal la pone el entrenador (la fina solo con GPS rápido).
+    $("p-ideal").textContent = "";
     pitsBrakes();
     // Con el análisis completo, la mejor vuelta del resumen es la suya (más precisa que la del directo).
     if (bestT !== null)
@@ -1351,17 +1349,24 @@
         /mejor \d+:\d\d,\d\d/,
         "mejor " + fmtLap(bestT),
       );
+    pitsCoach(analysis);
+  }
+
+  // Entrenador en boxes: las 3 cosas que más tiempo te dan para la próxima tanda (tu mejor vuelta frente al
+  // objetivo), lo que ya has hecho mejor en otra vuelta y la curva menos regular.
+  function pitsCoach(analysis) {
     const tips = $("p-tips");
     tips.textContent = "";
-    const addTip = (title, loss, lines) => {
+    const addTip = (title, loss, lines, cls) => {
       const li = document.createElement("li");
+      if (cls) li.className = cls;
       const st = document.createElement("strong");
       st.textContent = title;
       li.appendChild(st);
       if (loss !== null) {
         const b = document.createElement("span");
         b.className = "loss";
-        b.textContent = fmtSigned(-loss, 2) + " s en ese tramo";
+        b.textContent = fmtSigned(-loss, 2) + " s por vuelta";
         li.appendChild(b);
       }
       for (const t of lines) {
@@ -1371,38 +1376,79 @@
       }
       tips.appendChild(li);
     };
-    if (!analysis || !analysis.best) {
+    const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1) + ".";
+    const c = analysis && analysis.best ? T.coach(analysis) : null;
+    if (!c) {
       addTip("Sin análisis todavía", null, [
         "Haz al menos una vuelta completa pasando dos veces por meta.",
       ]);
       return;
     }
-    const last = laps[laps.length - 1];
-    const isBest = last === analysis.best;
-    const res = isBest
-      ? T.insights(last, analysis.ref.metrics, analysis.ref.sectors, {
-          ref: "tu objetivo de " + fmtLap(target(), 1),
-        })
-      : T.insights(last, analysis.best.corners, analysis.best.sectors, {
-          ref: "tu mejor vuelta",
-        });
-    const top = res.filter((x) => x.loss > 0.03).slice(0, 3);
-    if (!top.length)
-      addTip(
-        isBest ? "Tu última vuelta es la mejor" : "Última vuelta muy pareja",
-        null,
-        ["No pierdes tiempo claro en ninguna horquilla."],
-      );
-    for (const x of top) {
-      const lines = x.tips.map(
-        (t) => t.text.charAt(0).toUpperCase() + t.text.slice(1) + ".",
-      );
-      addTip(
-        "C" + x.corner.num + " · " + x.corner.name,
-        x.loss,
-        lines.length ? lines : ["Pierdes un poco en toda la curva."],
-      );
+    for (const p of c.plan) {
+      const head = p.text.split(":")[0];
+      const why =
+        p.text.indexOf(":") >= 0
+          ? p.text.slice(p.text.indexOf(":") + 1).trim()
+          : "";
+      const lines = why
+        ? why.split("; ").map(cap)
+        : [
+            "Mismos puntos de frenada y de gas y misma velocidad mínima: el tiempo se va en cómo bajas o subes la velocidad, o en la trazada.",
+          ];
+      if (p.already)
+        lines.push(
+          "Ya lo hiciste en la vuelta " +
+            p.already.lapNum +
+            ": " +
+            fmt(p.already.gain, 2) +
+            " s mejor que en tu mejor vuelta.",
+        );
+      addTip(head, p.gain, lines);
     }
+    if (!c.plan.length)
+      addTip("Frente a tu objetivo de " + fmtLap(target(), 1), null, [
+        "Tu mejor vuelta no pierde tiempo claro en ninguna curva.",
+      ]);
+    // Lo que ya sabes hacer (otra vuelta lo hizo mejor que la mejor) y que no esté ya en el plan.
+    const inPlan = (s) =>
+      c.plan.some(
+        (p) =>
+          p.k === s.k && (p.phase === "entrada") === (s.phase === "entrada"),
+      );
+    for (const s of c.self.filter((s) => !inPlan(s)).slice(0, 2))
+      addTip(
+        "Ya lo has hecho: C" + s.num + " · " + s.name + " · " + s.phase,
+        null,
+        [
+          "En la vuelta " +
+            s.lapNum +
+            " hiciste esa " +
+            s.phase +
+            " " +
+            fmt(s.gain, 2) +
+            " s más rápido que en tu mejor vuelta.",
+        ],
+        "tip-self",
+      );
+    const irr = c.consistency[0];
+    if (irr && irr.sd >= 0.15)
+      addTip(
+        "Menos regular: C" + irr.num + " · " + irr.name,
+        null,
+        [
+          "De una vuelta a otra varía ±" +
+            fmt(irr.sd, 2) +
+            " s: busca la misma referencia de frenada y de gas cada vuelta.",
+        ],
+        "tip-self",
+      );
+    $("p-ideal").textContent =
+      c.ideal.show !== null
+        ? "Vuelta ideal (tus mejores " +
+          c.ideal.kind +
+          "): " +
+          fmtLap(c.ideal.show)
+        : "";
   }
 
   function enterRide() {

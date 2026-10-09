@@ -125,6 +125,12 @@
   .tip-head b.good { color: var(--gas); }
   .tip-line { display: flex; gap: 8px; align-items: baseline; font-size: 14px; }
   .pill { font: 600 11px var(--mono); padding: 2px 6px; border-radius: 3px; background: var(--panel); border: 1px solid var(--rule); white-space: nowrap; text-decoration: none; color: var(--ink); }
+  /* Entrenador: lo que ya hiciste mejor y la tabla de fases. */
+  .tip-line.done { color: var(--gas); font-weight: 600; }
+  table.phases td { white-space: normal; }
+  table.phases td small { display: block; font-family: var(--body); font-size: 12px; color: var(--muted); }
+  table.phases td.worse, table.phases td.better { font-weight: 600; }
+  .seg button.ext { font-size: 12px; }
 
   /* Gráficas */
   .charts { position: relative; display: grid; gap: 6px; touch-action: pan-y; }
@@ -232,9 +238,16 @@
       </div>
     </div>
     <div>
-      <h3 class="caption sub-h">Dónde están tus puntos de mejora en esta vuelta</h3>
+      <h3 class="caption sub-h" id="coach-h">Plan: dónde está el tiempo de esta vuelta</h3>
       <ol class="tips" id="tips"></ol>
     </div>
+    <div class="tbl">
+      <table class="phases">
+        <thead><tr><th scope="col">Curva</th><th scope="col">Entrada</th><th scope="col">Salida</th><th scope="col">Recta</th><th scope="col">Total</th></tr></thead>
+        <tbody id="coach-phases"></tbody>
+      </table>
+    </div>
+    <p class="caption" id="coach-note"></p>
   </section>
 
   <section class="grid2" id="detail-grid">
@@ -250,9 +263,15 @@
       <div class="legend" aria-hidden="true"><span><i class="lg-lap"></i>Esta vuelta</span><span><i class="lg-ref"></i><span id="ref-name">Objetivo</span></span><span>Diferencia: rojo pierdes, verde ganas</span></div>
     </div>
     <div class="panel map">
-      <div class="panel-title"><h3>En la pista</h3><span class="caption">dónde frenas, dónde vas sin carga y dónde aceleras</span></div>
+      <div class="panel-title"><h3>En la pista</h3>
+        <div class="seg" id="map-mode">
+          <button type="button" data-v="fases" aria-pressed="true">Freno y gas</button>
+          <button type="button" data-v="minis" aria-pressed="false">Minisectores</button>
+        </div>
+      </div>
       <svg id="map" role="img" aria-label="Mapa del circuito con la vuelta coloreada. Toca un punto de la pista para poner ahí la línea de meta."></svg>
-      <div class="legend" aria-hidden="true"><span><i class="lg-g"></i>Acelerando</span><span><i class="lg-b"></i>Frenando</span><span><i class="lg-c"></i>Sin freno ni gas en curva</span></div>
+      <div class="legend" id="map-legend-fases" aria-hidden="true"><span><i class="lg-g"></i>Acelerando</span><span><i class="lg-b"></i>Frenando</span><span><i class="lg-c"></i>Sin freno ni gas en curva</span></div>
+      <p class="caption" id="map-legend-minis" hidden>Cada tramo de 50 m, frente al mejor que hiciste en él en esta tanda: gris, igual; rojo intenso, una décima o más perdida ahí. <span id="minis-note"></span></p>
       <div class="row">
         <p class="caption">Toca la pista para mover la <strong>línea de meta</strong> (ponla donde la tenga RaceChrono o el cronometraje del circuito). Vueltas, sectores y el orden C1…C4 cuentan desde ahí.</p>
         <button type="button" id="finish-reset">Meta por defecto</button>

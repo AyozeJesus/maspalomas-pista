@@ -18,10 +18,17 @@
     source: "demo",
     fileName: "",
     lapIdx: 0,
+    // "obj" (objetivo), "best" (mi mejor vuelta) o "t:<id>" (la mejor vuelta de otra tanda del mismo día).
     refMode: "obj",
     target: 65.0,
     cursorK: null,
     finish: readFinish(),
+    tandaId: null,
+    // Otras tandas del día (de cualquier piloto) y sus mejores vueltas ya analizadas con esta misma meta.
+    dayList: [],
+    extRefs: {},
+    coach: null,
+    mapMode: "fases",
   };
   const store = { kind: null, col: null, docs: [], unsub: null };
 
@@ -203,6 +210,8 @@
       }
       state.session = T.sessionFromCsv(data.files);
       state.source = "file";
+      state.tandaId = id;
+      loadDayRefs(id);
       state.fileName =
         "Tanda del " +
         new Date(data.epoch).toLocaleString("es-ES", {
@@ -216,6 +225,94 @@
     } catch (e) {
       showError(e);
     }
+  }
+
+  // Las otras tandas de circuito del mismo día (tuyas o de otro piloto): se pueden usar de referencia.
+  async function loadDayRefs(id) {
+    try {
+      const r = await fetch("/api/tandas", { cache: "no-store" });
+      if (!r.ok) return;
+      const j = await r.json();
+      const day = id.slice(0, 8);
+      state.dayList = (j.tandas || []).filter(
+        (t) =>
+          t.id !== id &&
+          t.id.slice(0, 8) === day &&
+          t.meta &&
+          t.meta.tipo === "pista" &&
+          Number.isFinite(t.meta.mejor),
+      );
+      renderRefButtons();
+    } catch (e) {
+      /* sin garaje (archivo subido a mano): solo objetivo y mejor vuelta */
+    }
+  }
+  function refWho(t) {
+    const hora = t.id.slice(9, 11) + ":" + t.id.slice(11, 13);
+    return (t.meta.piloto || "Tanda") + " " + hora;
+  }
+  function renderRefButtons() {
+    const seg = $("ref-mode");
+    for (const b of seg.querySelectorAll("button.ext")) b.remove();
+    for (const t of state.dayList) {
+      const b = el(
+        "button",
+        "ext",
+        refWho(t) + " · " + fmtLap(t.meta.mejor),
+        seg,
+      );
+      b.type = "button";
+      b.dataset.v = "t:" + t.id;
+      b.setAttribute("aria-pressed", String(state.refMode === b.dataset.v));
+    }
+  }
+  // Con otra línea de meta, las vueltas de las otras tandas ya analizadas no sirven: se vuelve al objetivo.
+  function resetExtRefs() {
+    state.extRefs = {};
+    if (state.refMode.indexOf("t:") === 0) {
+      state.refMode = "obj";
+      for (const x of $("ref-mode").querySelectorAll("button"))
+        x.setAttribute("aria-pressed", String(x.dataset.v === "obj"));
+    }
+  }
+  // La mejor vuelta de otra tanda, analizada con la misma meta y el mismo sentido (si no, no se pueden comparar).
+  async function loadExtRef(id) {
+    const t = state.dayList.find((x) => x.id === id);
+    const who = t ? refWho(t) : "otra tanda";
+    setStatus("Cargando la mejor vuelta de " + who + "…");
+    const r = await fetch(
+      "/api/tandas/" + encodeURIComponent(id) + "/archivos",
+      {
+        cache: "no-store",
+      },
+    );
+    if (!r.ok) throw userError("No se ha podido leer la tanda de " + who + ".");
+    const data = await r.json();
+    const res = T.analyze(T.sessionFromCsv(data.files), {
+      target: state.target,
+      finish: state.finish,
+      dir: state.result.dir,
+    });
+    if (!res.best)
+      throw userError(
+        "La tanda de " +
+          who +
+          " no tiene ninguna vuelta completa en este sentido.",
+      );
+    state.extRefs[id] = {
+      grid: res.best.grid,
+      corners: res.best.corners,
+      sectors: res.best.sectors,
+      time: res.best.time,
+      who,
+    };
+    setStatus(
+      "Comparando con la mejor vuelta de " +
+        who +
+        " (" +
+        fmtLap(res.best.time) +
+        ").",
+    );
   }
 
   function loadDemo() {
@@ -374,9 +471,29 @@
     });
   }
 
+  // coach: lo que entiende T.coach ("objetivo", "mejor" o la vuelta de otra tanda).
   function currentRef() {
     const r = state.result;
     const lap = validLaps()[state.lapIdx];
+    const ext =
+      state.refMode.indexOf("t:") === 0
+        ? state.extRefs[state.refMode.slice(2)]
+        : null;
+    if (ext) {
+      return {
+        grid: ext.grid,
+        corners: ext.corners,
+        sectors: ext.sectors,
+        label: "la mejor de " + ext.who,
+        name: "Mejor de " + ext.who + " (" + fmtLap(ext.time) + ")",
+        coach: {
+          grid: ext.grid,
+          corners: ext.corners,
+          time: ext.time,
+          label: ext.who,
+        },
+      };
+    }
     if (state.refMode === "best" && r.best && r.best !== lap) {
       return {
         grid: r.best.grid,
@@ -384,6 +501,7 @@
         sectors: r.best.sectors,
         label: "tu mejor vuelta",
         name: "Mi mejor vuelta (" + fmtLap(r.best.time) + ")",
+        coach: "mejor",
       };
     }
     return {
@@ -392,6 +510,7 @@
       sectors: r.ref.sectors,
       label: "el objetivo",
       name: "Objetivo " + fmtLap(state.target, 1),
+      coach: "objetivo",
     };
   }
 
@@ -414,57 +533,123 @@
     );
   }
 
+  // A qué pilar de «Maspalomas a fondo» corresponde cada consejo (para enlazar su explicación).
+  function pillarOf(phase, text) {
+    if (/sin gas/.test(text)) return 2;
+    if (/ancho/.test(text)) return 4;
+    return phase === "entrada" ? 3 : 1;
+  }
+  const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+
+  // Entrenador: dónde está el tiempo de esta vuelta frente a la referencia elegida, en un plan de 3 cosas
+  // (con lo que ya hiciste mejor en otra vuelta) y curva a curva por fases.
   function renderTips(lap, ref) {
     const list = $("tips");
     list.textContent = "";
-    const res = T.insights(lap, ref.corners, ref.sectors, { ref: ref.label });
-    const losing = res.filter((x) => x.loss > 0.03);
-    if (state.refMode === "best" && lap === state.result.best) {
-      el(
-        "li",
-        "",
-        "Esta es tu mejor vuelta. Compárala con el objetivo para ver qué le falta.",
-        list,
-      );
-      return;
-    }
-    if (!losing.length) {
-      el(
-        "li",
-        "",
-        "En esta vuelta no pierdes tiempo frente a " +
-          ref.label +
-          " en ninguna horquilla.",
-        list,
-      );
-      return;
-    }
-    for (const x of losing.slice(0, 3)) {
+    const c = T.coach(state.result, { lap, ref: ref.coach });
+    state.coach = c;
+    $("coach-h").textContent =
+      "Plan: dónde está el tiempo de esta vuelta frente a " + ref.label;
+    for (const p of c.plan) {
       const li = el("li", "", null, list);
       const head = el("div", "tip-head", null, li);
-      el("strong", "", "C" + x.corner.num + " · " + x.corner.name, head);
-      el("b", "", fmtSigned(-x.loss, 2) + " s en el sector", head);
-      if (!x.tips.length)
+      const colon = p.text.indexOf(":");
+      el("strong", "", colon >= 0 ? p.text.slice(0, colon) : p.text, head);
+      el("b", "", fmtSigned(-p.gain, 2) + " s por vuelta", head);
+      const why =
+        colon >= 0
+          ? p.text
+              .slice(colon + 1)
+              .trim()
+              .split("; ")
+          : [];
+      if (!why.length)
         el(
           "div",
           "tip-line",
-          "Pierdes poco en cada cosa: el tiempo se va repartido por toda la curva.",
+          "Mismos puntos de frenada y de gas y misma velocidad mínima: el tiempo se va en cómo bajas o subes la velocidad, o en la trazada. Mira la gráfica de velocidad en esa zona.",
           li,
         );
-      for (const t of x.tips) {
+      for (const w of why) {
         const line = el("div", "tip-line", null, li);
-        const a = el("a", "pill", PILLARS[t.pillar], line);
-        a.href = EXPLAINER + "#pilar-" + t.pillar;
+        const pil = pillarOf(p.phase, w);
+        const a = el("a", "pill", PILLARS[pil], line);
+        a.href = EXPLAINER + "#pilar-" + pil;
         a.target = "_blank";
         a.rel = "noopener";
-        el(
-          "span",
-          "",
-          t.text.charAt(0).toUpperCase() + t.text.slice(1) + ".",
-          line,
-        );
+        el("span", "", cap(w) + ".", line);
       }
+      if (p.already)
+        el(
+          "div",
+          "tip-line done",
+          "Ya lo hiciste en la vuelta " +
+            p.already.lapNum +
+            ": " +
+            fmt(p.already.gain, 2) +
+            " s mejor que en tu mejor vuelta.",
+          li,
+        );
     }
+    if (!c.plan.length)
+      el(
+        "li",
+        "",
+        "En esta vuelta no pierdes tiempo claro frente a " +
+          ref.label +
+          " en ninguna fase.",
+        list,
+      );
+    // Tabla curva a curva: entrada, salida y recta (la recta que viene detrás de cada curva).
+    const body = $("coach-phases");
+    body.textContent = "";
+    const byNum = c.lap.corners.slice().sort((a, b) => a.num - b.num);
+    for (const k of byNum) {
+      const tr = el("tr", "", null, body);
+      el("td", "", "C" + k.num + " · " + k.name, tr).style.fontFamily =
+        "var(--body)";
+      for (const name of ["entrada", "salida", "recta"]) {
+        const ph = k.phases.find((x) => x.phase === name);
+        const td = el(
+          "td",
+          ph.loss > 0.03 ? "worse" : ph.loss < -0.03 ? "better" : "",
+          fmtSigned(ph.loss, 2),
+          tr,
+        );
+        if (ph.why.length) el("small", "", cap(ph.why[0]), td);
+      }
+      el(
+        "td",
+        k.loss > 0.03 ? "worse" : k.loss < -0.03 ? "better" : "",
+        fmtSigned(k.loss, 2),
+        tr,
+      );
+    }
+    // Vuelta ideal (la fina solo con GPS rápido) y la curva menos regular.
+    const notes = [];
+    if (c.ideal.show !== null)
+      notes.push(
+        "Vuelta ideal (tus mejores " +
+          c.ideal.kind +
+          "): " +
+          fmtLap(c.ideal.show) +
+          ".",
+      );
+    const irr = c.consistency[0];
+    if (irr && irr.sd >= 0.15)
+      notes.push(
+        "La curva menos regular es C" +
+          irr.num +
+          " · " +
+          irr.name +
+          ": varía ±" +
+          fmt(irr.sd, 2) +
+          " s de una vuelta a otra.",
+      );
+    notes.push(
+      "Positivo, pierdes; negativo, ganas. Cada curva incluye la recta que viene detrás, que es donde se nota su salida.",
+    );
+    $("coach-note").textContent = notes.join(" ");
   }
 
   // ---------- gráficas ----------
@@ -724,6 +909,68 @@
     return [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f];
   }
 
+  const pathD = (pts) =>
+    "M" + pts.map((p) => p[0].toFixed(1) + " " + p[1].toFixed(1)).join("L");
+
+  // Fases de esta vuelta, por distancia: freno, gas y sin carga en curva.
+  function drawPhases(root, lap) {
+    const g = lap.grid;
+    const G = T.G;
+    const phaseOf = (k) => {
+      const a = g.a[k] / G;
+      if (a <= -0.15) return "brake";
+      if (a >= 0.1) return "gas";
+      return Math.abs(g.lean[k]) >= 15 ? "coast" : "gas";
+    };
+    let start = 0;
+    let ph = phaseOf(0);
+    for (let k = 1; k <= g.s.length; k++) {
+      const p2 = k < g.s.length ? phaseOf(k) : null;
+      if (p2 !== ph) {
+        const pts = [];
+        for (let q = start; q <= Math.min(k, g.s.length - 1); q++)
+          pts.push(pointAt(g.s[q]));
+        svg("path", { d: pathD(pts), class: "m-ph m-" + ph }, root);
+        start = k;
+        ph = p2;
+      }
+    }
+  }
+
+  // Minisectores de 50 m: lo que pierde esta vuelta en cada uno frente al mejor de la tanda (gris si nada, rojo
+  // intenso desde una décima).
+  function drawMinis(root, lap) {
+    const c = state.coach;
+    const loss = c ? c.minis.lap(lap.num) : null;
+    if (!loss) return;
+    const b = c.minis.bounds;
+    const L = state.result.track.L;
+    for (let i = 0; i < b.length; i++) {
+      const a = b[i];
+      const e = i + 1 < b.length ? b[i + 1] : L;
+      const pts = [];
+      for (let s = a; s < e; s += 4) pts.push(pointAt(s));
+      pts.push(pointAt(e));
+      const f = Math.max(0, Math.min(1, loss[i] / 0.1));
+      const p = svg("path", { d: pathD(pts), class: "m-ph" }, root);
+      p.style.stroke =
+        f < 0.08
+          ? "var(--ghost)"
+          : "rgba(210, 56, 45, " + (0.25 + 0.75 * f).toFixed(2) + ")";
+      const t = svg("title", {}, p);
+      t.textContent =
+        "Minisector " +
+        (i + 1) +
+        ": " +
+        fmtSigned(loss[i], 2) +
+        " s frente a tu mejor";
+    }
+    $("minis-note").textContent =
+      state.result.gpsHz >= 5
+        ? ""
+        : "Con el GPS del móvil cada tramo lleva unas centésimas de ruido: fíjate en los rojos que se repiten, no en uno suelto.";
+  }
+
   function renderMap(lap) {
     const root = $("map");
     root.textContent = "";
@@ -748,37 +995,8 @@
       "Z";
     svg("path", { d, class: "m-edge" }, root);
     svg("path", { d, class: "m-road" }, root);
-    // Fases de esta vuelta, por distancia.
-    const g = lap.grid;
-    const G = T.G;
-    const phaseOf = (k) => {
-      const a = g.a[k] / G;
-      if (a <= -0.15) return "brake";
-      if (a >= 0.1) return "gas";
-      return Math.abs(g.lean[k]) >= 15 ? "coast" : "gas";
-    };
-    let start = 0;
-    let ph = phaseOf(0);
-    for (let k = 1; k <= g.s.length; k++) {
-      const p2 = k < g.s.length ? phaseOf(k) : null;
-      if (p2 !== ph) {
-        const pts = [];
-        for (let q = start; q <= Math.min(k, g.s.length - 1); q++)
-          pts.push(pointAt(g.s[q]));
-        svg(
-          "path",
-          {
-            d:
-              "M" +
-              pts.map((p) => p[0].toFixed(1) + " " + p[1].toFixed(1)).join("L"),
-            class: "m-ph m-" + ph,
-          },
-          root,
-        );
-        start = k;
-        ph = p2;
-      }
-    }
+    if (state.mapMode === "minis") drawMinis(root, lap);
+    else drawPhases(root, lap);
     for (const c of state.result.ref.corners) {
       const gg = svg("g", {}, root);
       svg(
@@ -1158,12 +1376,36 @@
       if (state.session) runAnalysis();
     });
     const seg = $("ref-mode");
-    seg.addEventListener("click", (ev) => {
+    seg.addEventListener("click", async (ev) => {
       const b = ev.target.closest("button[data-v]");
-      if (!b) return;
+      if (!b || !state.result) return;
+      const v = b.dataset.v;
+      // La vuelta de otra tanda se analiza la primera vez que se elige.
+      if (v.indexOf("t:") === 0 && !state.extRefs[v.slice(2)]) {
+        b.disabled = true;
+        try {
+          await loadExtRef(v.slice(2));
+        } catch (e) {
+          showError(e);
+          return;
+        } finally {
+          b.disabled = false;
+        }
+      }
       for (const x of seg.querySelectorAll("button"))
         x.setAttribute("aria-pressed", String(x === b));
-      state.refMode = b.dataset.v;
+      state.refMode = v;
+      if (validLaps().length) renderDetail();
+    });
+    const mm = $("map-mode");
+    mm.addEventListener("click", (ev) => {
+      const b = ev.target.closest("button[data-v]");
+      if (!b) return;
+      for (const x of mm.querySelectorAll("button"))
+        x.setAttribute("aria-pressed", String(x === b));
+      state.mapMode = b.dataset.v;
+      $("map-legend-fases").hidden = state.mapMode !== "fases";
+      $("map-legend-minis").hidden = state.mapMode !== "minis";
       if (state.result && validLaps().length) renderDetail();
     });
     $("save-btn").addEventListener("click", saveCurrent);
@@ -1190,12 +1432,14 @@
       state.finish[r.dir] = (r.track.start + best) % r.track.n;
       writeFinish();
       state.saved = false;
+      resetExtRefs();
       runAnalysis();
     });
     $("finish-reset").addEventListener("click", () => {
       state.finish = { osm: 0, rev: 0 };
       writeFinish();
       state.saved = false;
+      resetExtRefs();
       if (state.session) runAnalysis();
     });
   }

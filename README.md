@@ -45,6 +45,15 @@ dibujar en 3D, lo dice y el panel sigue igual.
   como en la moto, girando sobre ese eje adelante, por gravedad y por giroscopio.
 - **Resumen de cada curva** (se ve en la recta siguiente): tiempo ganado o perdido en esa curva, inclinación
   máxima, frenada máxima en g, velocidad mínima y punto de frenada, comparados con tu mejor vuelta.
+- **Entrenador** (`coach` en `telemetry.js`): reparte lo que pierde una vuelta frente a una referencia (el
+  objetivo del modelo, tu mejor vuelta o la mejor de otra tanda del día, tuya o de otro piloto) curva a curva y
+  por fases que cubren la vuelta entera: entrada (de la frenada más temprana al vértice), salida (del vértice al gas
+  a fondo) y recta. Cada pérdida dice por qué (metros de frenada, g, km/h, tiempo sin gas, radio) y, si es por
+  llegar más lento a una frenada, se la apunta a la salida anterior. Saca un plan de 3 cosas para la próxima
+  tanda, lo que ya hiciste mejor en otra vuelta y la curva menos regular. En boxes y en el análisis del garaje
+  (con tabla por fases y mapa por minisectores de 50 m). La vuelta ideal fina (50 m) solo se da con GPS rápido
+  (5 Hz o más): con el del móvil, quedarse con el mínimo de cada tramo elige el ruido (en la tanda de ejemplo, 0,2–
+  0,3 s de más), así que se enseña la de 4 sectores, que no tiene ese sesgo.
 - **Frenadas**: de cada una, el pico y la media en g, la «mordida» (lo que tardas en llegar al 80 % del pico),
   metros, velocidad de entrada y salida, cuánto baja el morro (cabeceo desde justo antes de frenar, en grados y
   ≈ mm de horquilla: batalla × tan(cabeceo) × 0,8, una estimación para comparar) y cuánto frenas tumbado (metros
