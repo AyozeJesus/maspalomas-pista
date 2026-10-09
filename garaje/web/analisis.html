@@ -131,6 +131,17 @@
   table.phases td small { display: block; font-family: var(--body); font-size: 12px; color: var(--muted); }
   table.phases td.worse, table.phases td.better { font-weight: 600; }
   .seg button.ext { font-size: 12px; }
+  /* Vuelta en 3D contra el fantasma. */
+  .r3d { display: grid; gap: 10px; }
+  .r3d-stage { position: relative; aspect-ratio: 16 / 9; border-radius: 6px; overflow: hidden; background: #bcd7ea; }
+  .r3d-stage .v3d-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+  .r3d-wait { margin: 0; padding: 40px 0; text-align: center; color: var(--muted); }
+  .r3d-hud { position: absolute; left: 10px; top: 10px; display: grid; gap: 2px; padding: 8px 12px; border-radius: 6px; background: rgba(10, 14, 17, 0.72); color: #fff; font: 600 14px var(--mono); }
+  .r3d-hud b { font: 800 26px var(--display); }
+  .r3d-delta.down { color: #ff9a8f; }
+  .r3d-delta.up { color: #6df29b; }
+  .r3d-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .r3d-range { flex: 1 1 240px; }
 
   /* Gráficas */
   .charts { position: relative; display: grid; gap: 6px; touch-action: pan-y; }
@@ -279,6 +290,12 @@
     </div>
   </section>
 
+  <section class="panel" id="r3d-sec" aria-labelledby="r3d-h">
+    <div class="panel-title"><h2 id="r3d-h">Vuelta en 3D</h2><button type="button" id="r3d-open">Ver esta vuelta en 3D</button></div>
+    <p class="caption" id="r3d-cap">Tu vuelta contra un fantasma de la referencia elegida arriba (tu mejor vuelta, la de otro piloto o el objetivo), a la misma hora de vuelta.</p>
+    <div class="r3d" id="r3d" hidden></div>
+  </section>
+
   <section class="panel" id="corners-sec" aria-labelledby="cor-h">
     <div class="panel-title"><h2 id="cor-h">Horquilla a horquilla</h2><span class="caption">esta vuelta · <span id="cor-ref">objetivo</span> · diferencia</span></div>
     <div class="corners" id="corners"></div>
@@ -322,4 +339,5 @@
 <script src="/lib/sim.js"></script>
 <script src="/lib/analysis.js"></script>
 <script src="/lib/telemetry.js"></script>
+<script src="/replay3d.js"></script>
 <script src="/tel-app.js"></script>

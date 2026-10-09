@@ -486,6 +486,7 @@
         sectors: ext.sectors,
         label: "la mejor de " + ext.who,
         name: "Mejor de " + ext.who + " (" + fmtLap(ext.time) + ")",
+        time: ext.time,
         coach: {
           grid: ext.grid,
           corners: ext.corners,
@@ -501,6 +502,7 @@
         sectors: r.best.sectors,
         label: "tu mejor vuelta",
         name: "Mi mejor vuelta (" + fmtLap(r.best.time) + ")",
+        time: r.best.time,
         coach: "mejor",
       };
     }
@@ -510,8 +512,49 @@
       sectors: r.ref.sectors,
       label: "el objetivo",
       name: "Objetivo " + fmtLap(state.target, 1),
+      time: r.ref.lapTime,
       coach: "objetivo",
     };
+  }
+
+  // Vuelta en 3D: la elegida contra el fantasma de la referencia elegida. Si cambian, se vuelve a abrir.
+  async function openReplay() {
+    const r = state.result;
+    if (!r || !validLaps().length || !window.MaspaReplay3D) return;
+    if (state.r3d) state.r3d.close();
+    state.r3d = null;
+    const lap = validLaps()[state.lapIdx] || r.best;
+    const ref = currentRef();
+    const num = validLaps().indexOf(lap) + 1;
+    state.r3dOpen = true;
+    $("r3d-open").textContent = "Cerrar el 3D";
+    // Solo dibuja la última petición (al cambiar de vuelta deprisa mientras carga).
+    const token = (state.r3dToken = (state.r3dToken || 0) + 1);
+    const ctl = await window.MaspaReplay3D.open($("r3d"), {
+      track: r.track,
+      corners: r.ref.corners,
+      bounds: T.sectorBounds(r.ref.corners, r.track.L),
+      lap: {
+        grid: lap.grid,
+        time: lap.time,
+        label: "vuelta " + num + " (" + fmtLap(lap.time) + ")",
+      },
+      ref: { grid: ref.grid, time: ref.time, label: ref.name },
+      isCurrent: () => token === state.r3dToken && state.r3dOpen,
+    });
+    if (!ctl) return;
+    if (token !== state.r3dToken || !state.r3dOpen) ctl.close();
+    else state.r3d = ctl;
+  }
+  function closeReplay() {
+    state.r3dToken = (state.r3dToken || 0) + 1;
+    if (state.r3d) state.r3d.close();
+    state.r3d = null;
+    state.r3dOpen = false;
+    // Si aún estaba cargando, también se quita el «Cargando…».
+    $("r3d").textContent = "";
+    $("r3d").hidden = true;
+    $("r3d-open").textContent = "Ver esta vuelta en 3D";
   }
 
   function renderDetail() {
@@ -526,6 +569,7 @@
     renderCharts(lap, ref);
     renderMap(lap);
     renderCorners(lap, ref);
+    if (state.r3dOpen) openReplay();
     setCursor(
       state.cursorK === null
         ? Math.round(lap.grid.s.length * 0.2)
@@ -1409,6 +1453,10 @@
       if (state.result && validLaps().length) renderDetail();
     });
     $("save-btn").addEventListener("click", saveCurrent);
+    $("r3d-open").addEventListener("click", () => {
+      if (state.r3dOpen) closeReplay();
+      else openReplay();
+    });
     wireCursor();
     // Tocar la pista en el mapa mueve la línea de meta a ese punto.
     $("map").addEventListener("click", (ev) => {

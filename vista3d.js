@@ -45,7 +45,9 @@
     const sky = new THREE.Color(0xbcd7ea);
     scene.background = sky;
     scene.fog = new THREE.Fog(sky, 900, 2600);
-    const camera = new THREE.PerspectiveCamera(FOV.casco, 16 / 9, 0.2, 5000);
+    // Plano cercano a 0,4 m y lejano a 4 km: con un búfer de profundidad de 16 bits (algunos móviles y el
+    // dibujado por software) un plano cercano muy pequeño deja sin precisión a 50 m y el suelo tapaba el asfalto.
+    const camera = new THREE.PerspectiveCamera(FOV.casco, 16 / 9, 0.4, 4000);
     scene.add(new THREE.HemisphereLight(0xffffff, 0x9a8f7a, 0.7));
     const sun = new THREE.DirectionalLight(0xffffff, 0.5);
     sun.position.set(-300, 600, 250);
@@ -55,7 +57,8 @@
       new THREE.MeshLambertMaterial({ color: 0xd9cba8 }),
     );
     ground.rotation.x = -Math.PI / 2;
-    ground.position.y = -0.05;
+    // El suelo, bien por debajo del asfalto (5 cm no bastaban para la precisión de profundidad de lejos).
+    ground.position.y = -0.4;
     scene.add(ground);
 
     const N = track.N;
@@ -87,9 +90,20 @@
     const loop = [];
     for (let i = 0; i <= n; i++) loop.push(i % n);
     const half = WIDTH / 2;
+    // Lo pintado sobre el asfalto (líneas, pianos, meta) se adelanta en profundidad en vez de subirlo unos
+    // milímetros: así no parpadea ni desaparece de lejos.
     const flat = (color, extra) =>
       new THREE.MeshBasicMaterial(
-        Object.assign({ color, side: THREE.DoubleSide }, extra || {}),
+        Object.assign(
+          {
+            color,
+            side: THREE.DoubleSide,
+            polygonOffset: true,
+            polygonOffsetFactor: -2,
+            polygonOffsetUnits: -2,
+          },
+          extra || {},
+        ),
       );
     scene.add(
       new THREE.Mesh(
@@ -215,47 +229,80 @@
       }
     }
 
-    // Moto (para las cámaras de detrás y de arriba).
-    const bike = new THREE.Group();
-    const lean = new THREE.Group();
-    bike.add(lean);
-    const body = new THREE.Mesh(
-      new THREE.BoxGeometry(2.0, 0.75, 0.62),
-      new THREE.MeshLambertMaterial({ color: 0x2b80dd }),
-    );
-    body.position.set(0, 0.85, 0);
-    lean.add(body);
-    const rider = new THREE.Mesh(
-      new THREE.BoxGeometry(0.75, 0.6, 0.5),
-      new THREE.MeshLambertMaterial({ color: 0xf4f6f7 }),
-    );
-    rider.position.set(-0.25, 1.45, 0);
-    lean.add(rider);
-    const head = new THREE.Mesh(
-      new THREE.SphereGeometry(0.3, 16, 12),
-      new THREE.MeshLambertMaterial({ color: 0x2b80dd }),
-    );
-    head.position.set(0.25, 1.85, 0);
-    lean.add(head);
-    const wheel = new THREE.CylinderGeometry(0.33, 0.33, 0.22, 18);
-    const wheelMat = new THREE.MeshLambertMaterial({ color: 0x1a1d20 });
-    for (const x of [-0.78, 0.78]) {
-      const w = new THREE.Mesh(wheel, wheelMat);
-      w.rotation.x = Math.PI / 2;
-      w.position.set(x, 0.33, 0);
-      lean.add(w);
+    // Moto (para las cámaras de detrás y de arriba) y, si se pide, el fantasma de otra vuelta: la misma moto en
+    // morado y medio transparente.
+    function makeBike(color, opacity) {
+      const mat = (c) =>
+        new THREE.MeshLambertMaterial(
+          opacity < 1
+            ? { color: c, transparent: true, opacity, depthWrite: false }
+            : { color: c },
+        );
+      const group = new THREE.Group();
+      const tilt = new THREE.Group();
+      group.add(tilt);
+      const body = new THREE.Mesh(
+        new THREE.BoxGeometry(2.0, 0.75, 0.62),
+        mat(color),
+      );
+      body.position.set(0, 0.85, 0);
+      tilt.add(body);
+      const rider = new THREE.Mesh(
+        new THREE.BoxGeometry(0.75, 0.6, 0.5),
+        mat(0xf4f6f7),
+      );
+      rider.position.set(-0.25, 1.45, 0);
+      tilt.add(rider);
+      const head = new THREE.Mesh(
+        new THREE.SphereGeometry(0.3, 16, 12),
+        mat(color),
+      );
+      head.position.set(0.25, 1.85, 0);
+      tilt.add(head);
+      const wheel = new THREE.CylinderGeometry(0.33, 0.33, 0.22, 18);
+      const wheelMat = mat(0x1a1d20);
+      for (const x of [-0.78, 0.78]) {
+        const w = new THREE.Mesh(wheel, wheelMat);
+        w.rotation.x = Math.PI / 2;
+        w.position.set(x, 0.33, 0);
+        tilt.add(w);
+      }
+      const ring = new THREE.Mesh(
+        new THREE.CylinderGeometry(6, 6, 0.1, 28),
+        new THREE.MeshBasicMaterial({
+          color,
+          transparent: true,
+          opacity: 0.55 * opacity,
+        }),
+      );
+      ring.position.y = 0.06;
+      group.add(ring);
+      scene.add(group);
+      return { group, tilt, ring };
     }
-    const halo = new THREE.Mesh(
-      new THREE.CylinderGeometry(6, 6, 0.1, 28),
-      new THREE.MeshBasicMaterial({
-        color: 0x2b80dd,
-        transparent: true,
-        opacity: 0.55,
-      }),
-    );
-    halo.position.y = 0.06;
-    bike.add(halo);
-    scene.add(bike);
+    const main = makeBike(0x2b80dd, 1);
+    const bike = main.group;
+    const lean = main.tilt;
+    const halo = main.ring;
+    const ghost = makeBike(0xa35ce0, 0.45);
+    ghost.group.visible = false;
+    // Pone una moto en su sitio de la trazada; devuelve el rumbo.
+    function placeBike(b, s, leanDeg, side) {
+      const P = track.full || C;
+      const p = pointAt(P, s);
+      const q = pointAt(P, s + 4);
+      const heading = Math.atan2(q.y - p.y, q.x - p.x);
+      const w = W(p.x, p.y);
+      // El fantasma va un poco desplazado a un lado para que no se monten cuando van juntos.
+      b.group.position.set(
+        w[0] - Math.sin(heading) * side,
+        0,
+        w[1] + Math.cos(heading) * side,
+      );
+      b.group.rotation.y = -heading;
+      b.tilt.rotation.x = ((leanDeg === leanDeg ? leanDeg : 0) * Math.PI) / 180;
+      return heading;
+    }
 
     const view = {
       mode: "casco",
@@ -265,20 +312,22 @@
       roll: 0,
     };
 
-    // pose: { s (m desde meta), lean (grados, + derecha) }. Se va por la trazada ideal.
-    function update(pose, dt) {
+    // pose: { s (m desde meta), lean (grados, + derecha), v }. Se va por la trazada ideal.
+    // ghostPose (opcional): { s, lean } de la moto fantasma (otra vuelta a la misma hora de vuelta).
+    function update(pose, dt, ghostPose) {
       const P = track.full || C;
       const p = pointAt(P, pose.s);
-      const q = pointAt(P, pose.s + 4);
-      const heading = Math.atan2(q.y - p.y, q.x - p.x);
+      const heading = placeBike(main, pose.s, pose.lean, 0);
       const w = W(p.x, p.y);
       const leanRad =
         ((pose.lean === pose.lean ? pose.lean : 0) * Math.PI) / 180;
-      bike.position.set(w[0], 0, w[1]);
-      bike.rotation.y = -heading;
-      lean.rotation.x = leanRad;
       halo.visible = view.mode === "arriba";
       bike.visible = view.mode !== "casco";
+      ghost.group.visible = !!ghostPose;
+      if (ghostPose) {
+        placeBike(ghost, ghostPose.s, ghostPose.lean, 1.2);
+        ghost.ring.visible = view.mode === "arriba";
+      }
       const fx = Math.cos(heading);
       const fz = Math.sin(heading);
       // Las cámaras van atadas a puntos del trazado (no persiguen a la moto con retraso):

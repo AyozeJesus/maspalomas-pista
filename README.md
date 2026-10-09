@@ -85,7 +85,10 @@ Guarda todas tus tandas en `~/Maspalomas-telemetria` (hasta que tú borres la ca
 2. Se abre la página del garaje con un código QR. Escanéalo con la cámara del móvil: Modo pista queda conectado.
 3. Deja el Mac encendido, enchufado y con la tapa abierta mientras ruedas. El móvil sube cada tanda por un túnel
    https temporal; si no hay cobertura en el circuito, todo se queda en el móvil y se sube al volver a conectar.
-4. En la página del garaje, «Analizar» abre la tanda completa con gráficas, mapa y curvas.
+4. En la página del garaje, «Analizar» abre la tanda completa con gráficas, mapa y curvas, el entrenador (plan
+   y fases frente al objetivo, tu mejor vuelta o la mejor de otra tanda del día) y «Ver esta vuelta en 3D»: tu
+   vuelta contra un fantasma de esa referencia a la misma hora de vuelta, con la diferencia en segundos y metros.
+   La página principal enseña además el progreso entre días de cada piloto.
 
 El código cambia cada vez que abres el garaje: escanéalo antes de salir hacia el circuito. Para cerrarlo, cierra
 la ventana de Terminal.
