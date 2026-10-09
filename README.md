@@ -106,6 +106,23 @@ el mapa es para mirarlo parado o después.
 En el circuito, el panel lleva también un mapa pequeño con tu trazada de la vuelta, los sectores y dónde frenaste
 en tu mejor vuelta (se quita en Ajustes).
 
+### Aviso de caída
+
+En la ruta libre (se apaga en Ajustes). Salta si, viniendo a más de 22 km/h, hay un golpe de más de 3,5 g o un
+frenazo de más de 36 km/h a parado en 3 s, y después la moto se queda parada al menos 4 s y tumbada (más de 55° de
+su vertical al rodar) al menos 3 s; o, sin tumbar, tras un golpe de más de 6 g (el móvil arrancado del soporte puede
+quedar plano). Si el GPS calla tras la caída, la parada sale de que el móvil esté quieto (`caida.js`).
+
+No saltan soltar el móvil con la moto parada, una frenada de emergencia (la moto sigue derecha), un bache rodando
+(no paras) ni aparcar en la pata de cabra (~12°).
+
+Al saltar hay 30 s de cuenta atrás con pitidos y vibración, y el botón «Estoy bien». Si nadie lo toca: sirena,
+pantalla roja que parpadea, tu posición en grande, «Llamar al 112», tu teléfono de emergencia (Ajustes; sin SIM no
+funciona) y «Compartir la ubicación». Una página no puede llamar ni mandar nada sola: la alarma es para quien esté
+cerca. En la UE el 112 se puede llamar sin SIM desde cualquier red, pero sin SIM no le llega tu ubicación
+automática: hay que dictarla. Tras «Estoy bien» no vuelve a saltar en un minuto. El resumen de la ruta y la
+grabación apuntan cada aviso. El volumen de la sirena es el de multimedia del móvil.
+
 ### Cualquier otro circuito
 
 En otro circuito (o en un kart), sal en «Ruta libre». Con más de 1 km rodado, cada 30 s se intenta sacar el

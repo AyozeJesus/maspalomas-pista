@@ -8,7 +8,7 @@
   const ST = window.PistaStore;
   const APP_VERSION = 2;
   // Versión publicada (la misma que la copia de sw.js, «pista-vN»): se ve en la portada.
-  const BUILD = 19;
+  const BUILD = 20;
   const G = 9.80665;
   const REC_EVERY = 10; // segundos entre trozos guardados en el móvil
   const $ = (id) => document.getElementById(id);
@@ -74,6 +74,9 @@
       mapa: true,
       // «Pantalla en pista»: "auto" (como esté el móvil) o la orientación que se fija al salir.
       pantalla: "auto",
+      // Aviso de caída en la ruta libre y teléfono de emergencia (opcional).
+      caida: true,
+      emergencia: "",
     },
     load("pista-ajustes", {}),
   );
@@ -302,6 +305,12 @@
       circMatchAt: -Infinity,
       circTryAt: -Infinity,
       circBusy: false,
+      // Aviso de caída (caida.js), solo en la ruta libre, y lo que ha saltado (para la grabación).
+      crash:
+        free && settings.caida !== false && window.MaspaCaida
+          ? new window.MaspaCaida.CrashDetector()
+          : null,
+      crashLog: [],
       hasGyro: false,
       moved: false,
       canal: new Series(["t", "s", "v", "a", "lean", "lap"]),
@@ -473,7 +482,13 @@
           E.free ||
           T.nearestOn(GEO.main, x, y, 0, GEO.main.length - 1).dist > 300;
         if (!E.free) pitsCheck(t, v, false);
-        else circStep(t, lat, lon, v);
+        else {
+          circStep(t, lat, lon, v);
+          if (E.crash) {
+            const ev = E.crash.fix(t, v);
+            if (ev) crashAlarm(ev);
+          }
+        }
         return;
       }
     }
@@ -833,6 +848,15 @@
       E.aLong.push({ t, a: E.aEma });
     }
     const cal = E.calib;
+    if (E.crash) {
+      const ev = E.crash.motion(
+        t,
+        lin,
+        grav,
+        cal.manualU || (cal.upSN >= 100 ? cal.upS : null),
+      );
+      if (ev) crashAlarm(ev);
+    }
     if (E.calReq) calibCollect(t, grav, gyro);
     // Vertical de la moto: la de «Calibrar» (parada y derecha) o, si no, la de las rectas.
     const upRef = cal.manualU || (cal.upSN >= 100 ? cal.upS : null);
@@ -1659,6 +1683,8 @@
       retrasoGps: eng.lagR2 !== null ? eng.lag : null,
       // Receptor GPS externo usado en la tanda ({fuente, nombre, hz}); null: solo el GPS del móvil.
       gps: eng.extInfo ? Object.assign({}, eng.extInfo) : null,
+      // Avisos de caída de la ruta libre (y si se pararon con «Estoy bien» o sonó la alarma).
+      caidas: eng.crashLog.length ? eng.crashLog : null,
       // Ruta libre por un circuito (detectado o guardado): su nombre, largo y las vueltas.
       circuito: eng.circ
         ? {
@@ -2585,6 +2611,199 @@
     });
   }
 
+  // ---------- aviso de caída (ruta libre) ----------
+  // Cuenta atrás con pitidos; si nadie toca «Estoy bien», sirena, la posición en grande (sin SIM, al 112 no le
+  // llega sola) y el 112 a mano para quien te encuentre. La cuenta va con el reloj de verdad, no con el de la tanda.
+  const ALARM_S = 30;
+  let crashUi = null;
+  let alarmAudio = null;
+
+  // El sonido solo puede arrancar tras un toque: se prepara al pulsar «Ruta libre».
+  function prepareAlarmAudio() {
+    try {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return;
+      if (!alarmAudio) alarmAudio = new AC();
+      if (alarmAudio.state === "suspended") alarmAudio.resume().catch(() => {});
+    } catch (e) {
+      alarmAudio = null;
+    }
+  }
+
+  function tone(freq, dur) {
+    const a = alarmAudio;
+    if (!a) return;
+    try {
+      if (a.state === "suspended") a.resume().catch(() => {});
+      const o = a.createOscillator();
+      const g = a.createGain();
+      o.type = "square";
+      o.frequency.value = freq;
+      g.gain.value = 0.9;
+      o.connect(g);
+      g.connect(a.destination);
+      o.start();
+      o.stop(a.currentTime + dur);
+    } catch (e) {
+      /* sin sonido */
+    }
+  }
+
+  function vibrate(p) {
+    try {
+      if (navigator.vibrate) navigator.vibrate(p);
+    } catch (e) {
+      /* sin vibración */
+    }
+  }
+
+  // Última posición buena del GPS (para dictarla al 112).
+  function lastPosition(eng) {
+    const l = eng ? eng.loc.view() : null;
+    if (!l) return null;
+    for (let i = l.t.length - 1; i >= 0; i--)
+      if (l.hacc[i] <= 50) return { lat: l.lat[i], lon: l.lon[i] };
+    return null;
+  }
+
+  function posText(p) {
+    const f = (x) => Math.abs(x).toFixed(5).replace(".", ",");
+    return (
+      f(p.lat) +
+      "° " +
+      (p.lat >= 0 ? "N" : "S") +
+      "   " +
+      f(p.lon) +
+      "° " +
+      (p.lon >= 0 ? "E" : "O")
+    );
+  }
+
+  function crashAlarm(ev) {
+    if (crashUi || !E) return;
+    const rec = {
+      hora: new Date().toISOString(),
+      t: Math.round(ev.t * 10) / 10,
+      por: ev.por,
+      g: ev.g ? Math.round(ev.g * 10) / 10 : null,
+      kmhAntes: Math.round(ev.vAntes * 3.6),
+      tumbada: ev.tumbada,
+      paradoA: null,
+      alarma: false,
+    };
+    E.crashLog.push(rec);
+    crashUi = {
+      eng: E,
+      rec,
+      t0: performance.now() / 1000,
+      alarm: false,
+      last: -1,
+      timer: setInterval(crashTick, 200),
+    };
+    const pos = lastPosition(E);
+    setText("crash-h", "¿Estás bien?");
+    setText(
+      "crash-t",
+      "Parece una caída. Si no tocas «Estoy bien», suena la alarma para que te encuentren.",
+    );
+    setText("crash-where", pos ? posText(pos) : "Sin posición del GPS");
+    const tel = (settings.emergencia || "").replace(/[^\d+]/g, "");
+    $("crash-tel").hidden = !tel;
+    if (tel) {
+      $("crash-tel").href = "tel:" + tel;
+      setText("crash-tel", "Llamar al " + settings.emergencia.trim());
+    }
+    $("crash-help").hidden = true;
+    $("crash").classList.remove("alarm");
+    $("crash").hidden = false;
+    vibrate([500, 250, 500, 250, 500]);
+    crashTick();
+    saveMeta("grabando");
+  }
+
+  function crashTick() {
+    const u = crashUi;
+    if (!u) return;
+    const el = performance.now() / 1000 - u.t0;
+    if (!u.alarm) {
+      const left = Math.max(0, ALARM_S - el);
+      setText("crash-count", String(Math.ceil(left)));
+      const sec = Math.floor(el);
+      if (sec !== u.last) {
+        u.last = sec;
+        tone(sec % 2 ? 880 : 1100, 0.18);
+      }
+      if (left > 0) return;
+      u.alarm = true;
+      u.rec.alarma = true;
+      u.last = -1;
+      setText("crash-h", "Posible accidente");
+      setText("crash-count", "");
+      setText(
+        "crash-t",
+        "Si el piloto no responde: llama al 112 (desde aquí o desde tu móvil) y diles esta posición.",
+      );
+      $("crash-help").hidden = false;
+      $("crash").classList.add("alarm");
+      vibrate(1500);
+      if (u.eng === E) saveMeta("grabando");
+    }
+    // Sirena: dos tonos que se alternan cada medio segundo; vibración cada 2 s.
+    const half = Math.floor(el * 2);
+    if (half !== u.last) {
+      u.last = half;
+      tone(half % 2 ? 1500 : 1000, 0.45);
+      if (half % 4 === 0) vibrate(1200);
+    }
+  }
+
+  function crashDismiss() {
+    const u = crashUi;
+    if (!u) return;
+    clearInterval(u.timer);
+    crashUi = null;
+    vibrate(0);
+    u.rec.paradoA = Math.round(performance.now() / 1000 - u.t0);
+    if (u.eng.crash) u.eng.crash.dismiss();
+    $("crash").hidden = true;
+    $("crash").classList.remove("alarm");
+    if (u.eng === E) saveMeta("grabando");
+  }
+
+  // Sin red el mensaje se queda en la app de mensajería hasta que haya; si no se puede compartir, se copia.
+  async function crashShare() {
+    const p = lastPosition(crashUi ? crashUi.eng : E);
+    const url = p
+      ? "https://maps.google.com/?q=" +
+        p.lat.toFixed(6) +
+        "," +
+        p.lon.toFixed(6)
+      : "";
+    const text =
+      "Posible accidente de moto" +
+      (p ? " en " + url + " (" + posText(p) + ")" : "") +
+      ", a las " +
+      new Date().toLocaleTimeString("es-ES", {
+        hour: "2-digit",
+        minute: "2-digit",
+      }) +
+      ".";
+    try {
+      if (navigator.share) {
+        await navigator.share({ text });
+        return;
+      }
+    } catch (e) {
+      /* cancelado o sin compartir: se copia */
+    }
+    try {
+      await navigator.clipboard.writeText(text);
+      setText("crash-share", "Copiado: pégalo en un mensaje");
+    } catch (e) {
+      setText("crash-where", text);
+    }
+  }
+
   // ---------- circuito cualquiera (en la ruta libre) ----------
   function loadCircuits() {
     const list = load("pista-circuitos", []);
@@ -3012,6 +3231,24 @@
       s.aceleracionMax ? fmt(s.aceleracionMax, 2) + " g" : "—",
     );
     add("Curvas", String(s.curvas));
+    if (eng.crashLog.length)
+      add(
+        "Avisos de caída",
+        eng.crashLog
+          .map(
+            (c) =>
+              new Date(c.hora).toLocaleTimeString("es-ES", {
+                hour: "2-digit",
+                minute: "2-digit",
+              }) +
+              (c.alarma
+                ? " · sonó la alarma"
+                : c.paradoA !== null
+                  ? " · «Estoy bien» a los " + c.paradoA + " s"
+                  : ""),
+          )
+          .join("; "),
+      );
     add(
       "Sin gas en curva (media)",
       s.tiempoMuertoMedio !== null ? fmt(s.tiempoMuertoMedio, 1) + " s" : "—",
@@ -3657,8 +3894,11 @@
     setStatus("st-gps", "wait", "GPS: buscando señal…");
     show(E.free ? "ruta" : "dash");
     // El worker que saca el trazado de un circuito arranca ya, parado: en el Vivo Y33s su arranque paró el panel
-    // medio segundo, que rodando se notaría.
-    if (E.free) circWorker();
+    // medio segundo, que rodando se notaría. Y el sonido del aviso de caída solo puede prepararse tras un toque.
+    if (E.free) {
+      circWorker();
+      if (E.crash) prepareAlarmAudio();
+    }
   }
 
   function stopAll() {
@@ -3861,6 +4101,9 @@
       $("objetivo").value = fmtLap(target(), 1);
     $("cue").checked = !!settings.cue;
     $("mapopt").checked = settings.mapa !== false;
+    $("caidaopt").checked = settings.caida !== false;
+    if (document.activeElement !== $("emergencia"))
+      $("emergencia").value = settings.emergencia || "";
     $("cue-opts").hidden = !settings.cue;
     $("lead").value = settings.lead;
     $("lead-v").textContent = settings.lead;
@@ -4068,6 +4311,16 @@
     });
     $("ruf-export").addEventListener("click", () => exportSession(lastE));
     $("ruf-save").addEventListener("click", saveCircuit);
+    $("crash-ok").addEventListener("click", crashDismiss);
+    $("crash-share").addEventListener("click", crashShare);
+    $("caidaopt").addEventListener("change", () => {
+      settings.caida = $("caidaopt").checked;
+      saveSettings();
+    });
+    $("emergencia").addEventListener("change", () => {
+      settings.emergencia = $("emergencia").value.trim().slice(0, 20);
+      saveSettings();
+    });
     $("sim").addEventListener("click", () => startSim(1));
     // Cámaras y velocidad de la vuelta de ejemplo en 3D.
     for (const b of document.querySelectorAll(".v3d-ctl [data-cam]"))
@@ -4260,6 +4513,12 @@
     sim,
     onMotion: (...a) => onMotion(...a),
     onFix: (...a) => onFix(...a),
+    // Aviso de caída en marcha (null si no hay).
+    get crash() {
+      return crashUi
+        ? { alarm: crashUi.alarm, rec: Object.assign({}, crashUi.rec) }
+        : null;
+    },
     // Cronómetro del circuito de la ruta libre (null si no hay).
     get circuit() {
       return E && E.circ;

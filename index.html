@@ -324,6 +324,19 @@
     .recap-g i { font-size: min(1.8vw, 3.2vh); }
     .sectors div { height: min(8vh, 30px); }
   }
+  /* Aviso de caída: encima de todo, rojo, botones enormes; en alarma, parpadea. */
+  .crash { position: fixed; inset: 0; z-index: 50; display: grid; align-content: center; justify-items: center; gap: 14px; padding: 20px max(16px, env(safe-area-inset-right)) 20px max(16px, env(safe-area-inset-left)); background: #b3261e; color: #fff; text-align: center; overflow-y: auto; }
+  .crash h1 { margin: 0; font-size: min(12vw, 9vh); font-weight: 900; line-height: 1; }
+  .crash-count { margin: 0; font-size: min(30vw, 22vh); font-weight: 900; line-height: 1; }
+  .crash-t { margin: 0; max-width: 34ch; font-size: min(5vw, 3.6vh); font-weight: 700; }
+  .crash-ok { min-height: 76px; width: min(86vw, 440px); font-size: 28px; font-weight: 900; background: #fff; color: #111; border-color: #fff; }
+  .crash-help { display: grid; gap: 10px; width: min(92vw, 520px); }
+  .crash-where { margin: 0; font-size: min(6vw, 26px); font-weight: 800; overflow-wrap: anywhere; }
+  .crash-call { display: grid; place-items: center; min-height: 64px; border: 2px solid #fff; border-radius: var(--r-md); background: #111; color: #fff; font-size: 24px; font-weight: 900; text-decoration: none; }
+  .crash-share { min-height: 56px; font-size: 18px; background: transparent; color: #fff; border: 2px solid #fff; }
+  .crash.alarm { animation: crashflash 0.8s steps(2, end) infinite; }
+  @keyframes crashflash { 0% { background: #b3261e; } 50% { background: #000; } 100% { background: #b3261e; } }
+  @media (prefers-reduced-motion: reduce) { .crash.alarm { animation: none; } }
   /* Avisos a pantalla completa: vuelta, sector y frenada. */
   .flash { position: fixed; inset: 0; display: grid; place-items: center; align-content: center; padding: 16px; text-align: center; font-weight: 900; pointer-events: none; }
   .flash.lap { background: #000; font-size: min(22vw, 26vh); line-height: 1; letter-spacing: -0.02em; }
@@ -412,6 +425,11 @@
           <button type="button" role="radio" data-orient="landscape-secondary">Horizontal girada</button>
         </div>
         <p class="muted">Con el giro automático del móvil apagado, el panel sale como esté la pantalla aunque el móvil vaya de lado. Elige cómo lo llevas montado: se fija al salir a pista o a la ruta libre. Si sale al revés, la otra horizontal.</p>
+      </div>
+      <div class="group">
+        <label class="switch" for="caidaopt"><span class="switch-text"><span class="switch-title">Aviso de caída en la ruta libre</span><span class="muted">Golpe o frenazo y después la moto parada y tumbada: cuenta atrás de 30 s con pitidos y, si no tocas «Estoy bien», sirena, tu posición en grande y el 112 a mano para quien te encuentre. No llama a nadie solo (una página no puede).</span></span><input type="checkbox" id="caidaopt" role="switch"></label>
+        <div class="pilot"><label for="emergencia">Teléfono</label><input id="emergencia" type="tel" inputmode="tel" autocomplete="off" maxlength="20" placeholder="De emergencia (opcional)"></div>
+        <p class="muted">Sin SIM solo se puede llamar al 112 (en la UE, desde cualquier red), y sin SIM al 112 no le llega tu ubicación sola: la pantalla la enseña en grande para dictarla.</p>
       </div>
       <div class="group" id="circ-group" hidden>
         <h3 class="group-title">Otros circuitos guardados</h3>
@@ -636,6 +654,20 @@
 
   <div class="flash" id="flash" hidden></div>
 
+  <!-- Aviso de caída (ruta libre): cuenta atrás y, si nadie la para, alarma con la posición y el 112. -->
+  <section class="crash" id="crash" hidden role="alertdialog" aria-modal="true" aria-labelledby="crash-h" aria-describedby="crash-t">
+    <h1 id="crash-h">¿Estás bien?</h1>
+    <p class="crash-count num" id="crash-count">30</p>
+    <p class="crash-t" id="crash-t">Parece una caída. Si no tocas «Estoy bien», suena la alarma para que te encuentren.</p>
+    <button class="crash-ok" id="crash-ok">Estoy bien</button>
+    <div class="crash-help" id="crash-help" hidden>
+      <p class="crash-where num" id="crash-where"></p>
+      <a class="crash-call" id="crash-112" href="tel:112">Llamar al 112</a>
+      <a class="crash-call" id="crash-tel" hidden></a>
+      <button class="crash-share" id="crash-share">Compartir la ubicación</button>
+    </div>
+  </section>
+
   <script src="jszip.min.js"></script>
   <script src="track-data.js"></script>
   <script src="sim.js"></script>
@@ -647,6 +679,7 @@
   <script src="mapa.js"></script>
   <script src="recorrido.js"></script>
   <script src="circuito.js"></script>
+  <script src="caida.js"></script>
   <script src="gnss-ble.js"></script>
   <script src="gnss-usb.js"></script>
   <script src="live.js"></script>
