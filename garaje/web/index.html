@@ -164,6 +164,19 @@
   .cmp-table small { display: block; margin-top: 1px; font-size: 12px; font-weight: 500; color: var(--muted); }
   .cmp-table th small { white-space: nowrap; text-transform: none; letter-spacing: 0; margin-top: 2px; }
   .cmp-table tbody tr:hover td { background: var(--surface-2); }
+  /* Progreso entre días: gráfica de tiempos y cambios desde el primer día (verde mejora, rojo empeora). */
+  .prog-chart { display: block; width: 100%; height: auto; margin: 14px 0 6px; background: var(--surface-2); border-radius: 10px; }
+  .pg-grid { stroke: var(--line); stroke-width: 1; }
+  .pg-ylab { fill: var(--muted); font: 600 13px var(--mono); text-anchor: end; }
+  .pg-xlab { fill: var(--muted); font: 600 13px var(--sans); text-anchor: middle; }
+  .pg-obj { stroke: var(--good); stroke-width: 2; stroke-dasharray: 2 6; }
+  .pg-objlab { fill: var(--good); font: 600 13px var(--sans); text-anchor: end; }
+  .pg-best { fill: none; stroke: var(--accent); stroke-width: 3; }
+  .pg-mean { fill: none; stroke: var(--muted); stroke-width: 2; stroke-dasharray: 8 6; }
+  .pg-dot { fill: var(--accent); stroke: var(--surface); stroke-width: 2.5; }
+  .pg-legend { margin: 6px 0 0; font-size: 13px; }
+  .cmp-table small.up { color: var(--good); }
+  .cmp-table small.down { color: var(--bad); }
   .cmp-table tbody tr td.top { background: var(--best-bg); }
   .cmp-table td.top b { color: var(--best); }
   .cmp-table td.who { font-weight: 650; min-width: 6em; overflow-wrap: anywhere; }
@@ -230,6 +243,11 @@
     <div id="cmp-body"><p class="cmp-empty">Cargando…</p></div>
   </section>
 
+  <section class="card cmp" aria-labelledby="prog-h">
+    <div class="card-head cmp-top"><h2 id="prog-h">Progreso</h2><label for="prog-pilot" hidden>Piloto <select id="prog-pilot"></select></label></div>
+    <div id="prog-body"><p class="cmp-empty">Cargando…</p></div>
+  </section>
+
   <section class="card" aria-labelledby="list-h">
     <div class="card-head"><h2 id="list-h">Tus tandas</h2></div>
     <div class="wrap">
@@ -248,6 +266,7 @@
 </main>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
 <script src="/lib/comparativa.js"></script>
+<script src="/progreso.js"></script>
 <script src="/garaje.js"></script>
 </body>
 </html>

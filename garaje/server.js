@@ -254,6 +254,120 @@ function isFresh(resumen, stamp) {
   );
 }
 
+// ---------- progreso entre días ----------
+// Por piloto, día y sentido (todas sus tandas de circuito de ese día juntas): mejor vuelta, media de las 3 mejores,
+// regularidad (desviación de las vueltas dentro del 105 % de la mejor, que deja fuera vueltas de salida, de
+// entrada o con tráfico), punta, tumbada y, por curva, lo de las 3 mejores vueltas (mediana: una vuelta suelta
+// con el GPS del móvil tiene unos metros de ruido). Los tiempos de vuelta no dependen de dónde esté la meta, así
+// que se comparan entre días; las curvas sí dependen del sentido, que va aparte.
+function median(xs) {
+  const v = xs
+    .filter((x) => x !== null && Number.isFinite(x))
+    .sort((a, b) => a - b);
+  if (!v.length) return null;
+  return v.length % 2
+    ? v[v.length >> 1]
+    : (v[v.length / 2 - 1] + v[v.length / 2]) / 2;
+}
+function computeProgress() {
+  const groups = new Map();
+  let pendientes = 0;
+  for (const t of realTandas()) {
+    const stamp = stampOf(t.id);
+    if (!stamp.trozos) continue;
+    const r = readJson(path.join(tandaDir(t.id), "resumen.json"));
+    if (!isFresh(r, stamp)) {
+      pendientes++;
+      queueAnalysis(t.id);
+      continue;
+    }
+    if (!Array.isArray(r.vueltas)) continue;
+    const piloto =
+      (t.meta &&
+        typeof t.meta.piloto === "string" &&
+        t.meta.piloto.trim().slice(0, 30)) ||
+      "Sin nombre";
+    const sentido = r.sentido === "rev" ? "rev" : "osm";
+    const key = piloto + "|" + dayOf(t.id) + "|" + sentido;
+    if (!groups.has(key))
+      groups.set(key, {
+        piloto,
+        fecha: dayOf(t.id),
+        sentido,
+        laps: [],
+        objetivo: null,
+        tandas: 0,
+      });
+    const g = groups.get(key);
+    g.tandas++;
+    if (t.meta && Number.isFinite(t.meta.objetivo))
+      g.objetivo = t.meta.objetivo;
+    for (const l of r.vueltas)
+      if (l.valid && Number.isFinite(l.time)) g.laps.push(l);
+  }
+  const pilotos = new Map();
+  for (const g of groups.values()) {
+    if (!g.laps.length) continue;
+    const laps = g.laps.slice().sort((a, b) => a.time - b.time);
+    const best = laps[0].time;
+    const top3 = laps.slice(0, 3);
+    const good = laps.filter((l) => l.time <= best * 1.05).map((l) => l.time);
+    const mean = good.reduce((a, x) => a + x, 0) / good.length;
+    const sd =
+      good.length >= 3
+        ? Math.sqrt(
+            good.reduce((a, x) => a + (x - mean) ** 2, 0) / (good.length - 1),
+          )
+        : null;
+    const nC = Math.max(...laps.map((l) => (l.corners ? l.corners.length : 0)));
+    const curvas = [];
+    for (let k = 0; k < nC; k++) {
+      const cs = laps.map((l) => l.corners && l.corners[k]).filter(Boolean);
+      const c3 = top3.map((l) => l.corners && l.corners[k]).filter(Boolean);
+      if (!cs.length) continue;
+      curvas.push({
+        num: cs[0].num,
+        nombre: cs[0].name,
+        vMin: Math.max(...cs.map((c) => c.vMin).filter(Number.isFinite)),
+        frenada: median(c3.map((c) => c.brakeBefore)),
+        muerto: median(c3.map((c) => c.dead)),
+        tumbada: Math.max(...cs.map((c) => c.leanMax).filter(Number.isFinite)),
+      });
+    }
+    const dia = {
+      fecha: g.fecha,
+      sentido: g.sentido,
+      tandas: g.tandas,
+      vueltas: laps.length,
+      mejor: best,
+      media3: top3.reduce((a, l) => a + l.time, 0) / top3.length,
+      regularidad: sd,
+      punta: Math.max(...laps.map((l) => l.vMax).filter(Number.isFinite)),
+      tumbada: Math.max(...laps.map((l) => l.leanMax).filter(Number.isFinite)),
+      objetivo: g.objetivo,
+      curvas,
+    };
+    if (!pilotos.has(g.piloto)) pilotos.set(g.piloto, []);
+    pilotos.get(g.piloto).push(dia);
+  }
+  return {
+    pilotos: [...pilotos.entries()]
+      .map(([piloto, dias]) => ({
+        piloto,
+        dias: dias.sort(
+          (a, b) =>
+            a.fecha.localeCompare(b.fecha) ||
+            a.sentido.localeCompare(b.sentido),
+        ),
+      }))
+      .sort(
+        (a, b) =>
+          b.dias.length - a.dias.length || a.piloto.localeCompare(b.piloto),
+      ),
+    pendientes,
+  };
+}
+
 // ---------- comparativa del día ----------
 // Todas las tandas de un día (sin el simulador), por piloto: mejor vuelta, ideal, mejores sectores, lo mejor de
 // cada curva y la lista de vueltas. Si los móviles tienen la meta en sitios distintos, las tandas que no
@@ -708,6 +822,7 @@ function pairingLink() {
 const STATIC = {
   "/": [WEB, "index.html"],
   "/garaje.js": [WEB, "garaje.js"],
+  "/progreso.js": [WEB, "progreso.js"],
   "/analisis": [WEB, "analisis.html"],
   "/tel-app.js": [WEB, "tel-app.js"],
   "/lib/telemetry.js": [REPO, "telemetry.js"],
@@ -751,6 +866,8 @@ function garage(req, res) {
     });
   if (req.method === "GET" && p === "/api/tandas")
     return sendJson(res, 200, { tandas: listIds().map(summaryOf) });
+  if (req.method === "GET" && p === "/api/progreso")
+    return sendJson(res, 200, computeProgress());
   if (req.method === "GET" && p === "/api/dia") {
     const days = daysAvailable();
     const asked = new URL(req.url, "http://garaje").searchParams.get("fecha");

@@ -318,7 +318,43 @@
   });
 
   $("open-folder").addEventListener("click", () => post("/api/finder"));
+  // Progreso entre días (por piloto: el que más días tiene, o el elegido).
+  let progPilot = null;
+  let progShown = "";
+  let progData = null;
+  function drawProgress() {
+    if (!progData) return;
+    const sel = $("prog-pilot");
+    const names = (progData.pilotos || []).map((p) => p.piloto);
+    if (sel.dataset.names !== names.join("|")) {
+      sel.textContent = "";
+      for (const n of names) el("option", "", n, sel).value = n;
+      sel.dataset.names = names.join("|");
+    }
+    if (progPilot && names.includes(progPilot)) sel.value = progPilot;
+    sel.parentElement.hidden = names.length < 2;
+    window.MaspaProgreso.render($("prog-body"), progData, sel.value || null);
+  }
+  async function refreshProgress() {
+    try {
+      progData = await getJson("/api/progreso");
+    } catch (e) {
+      return 30000;
+    }
+    const sig = JSON.stringify(progData);
+    if (sig !== progShown) {
+      progShown = sig;
+      drawProgress();
+    }
+    return progData.pendientes ? 3000 : 30000;
+  }
+  $("prog-pilot").addEventListener("change", () => {
+    progPilot = $("prog-pilot").value;
+    drawProgress();
+  });
+
   poll(refreshState);
   poll(refreshList);
   poll(refreshCmp);
+  poll(refreshProgress);
 })();
