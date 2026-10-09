@@ -139,6 +139,7 @@
               "°"
             : ""),
       ];
+    if (meta.fuente === "gopro") return ["tag", "vídeo GoPro"];
     return ["tag", meta.sim ? "simulador" : "terminada"];
   }
 

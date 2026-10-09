@@ -89,6 +89,14 @@ Guarda todas tus tandas en `~/Maspalomas-telemetria` (hasta que tú borres la ca
    y fases frente al objetivo, tu mejor vuelta o la mejor de otra tanda del día) y «Ver esta vuelta en 3D»: tu
    vuelta contra un fantasma de esa referencia a la misma hora de vuelta, con la diferencia en segundos y metros.
    La página principal enseña además el progreso entre días de cada piloto.
+5. «Vídeo con datos» (en el análisis): eliges un vídeo de este Mac (no se sube a ningún sitio) y lleva encima
+   velocidad, tumbada, freno y gas, vuelta, diferencia con la mejor y el mapa. Un MP4 de GoPro trae su propio GPS
+   (18 Hz, o 10 Hz en las HERO11 en adelante) y sensores (`gpmf.js` lee su telemetría GPMF): se puede analizar como
+   tanda (mucho más fina que el GPS del móvil) y guardar en el garaje, y entonces el vídeo va sincronizado solo; con
+   una tanda del móvil abierta, se sincroniza por la hora del GPS de la GoPro. Con otra cámara se marca el cruce de
+   meta de una vuelta («Aquí cruzo meta») y se afina con ±0,1 s. La vuelta se exporta con los datos encima
+   (.mp4 si el navegador sabe, si no .webm), grabándola en tiempo real. La HERO12 no lleva GPS. Las grabaciones
+   largas que la GoPro parte en varios archivos se importan cada una por su lado.
 
 El código cambia cada vez que abres el garaje: escanéalo antes de salir hacia el circuito. Para cerrarlo, cierra
 la ventana de Terminal.

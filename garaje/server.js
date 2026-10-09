@@ -591,6 +591,8 @@ function summaryOf(id) {
           estado: meta.estado,
           sim: meta.sim,
           tipo: meta.tipo === "ruta" ? "ruta" : "pista",
+          // De dónde vienen los datos: el móvil (por defecto) o un vídeo de GoPro importado en el Mac.
+          fuente: meta.fuente === "gopro" ? "gopro" : "movil",
           piloto:
             typeof meta.piloto === "string" ? meta.piloto.slice(0, 30) : null,
           objetivo: Number.isFinite(meta.objetivo) ? meta.objetivo : null,
@@ -826,6 +828,8 @@ const STATIC = {
   "/analisis": [WEB, "analisis.html"],
   "/tel-app.js": [WEB, "tel-app.js"],
   "/replay3d.js": [WEB, "replay3d.js"],
+  "/video.js": [WEB, "video.js"],
+  "/lib/gpmf.js": [REPO, "gpmf.js"],
   "/lib/three.min.js": [REPO, "three.min.js"],
   "/lib/vista3d.js": [REPO, "vista3d.js"],
   "/lib/telemetry.js": [REPO, "telemetry.js"],
@@ -894,6 +898,13 @@ function garage(req, res) {
   // Las acciones piden una cabecera propia: otra web abierta en este Mac no puede mandarla sin permiso CORS.
   if (req.method === "POST" && req.headers["x-garaje"] !== "1")
     return sendJson(res, 403, { ok: false });
+  // Importar una tanda desde este Mac (p. ej. la telemetría de un vídeo de GoPro): mismos trozos y resumen que
+  // manda el móvil, con las mismas comprobaciones.
+  m = /^\/api\/importar\/([^/]+)\/trozos\/(\d{1,6})$/.exec(p);
+  if (req.method === "POST" && m)
+    return receiveChunk(req, res, m[1], Number(m[2]));
+  m = /^\/api\/importar\/([^/]+)\/meta$/.exec(p);
+  if (req.method === "POST" && m) return receiveMeta(req, res, m[1]);
   if (req.method === "POST" && p === "/api/clave-nueva") {
     rotateKey();
     return sendJson(res, 200, { ok: true });
