@@ -8,7 +8,7 @@
   const ST = window.PistaStore;
   const APP_VERSION = 2;
   // Versión publicada (la misma que la copia de sw.js, «pista-vN»): se ve en la portada.
-  const BUILD = 17;
+  const BUILD = 18;
   const G = 9.80665;
   const REC_EVERY = 10; // segundos entre trozos guardados en el móvil
   const $ = (id) => document.getElementById(id);
@@ -72,6 +72,8 @@
       piloto: "",
       objetivo: 65.0,
       mapa: true,
+      // «Pantalla en pista»: "auto" (como esté el móvil) o la orientación que se fija al salir.
+      pantalla: "auto",
     },
     load("pista-ajustes", {}),
   );
@@ -279,6 +281,18 @@
       leanSign: 1,
       leanVote: 0,
       head: null,
+      headFix: null,
+      // Último fijo usado para calibrar (a 25 Hz se calibra con fijos separados al menos 0,5 s).
+      calPrev: null,
+      // Receptor GPS externo: de qué tipo es el último fijo («ble:bonogps», «usb»…; null, el del móvil), si se ha
+      // usado en la tanda y qué aparato era (para la grabación).
+      extGps: null,
+      extUsed: false,
+      extInfo: null,
+      // Traducción de la hora de los fijos del GPS del móvil al reloj de la tanda, y la hora de pared al empezar
+      // (para la fecha de la grabación).
+      phoneClock: newClock(),
+      wall0: null,
       hasGyro: false,
       moved: false,
       canal: new Series(["t", "s", "v", "a", "lean", "lap"]),
@@ -337,8 +351,37 @@
     E.moved = false;
   }
 
+  // Reloj de la tanda: el de los sensores (timeOrigin + performance.now, el de event.timeStamp), en segundos. No el
+  // de pared (Date.now): en Android el de los sensores no cuenta el tiempo con el móvil dormido, así que con la
+  // página abierta desde antes los dos se separan, y el de pared salta si el móvil se pone en hora. Las horas del
+  // GPS (las del navegador o las del receptor externo) se traducen a este reloj con mapClock.
+  function perfNow() {
+    return (performance.timeOrigin + performance.now()) / 1000;
+  }
+
   function now() {
-    return E.sim ? sim.t : Date.now() / 1000 - E.t0;
+    return E.sim ? sim.t : perfNow() - E.t0;
+  }
+
+  function newClock() {
+    return { off: null, at: 0 };
+  }
+
+  // Hora (ms) de un fijo en el reloj de los sensores. Su propia hora (srcMs: la del receptor o la que le pone el
+  // navegador) da los intervalos exactos; la llegada (rxMs, ya en ese reloj), solo el desfase entre los dos relojes:
+  // el menor de los recientes, el del fijo que menos tardó (el Bluetooth y el navegador los entregan con retraso
+  // variable). Sube como mucho 2 ms por segundo (deriva entre relojes) y, si de golpe es medio segundo mayor (un
+  // reloj se ha puesto en hora), se toma el nuevo. Sin hora propia, la de llegada.
+  function mapClock(c, srcMs, rxMs) {
+    if (!Number.isFinite(srcMs)) {
+      c.off = null;
+      return rxMs;
+    }
+    const d = rxMs - srcMs;
+    if (c.off === null || d < c.off || d - c.off > 500) c.off = d;
+    else c.off = Math.min(d, c.off + (rxMs - c.at) * 0.002);
+    c.at = rxMs;
+    return srcMs + c.off;
   }
 
   function setupTrack(dir) {
@@ -379,13 +422,20 @@
   // Fijo bueno (ya sin rebotes): aceleración según el GPS (referencia del cabeceo) y trazada del recorrido.
   function acceptFix(prev, fix) {
     if (prev && fix.t > prev.t && fix.t - prev.t < 3) {
-      const inst = (fix.v - prev.v) / (fix.t - prev.t);
-      E.aGps = E.aGps === E.aGps ? E.aGps + (inst - E.aGps) * 0.5 : inst;
+      const dt = fix.t - prev.t;
+      const inst = (fix.v - prev.v) / dt;
+      // Media que olvida la mitad por segundo (a 1 Hz, la mitad por fijo; a 25 Hz, cada fijo cuenta poco).
+      const k = 1 - Math.pow(0.5, dt);
+      E.aGps = E.aGps === E.aGps ? E.aGps + (inst - E.aGps) * k : inst;
     }
+    E.route.fast = !!E.extGps;
     E.route.onFix(fix.t, fix.x, fix.y, fix.v);
   }
 
   function onFix(t, lat, lon, speed, hacc) {
+    // Un fijo que no es posterior al anterior (al cambiar entre el receptor externo y el GPS del móvil, que van con
+    // relojes y retrasos distintos) desordenaría la grabación y el cronómetro: se descarta.
+    if (E.lastFixT !== null && !(t > E.lastFixT)) return;
     E.loc.push({
       t,
       lat,
@@ -407,7 +457,7 @@
       if (!E.track) {
         const fix = { t, x, y, v, s: null, i: null, on: false };
         acceptFix(E.fix, fix);
-        calibPair(E.fix, fix);
+        calibStep(fix);
         E.fix = fix;
         // Lejos del circuito (prueba en coche o por la calle): el panel lo dice en vez de «buscando la pista».
         E.far =
@@ -449,27 +499,40 @@
     acceptFix(prev, fix);
     // Lado de la inclinación: en una curva a derechas (en el plano, con y hacia el sur, el rumbo crece) la moto
     // va tumbada a derechas (+). Si los votos dicen lo contrario, el móvil da los sensores con el signo al revés.
+    // Rumbos entre fijos separados al menos 0,7 s: a 1 Hz son todos; a 25 Hz, entre fijos seguidos hay 1–2 m.
     if (prev && prev.on && on && t - prev.t < 2.5) {
-      const h = Math.atan2(y - prev.y, x - prev.x);
-      if (E.head !== null && Math.hypot(x - prev.x, y - prev.y) > 5) {
-        let dh = h - E.head;
-        while (dh > Math.PI) dh -= 2 * Math.PI;
-        while (dh < -Math.PI) dh += 2 * Math.PI;
-        if (Math.abs(dh) > 0.12 && Math.abs(E.leanDeg) > 10) {
-          E.leanVote = clamp(
-            E.leanVote + Math.sign(dh) * Math.sign(E.leanDeg),
-            -20,
-            20,
-          );
-          if (E.leanVote <= -6) {
-            E.leanSign = -E.leanSign;
-            E.leanVote = 0;
+      let a = E.headFix;
+      if (!a || t - a.t > 2.5) {
+        a = prev;
+        E.headFix = prev;
+        E.head = null;
+      }
+      if (t - a.t >= 0.7) {
+        const h = Math.atan2(y - a.y, x - a.x);
+        if (E.head !== null && Math.hypot(x - a.x, y - a.y) > 5) {
+          let dh = h - E.head;
+          while (dh > Math.PI) dh -= 2 * Math.PI;
+          while (dh < -Math.PI) dh += 2 * Math.PI;
+          if (Math.abs(dh) > 0.12 && Math.abs(E.leanDeg) > 10) {
+            E.leanVote = clamp(
+              E.leanVote + Math.sign(dh) * Math.sign(E.leanDeg),
+              -20,
+              20,
+            );
+            if (E.leanVote <= -6) {
+              E.leanSign = -E.leanSign;
+              E.leanVote = 0;
+            }
           }
         }
+        E.head = h;
+        E.headFix = fix;
       }
-      E.head = h;
-    } else E.head = null;
-    calibPair(prev, fix);
+    } else {
+      E.head = null;
+      E.headFix = null;
+    }
+    calibStep(fix);
     if (on) E.lastOn = t;
     let crossed = false;
     if (prev && prev.on && on && prev.s !== null) {
@@ -579,9 +642,12 @@
   // Dónde empezaste a frenar en cada curva: con el acelerómetro si ya está calibrado; si no, con el GPS.
   function brakePoints(lapStart, lapEnd, samples, speeds) {
     const L = E.track.L;
+    // Los instantes se piden en orden: se sigue desde donde se quedó (con 25 fijos por segundo, empezar cada vez
+    // desde el principio de la vuelta serían millones de pasos).
+    let j = 0;
     const sOfT = (t) => {
       const tl = t - lapStart;
-      let j = 0;
+      if (j > 0 && samples[j].tl > tl) j = 0;
       while (j < samples.length - 2 && samples[j + 1].tl < tl) j++;
       const a = samples[j];
       const b = samples[Math.min(j + 1, samples.length - 1)];
@@ -663,6 +729,15 @@
   }
 
   // ---------- sensores ----------
+  // Pares de fijos para calibrar separados al menos 0,5 s (el acelerómetro se sigue sumando entre medias): a 1 Hz
+  // son todos; a 25 Hz, la diferencia de velocidad entre fijos seguidos sería casi todo ruido.
+  function calibStep(fix) {
+    const prev = E.calPrev;
+    if (prev && fix.t > prev.t && fix.t - prev.t < 0.5) return;
+    calibPair(prev, fix);
+    E.calPrev = fix;
+  }
+
   function calibPair(prev, fix) {
     const c = E.calib;
     // Vale cualquier tramo en marcha con buen GPS (circuito, carretera o en coche), no solo el trazado.
@@ -1036,7 +1111,7 @@
     // Velocidad ahora: en el circuito, la del encaje; fuera, la del GPS adelantada con el acelerómetro.
     let v = vNow;
     if (!p && E.fix) {
-      const lagDt = Math.max(0, Math.min(2.5, t - (E.fix.t - E.lag)));
+      const lagDt = Math.max(0, Math.min(2.5, t - (E.fix.t - lagNow())));
       v = Math.max(0, E.fix.v + (cal.f ? E.aEma : 0) * lagDt);
     }
     // Giro alrededor de la vertical (para las curvas): sin la parte de balanceo si ya se conoce el eje.
@@ -1073,7 +1148,7 @@
       v,
       yaw: E.hasGyro ? yaw : 0,
       yawRate,
-      lag: E.lag,
+      lag: lagNow(),
       pitch: E.pitchDeg,
     });
   }
@@ -1290,9 +1365,11 @@
           (E.best ? " · mejor " + fmtLap(E.best.time) : "")
         : "Aún no hay ninguna vuelta completa.") +
       (E.calib.f ? " · sensores calibrados" : " · sensores aún sin calibrar") +
-      (E.lagR2 !== null
-        ? " · retraso del GPS " + fmt(E.lag, 1) + " s (compensado)"
-        : "");
+      (E.extInfo
+        ? " · GPS externo" + (E.extInfo.hz ? " a " + E.extInfo.hz + " Hz" : "")
+        : E.lagR2 !== null
+          ? " · retraso del GPS " + fmt(E.lag, 1) + " s (compensado)"
+          : "");
     const body = $("p-laps");
     body.textContent = "";
     let analysis = null;
@@ -1570,6 +1647,8 @@
       meta: settings.finish,
       mejor: eng.best ? eng.best.time : null,
       retrasoGps: eng.lagR2 !== null ? eng.lag : null,
+      // Receptor GPS externo usado en la tanda ({fuente, nombre, hz}); null: solo el GPS del móvil.
+      gps: eng.extInfo ? Object.assign({}, eng.extInfo) : null,
       calibrado: !!eng.calib.f,
       // Postura del móvil al empezar (de pie / plano, pantalla vertical / horizontal) y orientación de la pantalla.
       montaje: eng.mount
@@ -2093,9 +2172,16 @@
     E.flashUntil = now() + 0.5;
   }
 
+  // Cuánto describe el pasado el último fijo: el del receptor externo, casi nada; el del móvil, lo estimado.
+  function lagNow() {
+    return E.extGps ? EXT_LAG : E.lag;
+  }
+
   // Retraso del GPS respecto a los sensores: el que mejor hace cuadrar la aceleración que mide el GPS
-  // con la del acelerómetro (lo mismo que hace el análisis completo). Se recalcula en cada vuelta.
+  // con la del acelerómetro (lo mismo que hace el análisis completo). Se recalcula en cada vuelta. Con el receptor
+  // externo en la tanda no se calcula: sus fijos mezclados con los del móvil lo falsearían, y el suyo es fijo.
   function estimateLag() {
+    if (E.extUsed) return;
     const l = E.loc.view();
     const a = E.acc.view();
     const n = a.t.length;
@@ -2169,11 +2255,13 @@
     }
   }
 
+  // Dónde está la moto ahora en la pista (s) y a qué velocidad: el último fijo proyectado con su velocidad y la
+  // aceleración. (Se probó un filtro de Kalman, fusion.js, y no mejora: ver el README.)
   function predicted(t) {
     const f = E.fix;
     if (!f || f.s === null) return null;
     // El fijo describe dónde estabas hace `lag` segundos: se proyecta desde entonces.
-    const dt = Math.max(0, Math.min(2.5, t - (f.t - E.lag)));
+    const dt = Math.max(0, Math.min(2.5, t - (f.t - lagNow())));
     const a = E.calib.f ? E.aEma : 0;
     const v = Math.max(0, f.v + a * dt);
     const s = Math.min(E.track.L, f.s + f.v * dt + 0.5 * a * dt * dt);
@@ -2188,6 +2276,7 @@
     const fresh = E.lastFixT !== null && t - E.lastFixT < 2.5 && !E.gpsBad;
     $("d-gps").className =
       "dot " + (fresh ? "ok" : E.lastFixT === null ? "wait" : "bad");
+    showHz("d-hz");
     const p = E.track && E.fix && E.fix.on ? predicted(t) : null;
     $("d-speed").textContent = fmt((p ? p.v : E.fix ? E.fix.v : 0) * 3.6, 0);
     $("d-lap").textContent = E.lapNum
@@ -2464,7 +2553,7 @@
       sectors: E.mapSectors.map((pts, k) => ({ pts, state: E.sectorState[k] })),
       brakes,
       trail: E.route.trail.slice(E.lapTrail),
-      pos: p ? trackPoint(tr, p.s) : E.route.position(t, E.rideV, E.lag),
+      pos: p ? trackPoint(tr, p.s) : E.route.position(t, E.rideV, lagNow()),
       follow: false,
       colorBy: "fase",
     });
@@ -2479,6 +2568,7 @@
       "ru-gps",
       "dot " + (fresh ? "ok" : E.lastFixT === null ? "wait" : "bad"),
     );
+    showHz("ru-hz");
     const v = E.rideV === E.rideV ? E.rideV : E.fix ? E.fix.v : 0;
     setText("ru-speed", fmt(v * 3.6, 0));
     const moving = v > 3;
@@ -2547,7 +2637,7 @@
     const nowMs = performance.now();
     if (nowMs - mapView.drawnAt < 160) return;
     mapView.drawnAt = nowMs;
-    const pos = E.route.position(t, v, E.lag);
+    const pos = E.route.position(t, v, lagNow());
     window.MaspaMapa.draw($("ru-map"), {
       trail: E.route.trail,
       pos,
@@ -3001,8 +3091,11 @@
   // Android podría cambiar el panel de vertical a horizontal a mitad de curva. No al pulsar «Salir»: el móvil
   // aún puede ir en la mano y luego colocarse plano y en horizontal. Esa orientación es también la que dice
   // hacia dónde está adelante con el móvil plano (T.mountAxes).
+  // Con «Pantalla en pista» elegida en Ajustes, se fija esa en vez de la que haya.
   async function lockOrientation() {
     E.orientTried = true;
+    const want = forcedOrient();
+    if (want) return forceOrientation();
     E.screenAngle = screenAngle();
     try {
       if (screen.orientation && screen.orientation.lock) {
@@ -3014,6 +3107,255 @@
     }
   }
 
+  const ORIENTS = [
+    "auto",
+    "portrait-primary",
+    "landscape-primary",
+    "landscape-secondary",
+  ];
+  function forcedOrient() {
+    const w = settings.pantalla;
+    return ORIENTS.includes(w) && w !== "auto" ? w : null;
+  }
+
+  // Ángulo de la pantalla cuando ha terminado de girar (lock() puede resolverse antes de que cambie).
+  function settledAngle() {
+    return new Promise((res) => {
+      const o = screen.orientation;
+      let done = false;
+      const fin = () => {
+        if (done) return;
+        done = true;
+        if (o) o.removeEventListener("change", fin);
+        res(screenAngle());
+      };
+      if (o) o.addEventListener("change", fin);
+      setTimeout(fin, 600);
+    });
+  }
+
+  // «Pantalla en pista» (Ajustes): con el giro automático apagado, el panel saldría como esté la pantalla aunque
+  // el móvil vaya de lado. Al salir (ya en pantalla completa, que es lo que permite fijarla) se pone la elegida,
+  // y con ella se sabe desde el principio hacia dónde está adelante con el móvil plano. En el Vivo Y33s, el aviso
+  // de permiso de ubicación de la primera vez la deshace: se vuelve a poner con el primer fijo (ver startReal).
+  async function forceOrientation() {
+    const want = forcedOrient();
+    if (!want || !screen.orientation || !screen.orientation.lock) return;
+    const turning = screen.orientation.type !== want;
+    try {
+      await screen.orientation.lock(want);
+      if (E) E.orientLock = want;
+    } catch (e) {
+      /* sin pantalla completa o navegador sin bloqueo: queda como esté */
+      return;
+    }
+    const ang = turning ? await settledAngle() : screenAngle();
+    if (E) E.screenAngle = ang;
+  }
+
+  function renderOrient() {
+    const cur = ORIENTS.includes(settings.pantalla)
+      ? settings.pantalla
+      : "auto";
+    for (const b of document.querySelectorAll(".choice [data-orient]"))
+      b.setAttribute("aria-checked", String(b.dataset.orient === cur));
+  }
+
+  // ---------- receptor GPS externo (Bluetooth o USB) ----------
+  // Retraso que queda en sus fijos una vez puestos en el reloj del móvil (ver extTime): el del fijo que menos tarda.
+  const EXT_LAG = 0.03;
+  // Sin fijos buenos del receptor en este tiempo, vuelve a mandar el GPS del móvil.
+  const EXT_STALE_MS = 1500;
+  const ext = {
+    kind: null, // "ble" o "usb"
+    handle: null,
+    state: "",
+    text: "",
+    busy: false,
+    // USB: volver a abrirlo solo al enchufarlo otra vez (hasta que se pulse «Desconectar»).
+    auto: false,
+    last: null,
+    lastMs: null,
+    clock: newClock(),
+  };
+
+  function extFresh() {
+    return ext.lastMs !== null && performance.now() - ext.lastMs < EXT_STALE_MS;
+  }
+
+  // Hora del fijo en el reloj del móvil (ms, como performance.now): la del receptor, exacta (a 25 Hz, una cada
+  // 40 ms), traducida con mapClock. Sin hora del receptor, la de llegada.
+  function extTime(f) {
+    const rx = Number.isFinite(f.recvMs) ? f.recvMs : performance.now();
+    return mapClock(ext.clock, f.utcMs, rx);
+  }
+
+  function onExtFix(f) {
+    if (!(f.fix >= 2) || !Number.isFinite(f.lat) || !Number.isFinite(f.lon))
+      return;
+    const tp = extTime(f);
+    ext.last = f;
+    ext.lastMs = performance.now();
+    if (!E || E.sim) return;
+    E.extGps =
+      ext.kind +
+      (ext.handle && ext.handle.profile ? ":" + ext.handle.profile : "");
+    if (!E.extUsed) {
+      E.extUsed = true;
+      E.extInfo = {
+        fuente: E.extGps,
+        nombre: ext.handle ? ext.handle.name : null,
+        hz: null,
+      };
+    }
+    const speed = Number.isFinite(f.speed) ? f.speed : null;
+    // El Bluetooth estándar no da la precisión: un receptor con posición buena va sobrado.
+    const hacc = Number.isFinite(f.hacc) ? f.hacc : 2;
+    onFix(
+      (performance.timeOrigin + tp) / 1000 - E.t0,
+      f.lat,
+      f.lon,
+      speed,
+      hacc,
+    );
+    if (E && !E.orientTried && speed !== null && speed > 4) lockOrientation();
+  }
+
+  function extStatus(s) {
+    ext.state = s.state;
+    ext.text = s.text;
+    // Un USB desenchufado ya no vale: al enchufarlo otra vez se abre de nuevo (ext.auto).
+    if (
+      ext.kind === "usb" &&
+      (s.state === "desconectado" || s.state === "error")
+    )
+      ext.handle = null;
+    renderExt();
+  }
+
+  // Hay que llamarlo desde el toque de un botón (Chrome solo enseña la lista de aparatos así), salvo un USB ya
+  // permitido (device).
+  async function connectExt(kind, device) {
+    if (ext.busy || ext.handle) return;
+    const lib = kind === "usb" ? window.MaspaGNSSUSB : window.MaspaGNSS;
+    if (!lib) return;
+    ext.busy = true;
+    ext.kind = kind;
+    ext.last = null;
+    ext.lastMs = null;
+    ext.clock = newClock();
+    renderExt();
+    try {
+      ext.handle = await lib.connect({
+        device,
+        onFix: onExtFix,
+        onStatus: extStatus,
+      });
+      ext.auto = kind === "usb";
+      settings.receptor = kind;
+      saveSettings();
+    } catch (e) {
+      // El motivo ya lo ha dado el propio receptor con su estado ("error").
+      ext.handle = null;
+    }
+    ext.busy = false;
+    renderExt();
+  }
+
+  function disconnectExt() {
+    const h = ext.handle;
+    ext.handle = null;
+    ext.auto = false;
+    ext.last = null;
+    ext.lastMs = null;
+    ext.clock = newClock();
+    settings.receptor = null;
+    saveSettings();
+    if (h) Promise.resolve(h.disconnect()).catch(() => {});
+    renderExt();
+  }
+
+  function extRate() {
+    return ext.handle ? Math.round(ext.handle.rate()) : 0;
+  }
+
+  // «25 Hz» junto al punto del GPS del panel mientras manda el receptor externo.
+  function showHz(id) {
+    const r = E.extGps && extFresh() ? extRate() : 0;
+    const txt = r >= 1 ? r + " Hz" : "";
+    const el = $(id);
+    if (el.textContent !== txt) el.textContent = txt;
+    el.hidden = !txt;
+  }
+
+  function renderExt() {
+    const ble = !!(window.MaspaGNSS && window.MaspaGNSS.supported());
+    const usb = !!(window.MaspaGNSSUSB && window.MaspaGNSSUSB.supported());
+    const on = !!ext.handle;
+    $("ext-ble").hidden = on || !ble;
+    $("ext-usb").hidden = on || !usb;
+    $("ext-ble").disabled = ext.busy;
+    $("ext-usb").disabled = ext.busy;
+    $("ext-off").hidden = !on;
+    let dot = "";
+    let text =
+      "Sin receptor: se usa el GPS del móvil (1 posición por segundo).";
+    if (!ble && !usb)
+      text =
+        "Este navegador no puede usar receptores externos: hace falta Chrome en Android.";
+    else if (on && ext.state === "conectado" && extFresh()) {
+      const f = ext.last;
+      const r = extRate();
+      dot = "ok";
+      text =
+        (ext.kind === "usb" ? "USB" : "Bluetooth") +
+        " · " +
+        ext.handle.name +
+        ": " +
+        (r >= 1 ? r + " posiciones por segundo" : "recibiendo posiciones") +
+        (Number.isFinite(f.sats) ? " · " + f.sats + " satélites" : "") +
+        (Number.isFinite(f.battery) ? " · batería " + f.battery + " %" : "") +
+        ".";
+    } else if (on || ext.busy || ext.state === "error") {
+      dot = ext.state === "error" ? "bad" : "wait";
+      text = ext.text || "Conectando con el receptor…";
+      if (on && ext.state === "conectado")
+        text = "Receptor conectado: esperando posiciones con cobertura…";
+    } else if (ext.auto && ext.state === "desconectado")
+      text = ext.text + " Se conecta solo al volver a enchufarlo.";
+    setStatus("st-ext", dot, text);
+  }
+
+  // Cada segundo: el ritmo del receptor en la portada y el máximo de la tanda (para la grabación).
+  function tickExt() {
+    if (E && E.extInfo && extFresh()) {
+      const r = extRate();
+      if (r > (E.extInfo.hz || 0)) E.extInfo.hz = r;
+    }
+    if (!$("home").hidden) renderExt();
+  }
+
+  function wireExt() {
+    $("ext-ble").addEventListener("click", () => connectExt("ble"));
+    $("ext-usb").addEventListener("click", () => connectExt("usb"));
+    $("ext-off").addEventListener("click", disconnectExt);
+    renderExt();
+    setInterval(tickExt, 1000);
+    const usb = window.navigator.usb;
+    if (!usb || !window.MaspaGNSSUSB) return;
+    // Un USB ya permitido se abre solo: al enchufarlo (si no se desconectó a mano) y al abrir la página.
+    usb.addEventListener("connect", (ev) => {
+      if (ext.auto || settings.receptor === "usb") connectExt("usb", ev.device);
+    });
+    if (settings.receptor === "usb" && usb.getDevices)
+      usb
+        .getDevices()
+        .then((list) => {
+          if (list.length) connectExt("usb", list[0]);
+        })
+        .catch(() => {});
+  }
+
   // free: ruta libre por cualquier carretera (sin circuito).
   async function startReal(free) {
     const motionOk = await askMotion();
@@ -3022,12 +3364,13 @@
       return;
     }
     E = newEngine(false, free === true);
-    E.t0 = Date.now() / 1000;
+    E.t0 = perfNow();
+    E.wall0 = Date.now();
     E.motionDenied = !motionOk;
     sensorsBlocked().then((b) => {
       if (b && E) E.motionDenied = true;
     });
-    recStart(Math.round(E.t0 * 1000));
+    recStart(E.wall0);
     if (ST) ST.persist();
     try {
       if (document.documentElement.requestFullscreen)
@@ -3039,19 +3382,33 @@
     }
     E.orientLock = null;
     E.orientTried = false;
+    await forceOrientation();
     await keepAwake();
     window.addEventListener("devicemotion", onMotionEvent);
     watchId = navigator.geolocation.watchPosition(
       (pos) => {
         if (!E || E.sim) return;
+        // El primer fijo llega después del aviso de permiso, que puede haber deshecho la orientación elegida.
+        if (!E.orientChecked) {
+          E.orientChecked = true;
+          const w = forcedOrient();
+          if (w && screen.orientation && screen.orientation.type !== w)
+            forceOrientation();
+        }
+        // Con el receptor externo dando posiciones, las del móvil (peores y con otro retraso) no se usan.
+        // Hora del fijo en el reloj de la tanda (la del navegador es la de pared; ver perfNow).
+        const tf =
+          mapClock(
+            E.phoneClock,
+            pos.timestamp,
+            performance.timeOrigin + performance.now(),
+          ) /
+            1000 -
+          E.t0;
+        if (extFresh()) return;
+        E.extGps = null;
         const c = pos.coords;
-        onFix(
-          pos.timestamp / 1000 - E.t0,
-          c.latitude,
-          c.longitude,
-          c.speed,
-          c.accuracy,
-        );
+        onFix(tf, c.latitude, c.longitude, c.speed, c.accuracy);
         const v =
           c.speed !== null && c.speed >= 0 ? c.speed : E.fix ? E.fix.v : 0;
         if (E && !E.orientTried && v > 4) lockOrientation();
@@ -3136,7 +3493,9 @@
     if (!eng) return;
     const ms0 = eng.rec
       ? eng.rec.epoch
-      : Math.round((eng.sim ? Date.now() / 1000 : eng.t0) * 1000);
+      : eng.sim || !eng.wall0
+        ? Date.now()
+        : eng.wall0;
     const series = {};
     for (const key of ["loc", "acc", "gyro", "grav", "canal"])
       if (eng[key].n) series[key] = eng[key].view();
@@ -3160,8 +3519,53 @@
   }
 
   // ---------- inicio ----------
+  // ---------- instalar la app ----------
+  // En una pestaña del navegador sin internet su barra no se quita (Vivo Y33s, Chrome 146: el aviso de «sin
+  // conexión» la deja fija aun en pantalla completa); instalada se abre a pantalla completa de verdad.
+  let installEvt = null;
+  function installed() {
+    return (
+      navigator.standalone === true ||
+      matchMedia("(display-mode: fullscreen), (display-mode: standalone)")
+        .matches
+    );
+  }
+  function renderInstall() {
+    $("install").hidden = installed();
+    $("install-btn").hidden = !installEvt;
+    if (/iPhone|iPad|iPod/.test(navigator.userAgent || ""))
+      $("install-how").textContent =
+        "En Safari: botón Compartir → «Añadir a pantalla de inicio». Después, ábrela siempre desde su icono.";
+  }
+  function wireInstall() {
+    // Chrome ofrece instalarla (con internet): se guarda para el botón en vez de su aviso propio.
+    window.addEventListener("beforeinstallprompt", (e) => {
+      e.preventDefault();
+      installEvt = e;
+      renderInstall();
+    });
+    window.addEventListener("appinstalled", () => {
+      installEvt = null;
+      renderInstall();
+    });
+    $("install-btn").addEventListener("click", async () => {
+      const e = installEvt;
+      if (!e) return;
+      installEvt = null;
+      try {
+        await e.prompt();
+        await e.userChoice;
+      } catch (err) {
+        /* ya usado o rechazado */
+      }
+      renderInstall();
+    });
+    renderInstall();
+  }
+
   function renderHome() {
     checkSensorBlock();
+    renderInstall();
     let any = false;
     const parts = ["osm", "rev"].map((dir) => {
       const b = load(bestKey(dir), null);
@@ -3188,6 +3592,7 @@
     $("cue-opts").hidden = !settings.cue;
     $("lead").value = settings.lead;
     $("lead-v").textContent = settings.lead;
+    renderOrient();
     drawMetaMap();
     $("home-export").hidden = !lastE;
     renderGarage();
@@ -3335,6 +3740,14 @@
   function wire() {
     $("go").addEventListener("click", startReal);
     $("free").addEventListener("click", () => startReal(true));
+    wireExt();
+    wireInstall();
+    for (const b of document.querySelectorAll(".choice [data-orient]"))
+      b.addEventListener("click", () => {
+        settings.pantalla = b.dataset.orient;
+        saveSettings();
+        renderOrient();
+      });
     $("mapopt").addEventListener("change", () => {
       settings.mapa = $("mapopt").checked;
       saveSettings();
@@ -3549,12 +3962,14 @@
 
   if ("serviceWorker" in navigator && location.protocol === "https:") {
     // Si llega una versión nueva mientras la página está abierta (en otra pestaña se recargó, o al volver a
-    // abrirla), se recarga sola, pero solo en la portada o en la prueba de sensores: nunca rodando.
+    // abrirla), se recarga sola, pero solo en la portada o en la prueba de sensores: nunca rodando ni con un
+    // receptor externo conectado (se perdería la conexión).
     const hadController = !!navigator.serviceWorker.controller;
     navigator.serviceWorker.addEventListener("controllerchange", () => {
       if (
         hadController &&
         !E &&
+        !ext.handle &&
         ($("home").hidden === false || $("sensores").hidden === false)
       )
         location.reload();
@@ -3572,6 +3987,8 @@
     sim,
     onMotion: (...a) => onMotion(...a),
     onFix: (...a) => onFix(...a),
+    // Dónde cree el panel que está la moto en el instante t (null fuera del trazado).
+    predicted: (t) => (E && E.track && E.fix && E.fix.on ? predicted(t) : null),
     get view3d() {
       return view3d && view3d.v;
     },

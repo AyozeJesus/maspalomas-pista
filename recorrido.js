@@ -53,6 +53,10 @@
     this.yawVote = 0;
     this.hAccum = 0;
     this.prevCourse = null;
+    this.cfix = null;
+    // Receptor GPS externo (10–25 Hz, preciso): sus correcciones van en proporción al tiempo entre fijos y tiran
+    // más de la línea (lo pone el panel según de dónde llegue cada fijo).
+    this.fast = false;
     this.hist = [];
     this.corr = [0, 0, 0];
     this.lag = 0;
@@ -77,33 +81,46 @@
     return a;
   }
 
-  // Posición del GPS (ya en metros locales). El rumbo sale del desplazamiento entre fijos.
+  // Posición del GPS (ya en metros locales). El rumbo sale del desplazamiento entre fijos separados al menos
+  // 0,6 s: a 1 Hz son todos; con un receptor de 25 Hz, entre fijos seguidos hay 1–2 m y saldría del temblor.
   Recorrido.prototype.onFix = function (t, x, y, v) {
     const f = this.fix;
-    let course = null;
-    if (f && Math.hypot(x - f.x, y - f.y) > 2) {
-      course = Math.atan2(y - f.y, x - f.x);
-      this.heading = course;
-    }
     const gap = !!f && t - f.t > 4;
     if (gap) this.gapNext = true;
-    // Signo del giro: lo girado por el giroscopio entre fijos tiene que ir hacia el mismo lado que el rumbo
-    // del GPS (si un móvil lo da al revés, se corrige solo).
-    if (course !== null && this.prevCourse !== null && !gap) {
-      const dc = wrapAngle(course - this.prevCourse);
-      if (Math.abs(dc) > 0.1 && Math.abs(this.hAccum) > 0.05) {
-        this.yawVote = Math.max(
-          -20,
-          Math.min(20, this.yawVote + Math.sign(dc * this.hAccum)),
-        );
-        if (this.yawVote <= -5) {
-          this.yawSign = -this.yawSign;
-          this.yawVote = 0;
+    const a = this.cfix;
+    let course = null;
+    let mid = null;
+    if (!a || gap || t - a.t > 4) {
+      this.cfix = { t, x, y };
+      this.hAccum = 0;
+      this.prevCourse = null;
+      // Tras un corte, la línea vuelve a empezar con el primer rumbo nuevo (el de antes ya no vale).
+      if (gap) this.est = null;
+    } else if (t - a.t >= 0.6) {
+      if (Math.hypot(x - a.x, y - a.y) > 2) {
+        course = Math.atan2(y - a.y, x - a.x);
+        mid = (a.t + t) / 2;
+        this.heading = course;
+      }
+      // Signo del giro: lo girado por el giroscopio entre fijos tiene que ir hacia el mismo lado que el rumbo
+      // del GPS (si un móvil lo da al revés, se corrige solo).
+      if (course !== null && this.prevCourse !== null) {
+        const dc = wrapAngle(course - this.prevCourse);
+        if (Math.abs(dc) > 0.1 && Math.abs(this.hAccum) > 0.05) {
+          this.yawVote = Math.max(
+            -20,
+            Math.min(20, this.yawVote + Math.sign(dc * this.hAccum)),
+          );
+          if (this.yawVote <= -5) {
+            this.yawSign = -this.yawSign;
+            this.yawVote = 0;
+          }
         }
       }
+      this.hAccum = 0;
+      if (course !== null) this.prevCourse = course;
+      this.cfix = { t, x, y };
     }
-    this.hAccum = 0;
-    if (course !== null) this.prevCourse = course;
     // Posición suavizada (giroscopio + velocidad) que el GPS corrige poco a poco. El fijo dice dónde estaba la
     // moto hace `lag` s y su rumbo es el medio entre los dos últimos fijos: se comparan con la estimación de
     // esos mismos instantes (historial), no con la de ahora; si no, en cada curva se torcería la línea.
@@ -114,11 +131,17 @@
       let ey = y - hp.y;
       if (Math.hypot(ex, ey) > 60) this.est = null;
       else {
-        ex *= 0.35;
-        ey *= 0.35;
+        // A 1 Hz se corrige el 35 % del error en cada fijo. Con un receptor rápido, en proporción al tiempo entre
+        // fijos (sumar el 35 % 25 veces por segundo haría oscilar la línea) y más fuerte, que su GPS es mejor
+        // que la estimación: ~0,5 s para alcanzarlo.
+        const k = this.fast
+          ? Math.min(0.5, 1.5 * Math.max(0.02, Math.min(1, t - f.t)))
+          : 0.35;
+        ex *= k;
+        ey *= k;
         let dh = 0;
-        if (course !== null && v > 3 && f) {
-          const hm = this.histAt((f.t + t) / 2 - this.lag);
+        if (course !== null && v > 3) {
+          const hm = this.histAt(mid - this.lag);
           if (hm) dh = wrapAngle(course - hm.h) * 0.3;
         }
         // No de golpe: la corrección se reparte en el medio segundo siguiente (sin quiebros en la línea).
@@ -172,7 +195,7 @@
     }
     const c = this.corr;
     if (c[0] || c[1] || c[2]) {
-      const k = 1 - Math.exp(-dt / 0.4);
+      const k = 1 - Math.exp(-dt / (this.fast ? 0.1 : 0.4));
       e.x += c[0] * k;
       e.y += c[1] * k;
       e.h += c[2] * k;

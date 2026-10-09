@@ -8,14 +8,21 @@ abierto, se sube sola a tu Mac.
 
 ## Uso en pista
 
-1. Abre la página en Chrome del móvil y, en el menú, «Añadir a pantalla de inicio». Así se abre a pantalla completa
-   y funciona sin cobertura.
+1. Abre la página en Chrome del móvil, con internet, y en el menú «Añadir a pantalla de inicio» (la portada lo
+   recuerda y, si Chrome lo ofrece, trae el botón «Instalar la app»). Así se abre a pantalla completa y funciona sin
+   cobertura. En una pestaña de Chrome sin internet (un móvil sin SIM en el circuito) la barra de Chrome no se
+   quita aunque la página pida pantalla completa: comprobado en un Vivo Y33s, el panel en horizontal se queda en
+   283 px de alto en vez de 393.
 2. Monta el móvil en el soporte antes de salir y no lo muevas: de pie o plano sobre la moto, con la pantalla en
    vertical u horizontal, pero con la parte de arriba de lo que se ve hacia delante (la pantalla mirándote). La
    inclinación sale desde la primera recta con el eje que dicen la postura y la orientación de la pantalla; si la
    pantalla no dice la verdad (giro automático desactivado), se corrige sola en las primeras curvas, y la frenada y
    la inclinación se afinan con el GPS en la vuelta de salida (si lo coges en boxes, se recalibra al volver a rodar).
-   La orientación de la pantalla se fija al echar a rodar, no al pulsar «Salir».
+   La orientación de la pantalla se fija al echar a rodar, no al pulsar «Salir». Con el giro automático del móvil
+   apagado, el panel saldría como esté la pantalla aunque el móvil vaya de lado: en Ajustes, «Pantalla en pista»
+   (vertical, horizontal u horizontal girada) la fija al salir, y con ella se sabe desde el principio dónde está
+   adelante con el móvil plano. El aviso de permiso de ubicación de la primera vez la deshace (Vivo Y33s): se
+   repone con el primer fijo.
    Si el móvil no queda recto en su hueco: con la moto parada y derecha (sentado en ella o en el caballete de
    taller, no en la pata de cabra) pulsa «Calibrar» (arriba a la izquierda en el panel y en la ruta libre, y en
    boxes). Coge la gravedad de ~1 s con el móvil quieto como vertical de la moto: inclinación y morro a 0, y la
@@ -32,7 +39,8 @@ dibujar en 3D, lo dice y el panel sigue igual.
 
 ## Qué mide el móvil
 
-- **Velocidad y posición**: GPS, adelantado con el acelerómetro para compensar su retraso.
+- **Velocidad y posición**: GPS (el del móvil o un receptor externo), adelantado con el acelerómetro para compensar
+  su retraso.
 - **Frenada y gas (g)**: acelerómetro, en el eje de la moto que el móvil aprende solo comparándose con el GPS.
 - **Inclinación**: giroscopio. En curva la moto gira alrededor de la vertical del mundo y, vista desde la moto
   tumbada, ese giro se reparte entre su vertical y su eje lateral: de ahí sale el ángulo, sin depender de la
@@ -61,6 +69,27 @@ dibujar en 3D, lo dice y el panel sigue igual.
   durante 0,4 s; soltar gas no. Sale en el resumen de cada curva, en boxes («Frenadas por curva», lo mejor de la
   tanda) y en el resumen de la ruta libre. El móvil mide la deceleración total (frenos, freno motor y aire): no
   separa delante de detrás ni mide la presión de la maneta.
+
+## Receptor GPS externo (opcional)
+
+El GPS del móvil da una posición por segundo y con 0,5–1 s de retraso. Un receptor externo da de 10 a 25 por
+segundo y casi sin retraso: tiempos por vuelta, delta, trazada y la vuelta ideal fina (minisectores de 50 m)
+mucho más exactos. Se conecta en la portada, antes de salir:
+
+- **Bluetooth** («Conectar por Bluetooth» y elegirlo en la lista): RaceBox Mini/Micro, BonoGPS (perfil de
+  ubicación estándar con frases NMEA) o cualquier receptor que mande NMEA por el puerto serie Bluetooth de Nordic.
+  Si se pierde la conexión, se reconecta solo.
+- **USB-C** («Conectar por USB», con cable OTG): receptores u-blox M9/M10 de cronometraje y los que llevan chip
+  CH340 o CP210x. Después se abre solo al enchufarlo y al abrir la página, hasta que pulses «Desconectar el
+  receptor» (`gnss-usb.js`).
+
+Mientras llegan sus posiciones, el panel pone «25 Hz» (o los que dé) junto al punto del GPS y las del móvil no se
+usan; si el receptor calla 1,5 s, vuelve el GPS del móvil hasta que regrese. Cada fijo va con la hora del propio
+receptor, exacta (la llegada por Bluetooth varía 10–50 ms). En las pruebas (BonoGPS simulado a 25 Hz con 0,3 m
+de error): vueltas a 10 ms de la verdad, frente a ~0,1 s con el GPS del móvil, y trazada a ~1,3 m. La tanda
+guarda qué receptor se usó y a cuántos Hz; en boxes lo dice. Hace falta Chrome en Android: iPhone y Brave no dejan
+usar Bluetooth ni USB desde una página. Sin probar aún con aparatos de verdad: el formato del RaceBox sale de su
+documentación y el resto, de la norma NMEA y del código del BonoGPS.
 
 ## Ruta libre (cualquier carretera)
 
@@ -118,6 +147,42 @@ Funciona en Android (Chrome) y en iPhone (Safari: al salir a pista pide permiso 
 sin él, solo hay GPS). Si un móvil da los sensores con el signo al revés, el lado de la inclinación se corrige
 solo con el rumbo del GPS. Brave bloquea los sensores de movimiento por defecto: la portada lo avisa (permiso
 negado y ningún dato en 1,5 s) y dice cómo permitirlos; lo más sencillo es abrirla en Chrome.
+
+## Filtro de Kalman: probado y descartado
+
+`fusion.js` (Kalman con posición, velocidad y sesgo del acelerómetro, que rebobina para los fijos que llegan
+tarde) se probó como posición del panel frente a lo de siempre (el último fijo adelantado con su velocidad y la
+aceleración), cada 0,1 s contra la verdad en la tanda de ejemplo (`tkf-live.js`):
+
+| GPS                                   | Kalman  | Lo de siempre |
+| ------------------------------------- | ------- | ------------- |
+| Tanda de ejemplo (1 Hz, 0,25 s, 1,6 m) | 4,6 m   | 5,1 m         |
+| Como el del Vivo (1 Hz, 0,8 s, deriva) | 14,6 m  | 12,7 m        |
+| Receptor externo (25 Hz)               | 0,60 m  | 0,41 m        |
+
+El primer intento iba siempre por detrás (4–11 m): `s` es la distancia por el eje de la pista y la velocidad del
+GPS es la de la trazada, que por dentro de las curvas es más corta. Corregido eso (1 / (1 − curvatura ×
+separación al eje)), el error que queda con el GPS del móvil es su deriva lenta, que ningún filtro quita, y la
+aceleración que le llega está suavizada 0,2 s. No compensa: la app no lo carga.
+
+## Probado en un Vivo Y33s (el móvil del circuito)
+
+Android 13, Chrome 146, Helio G85, conectado por cable al Mac (adb y DevTools):
+
+- Sensores a 60 Hz (InvenSense ICM-40607); en la mesa, «Móvil plano, pantalla en vertical» y 0° de tumbada y de
+  morro estables durante 30 s. Panel a 60 fps.
+- Vuelta de ejemplo en 3D a 57 fps (13 MB); una pausa de ~0,9 s al montar la escena.
+- Tanda en tiempo real con un receptor Bluetooth simulado a 25 Hz y sensores a 100 Hz: panel a 59,5 fps, una sola
+  pausa de 0,1 s en 2,5 min, 12 MB; el cruce de meta, a 19 ms de la verdad.
+- Sin SIM ni Wi-Fi: Chrome enseña su aviso de «sin conexión» y en una pestaña no quita su barra (ver «Uso en
+  pista»), y el GPS arranca sin datos de ayuda (enciéndelo unos minutos antes, a cielo abierto).
+- Tenía la fecha en el 1 de julio de 2024 y la hora automática apagada: Chrome sella los fijos con ese mismo reloj,
+  así que la tanda iba bien, pero en el garaje saldría con esa fecha y no se juntaría con las de otros móviles del
+  mismo día. Se puso en hora y con hora y zona automáticas.
+- Relojes: los sensores llegan con el reloj interno del navegador, que en Android no cuenta el tiempo con el móvil
+  dormido; los fijos del GPS, con el de pared. Con la app abierta desde antes de dormirlo, los dos se separaban y
+  el análisis fallaba («No he podido orientar el móvil respecto a la moto»). Ahora todo va en el reloj de los
+  sensores y la hora de cada fijo se traduce a él (`mapClock` en `live.js`, como la del receptor externo).
 
 ## Privacidad y seguridad
 

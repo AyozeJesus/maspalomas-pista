@@ -140,7 +140,9 @@
             : ""),
       ];
     if (meta.fuente === "gopro") return ["tag", "vídeo GoPro"];
-    return ["tag", meta.sim ? "simulador" : "terminada"];
+    // Con receptor GPS externo, a cuántos Hz (las del móvil van a 1).
+    const gps = meta.gps && meta.gps.hz ? " · GPS " + meta.gps.hz + " Hz" : "";
+    return ["tag", (meta.sim ? "simulador" : "terminada") + gps];
   }
 
   async function refreshList() {

@@ -91,6 +91,7 @@
   .card:empty { display: none; }
   .muted { color: var(--muted); font-size: 14px; }
   .start { display: grid; gap: 8px; }
+  .install p { margin: 0; }
 
   /* Estado: filas con indicador. */
   .status { display: grid; font-size: 15px; }
@@ -123,6 +124,9 @@
   }
   .switch input:checked { border-color: var(--primary); background: radial-gradient(circle at 35px 50%, #fff 0 11px, transparent 12px), var(--primary); }
   .switch input:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+  .choice { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .choice button { padding: 10px 8px; }
+  .choice button[aria-checked="true"] { background: var(--primary); border-color: var(--primary); color: #fff; }
   .range-label { display: block; color: var(--ink-2); font-size: 15px; }
   .range-label b { color: var(--ink); font-variant-numeric: tabular-nums; }
   input[type="range"] { width: 100%; height: 44px; margin: 0; accent-color: var(--primary); cursor: pointer; }
@@ -225,6 +229,7 @@
   .stop.calib { padding: 8px 12px; font-size: 14px; letter-spacing: 0.02em; white-space: nowrap; border-color: rgba(255, 255, 255, 0.85); }
   .gps { justify-self: end; display: flex; gap: 8px; align-items: baseline; white-space: nowrap; }
   .gps .dot { align-self: center; width: 12px; height: 12px; box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.9); }
+  .gps .hz { align-self: center; font-size: 13px; font-weight: 700; color: var(--muted); }
   .unit { font-size: 14px; font-weight: 700; opacity: 0.9; }
   .stop {
     min-height: 44px; padding: 8px 18px; border-radius: 999px; font-size: 15px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase;
@@ -297,7 +302,9 @@
     .ride-stats, .wh { font-size: min(2.2vw, 4vh); }
     .dash { grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
     .dash-top { grid-column: 1 / -1; }
-    .delta { font-size: min(20vw, 52vh); padding-left: max(8px, env(safe-area-inset-left)); }
+    .delta { font-size: min(20vw, 52vh); padding-left: max(8px, env(safe-area-inset-left)); overflow: hidden; }
+    /* Con poca altura (pestaña de Chrome con su barra: ~280 px) el texto bajo el delta no puede crecer con él. */
+    .delta small { font-size: min(0.16em, 6.2vh); }
     .dash-bottom { align-content: center; gap: 6px; padding-top: 8px; padding-bottom: max(10px, env(safe-area-inset-bottom)); padding-left: 0; }
     .laptime b { font-size: min(7vw, 11vh); }
     .laptime span { font-size: min(2.4vw, 4vh); }
@@ -335,6 +342,11 @@
       <div><span class="dot" id="st-best"></span><span id="st-best-t">Mejor vuelta guardada: ninguna</span></div>
     </div>
     <p class="warnbox" id="sensor-block" hidden></p>
+    <div class="card install" id="install" hidden>
+      <p>Instálala en el móvil: se abre a pantalla completa y funciona sin cobertura. En el navegador, sin internet su barra no se quita y le roba al panel casi un tercio en horizontal.</p>
+      <button class="primary" id="install-btn" hidden>Instalar la app</button>
+      <p class="muted" id="install-how">Menú ⋮ de Chrome → «Añadir a pantalla de inicio» (o «Instalar aplicación»), con internet. Después, ábrela siempre desde su icono.</p>
+    </div>
     <div class="start">
       <button class="primary" id="go">Salir a pista</button>
       <button id="free">Ruta libre (cualquier carretera)</button>
@@ -344,6 +356,16 @@
       </div>
       <p class="muted">«Ruta libre» va dibujando tu trazada por cualquier carretera: dónde frenas, aceleras o dejas tiempo muerto, la inclinación de cada curva y los caballitos. «Probar los sensores» comprueba el GPS y los sensores de este móvil. La vuelta de ejemplo es una tanda grabada: no usa tu móvil.</p>
     </div>
+    <section class="card" aria-labelledby="ext-h">
+      <h2 id="ext-h">Receptor GPS externo</h2>
+      <div class="status"><div><span class="dot" id="st-ext"></span><span id="st-ext-t">Sin receptor: se usa el GPS del móvil (1 posición por segundo).</span></div></div>
+      <div class="actions">
+        <button id="ext-ble">Conectar por Bluetooth</button>
+        <button id="ext-usb">Conectar por USB</button>
+        <button class="danger" id="ext-off" hidden>Desconectar el receptor</button>
+      </div>
+      <p class="muted">RaceBox, BonoGPS o cualquier receptor NMEA por Bluetooth, o uno por cable USB-C (u-blox M9/M10): de 10 a 25 posiciones por segundo y casi sin retraso. Mientras llegan sus posiciones, sustituyen a las del móvil; si se pierde, vuelve solo el GPS del móvil. Conéctalo antes de salir.</p>
+    </section>
     <section class="card" aria-labelledby="mac-h">
       <h2 id="mac-h">Tus tandas y el Mac</h2>
       <div class="status">
@@ -373,6 +395,16 @@
           <p class="warnbox">El GPS del móvil llega con retraso y el aviso puede ir hasta ~50 m tarde. Úsalo como referencia, nunca como tu punto de frenada. Tu referencia sigue siendo la pista.</p>
         </div>
       </div>
+      <div class="group">
+        <h3 class="group-title" id="orient-h">Pantalla en pista</h3>
+        <div class="choice" role="radiogroup" aria-labelledby="orient-h">
+          <button type="button" role="radio" data-orient="auto">Como el móvil</button>
+          <button type="button" role="radio" data-orient="portrait-primary">Vertical</button>
+          <button type="button" role="radio" data-orient="landscape-primary">Horizontal</button>
+          <button type="button" role="radio" data-orient="landscape-secondary">Horizontal girada</button>
+        </div>
+        <p class="muted">Con el giro automático del móvil apagado, el panel sale como esté la pantalla aunque el móvil vaya de lado. Elige cómo lo llevas montado: se fija al salir a pista o a la ruta libre. Si sale al revés, la otra horizontal.</p>
+      </div>
       <div class="group meta-map">
         <h3 class="group-title">Línea de meta</h3>
         <p class="muted">Toca la pista para ponerla donde la tenga el cronometraje del circuito o RaceChrono.</p>
@@ -398,7 +430,7 @@
     <div class="dash-top">
       <span class="top-l"><span class="num" id="d-lap">Vuelta —</span><button class="stop calib" id="d-calib" hidden aria-label="Calibrar la inclinación con la moto parada y derecha">Calibrar</button></span>
       <button class="stop" id="stop">Boxes</button>
-      <span class="gps"><span class="dot" id="d-gps"></span><span class="num" id="d-speed">0</span><small class="unit">km/h</small></span>
+      <span class="gps"><span class="dot" id="d-gps"></span><small class="hz" id="d-hz" hidden></small><span class="num" id="d-speed">0</span><small class="unit">km/h</small></span>
     </div>
     <div class="v3d" id="d-3d" hidden>
       <p class="v3d-wait" id="d-3d-wait">Cargando el circuito en 3D…</p>
@@ -437,7 +469,7 @@
     <div class="dash-top">
       <span class="top-l"><span id="ru-title">Ruta libre</span><button class="stop calib" id="ru-calib" hidden aria-label="Calibrar la inclinación con la moto parada y derecha">Calibrar</button></span>
       <button class="stop" id="ru-stop">Terminar</button>
-      <span class="gps"><span class="dot" id="ru-gps"></span><span class="num" id="ru-speed">0</span><small class="unit">km/h</small></span>
+      <span class="gps"><span class="dot" id="ru-gps"></span><small class="hz" id="ru-hz" hidden></small><span class="num" id="ru-speed">0</span><small class="unit">km/h</small></span>
     </div>
     <div class="ride-map">
       <canvas id="ru-map" aria-label="Mapa con tu trazada"></canvas>
@@ -595,6 +627,8 @@
   <script src="comparativa.js"></script>
   <script src="mapa.js"></script>
   <script src="recorrido.js"></script>
+  <script src="gnss-ble.js"></script>
+  <script src="gnss-usb.js"></script>
   <script src="live.js"></script>
 </body>
 </html>
