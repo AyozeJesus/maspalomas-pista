@@ -77,6 +77,15 @@
     const range = IDBKeyRange.bound([id, 0], [id, Infinity]);
     return reqP(db.transaction("trozos").objectStore("trozos").getAll(range));
   }
+  // Borra una tanda del móvil (su resumen y todos sus trozos). La del Mac, si se subió, no se toca.
+  function deleteSession(id) {
+    return tx(["sesiones", "trozos"], "readwrite", (t) => {
+      t.objectStore("sesiones").delete(id);
+      t.objectStore("trozos").delete(
+        IDBKeyRange.bound([id, -Infinity], [id, Infinity]),
+      );
+    });
+  }
   async function pendingCounts() {
     const db = await open();
     const t = db.transaction(["trozos", "sesiones"]);
@@ -341,6 +350,7 @@
     putChunk,
     sessions,
     chunksOf,
+    deleteSession,
     pendingCounts,
     closeStale,
     persist,

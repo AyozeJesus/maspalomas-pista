@@ -8,7 +8,7 @@
   const ST = window.PistaStore;
   const APP_VERSION = 2;
   // Versión publicada (la misma que la copia de sw.js, «pista-vN»): se ve en la portada.
-  const BUILD = 20;
+  const BUILD = 21;
   const G = 9.80665;
   const REC_EVERY = 10; // segundos entre trozos guardados en el móvil
   const $ = (id) => document.getElementById(id);
@@ -1306,6 +1306,8 @@
 
   // ---------- boxes ----------
   function pitsCheck(t, v, on) {
+    // Repasando una grabación guardada: boxes al final, no a mitad.
+    if (E.viewing) return;
     if (v < 4 || !on) {
       if (E.slowSince === null) E.slowSince = t;
       else if (t - E.slowSince > 5 && E.mode === "ride" && E.lapNum > 0)
@@ -1390,6 +1392,11 @@
     $("flash").hidden = true;
     setText("p-calib", "Calibrar inclinación");
     setText("p-calib-note", "");
+    // Una tanda guardada que se está repasando: solo mirar (ni volver a pista ni calibrar) y «Cerrar».
+    const viewing = !!E.viewing;
+    $("resume").hidden = viewing;
+    $("p-calib").hidden = viewing;
+    setText("finish", viewing ? "Cerrar" : "Terminar");
     show("pits");
     const valid = E.laps.filter((l) => l.valid);
     $("p-sub").textContent =
@@ -2202,6 +2209,7 @@
   }
 
   function showLapFlash(time, isBest, prevBest) {
+    if (E.viewing) return;
     const fl = $("flash");
     fl.className = "flash lap num" + (isBest ? " best" : "");
     fl.textContent = fmtLap(time);
@@ -2321,7 +2329,7 @@
   }
 
   function render() {
-    if (!E || E.mode !== "ride") return;
+    if (!E || E.mode !== "ride" || E.viewing) return;
     const t = now();
     const fl = $("flash");
     if (!fl.hidden && t > E.flashUntil) fl.hidden = true;
@@ -3096,7 +3104,23 @@
   // Resumen al terminar la ruta: mapa entero, totales, las curvas más tumbadas y los caballitos.
   // Vueltas del circuito en el resumen de la ruta libre, y guardarlo para reconocerlo la próxima vez.
   function renderRouteLaps(eng) {
-    const c = eng.circ;
+    // Repasando una ruta guardada por un circuito que no se guardó: las vueltas que se apuntaron entonces.
+    const mc =
+      !eng.circ && eng.viewing && eng.viewing.circuito
+        ? eng.viewing.circuito
+        : null;
+    const c = eng.circ
+      ? eng.circ
+      : mc
+        ? {
+            laps: (mc.vueltas || []).map((v) => ({
+              num: v.num,
+              time: v.time,
+              valid: v.valid,
+            })),
+            best: mc.mejor ? { time: mc.mejor } : null,
+          }
+        : null;
     $("ruf-l").hidden = !c;
     if (!c) return;
     const body = $("ruf-laps");
@@ -3121,7 +3145,9 @@
       });
       body.appendChild(tr);
     }
-    const track = eng.circTrack;
+    const track = mc ? { name: mc.nombre, length: mc.longitud } : eng.circTrack;
+    // Sin el trazado (solo las vueltas apuntadas) no hay nada que guardar.
+    const canSave = !mc && !eng.circSaved;
     setText(
       "ruf-l-note",
       track.name +
@@ -3135,13 +3161,15 @@
               ? " (* sin contar: paso por boxes o fuera del circuito)"
               : "")
           : "aún sin vueltas completas") +
-        (eng.circSaved
-          ? ". Circuito guardado: se reconoce solo al pasar por él."
-          : ". Sacado de tus vueltas: guárdalo para que la próxima vez cuente desde la primera."),
+        (mc
+          ? "."
+          : eng.circSaved
+            ? ". Circuito guardado: se reconoce solo al pasar por él."
+            : ". Sacado de tus vueltas: guárdalo para que la próxima vez cuente desde la primera."),
     );
-    $("ruf-save-box").hidden = eng.circSaved;
-    $("ruf-save").hidden = eng.circSaved;
-    if (!eng.circSaved) $("ruf-name").value = track.name;
+    $("ruf-save-box").hidden = !canSave;
+    $("ruf-save").hidden = !canSave;
+    if (canSave) $("ruf-name").value = track.name;
   }
 
   function saveCircuit() {
@@ -3164,7 +3192,7 @@
     renderRouteLaps(eng);
     const r = eng.route;
     const s = r.summary();
-    const d = new Date(eng.rec ? eng.rec.epoch : Date.now());
+    const d = new Date(eng.rec ? eng.rec.epoch : eng.viewEpoch || Date.now());
     setText(
       "ruf-sub",
       d.toLocaleDateString("es-ES", {
@@ -3312,6 +3340,11 @@
   }
 
   function loop() {
+    // Repasando una tanda guardada, el motor lo mueve viewSaved (no el simulador) y no hay panel que pintar.
+    if (E && E.viewing) {
+      requestAnimationFrame(loop);
+      return;
+    }
     if (E && E.sim) simStep();
     if (E && E.free) renderRoute();
     else render();
@@ -3967,9 +4000,11 @@
     if (!eng) return;
     const ms0 = eng.rec
       ? eng.rec.epoch
-      : eng.sim || !eng.wall0
-        ? Date.now()
-        : eng.wall0;
+      : eng.viewEpoch
+        ? eng.viewEpoch
+        : eng.sim || !eng.wall0
+          ? Date.now()
+          : eng.wall0;
     const series = {};
     for (const key of ["loc", "acc", "gyro", "grav", "canal"])
       if (eng[key].n) series[key] = eng[key].view();
@@ -4074,8 +4109,228 @@
     }
   }
 
+  // ---------- tus rutas y tandas (guardadas en este móvil) ----------
+  let viewJob = null;
+
+  function sessionDate(s) {
+    const d = new Date(s.inicio || s.epoch || 0);
+    return d.toLocaleString("es-ES", {
+      weekday: "short",
+      day: "numeric",
+      month: "short",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  }
+
+  // «Ruta libre · 23,4 km · 1:12:05» o «Circuito · 8 vueltas · mejor 1:09,32».
+  function sessionLine(s) {
+    // La ruta lleva su tiempo en el resumen; si no, del principio al final de la grabación.
+    const dur =
+      s.recorrido &&
+      Number.isFinite(s.recorrido.duracion) &&
+      s.recorrido.duracion > 0
+        ? s.recorrido.duracion
+        : s.inicio && s.fin
+          ? (new Date(s.fin) - new Date(s.inicio)) / 1000
+          : null;
+    const parts = [];
+    if (s.tipo === "ruta") {
+      parts.push("Ruta libre");
+      const km = s.recorrido ? s.recorrido.distancia : null;
+      if (Number.isFinite(km)) parts.push(fmt(km / 1000, 1) + " km");
+      if (s.circuito)
+        parts.push(
+          s.circuito.nombre +
+            (s.circuito.mejor ? " · mejor " + fmtLap(s.circuito.mejor) : ""),
+        );
+    } else {
+      parts.push("Circuito");
+      const n = (s.vueltas || []).filter((v) => v.valid).length;
+      parts.push(n + (n === 1 ? " vuelta" : " vueltas"));
+      if (s.mejor) parts.push("mejor " + fmtLap(s.mejor));
+    }
+    if (dur !== null && dur > 0) parts.push(fmtClock(dur));
+    if (s.estado === "cortada") parts.push("cortada");
+    return parts.join(" · ");
+  }
+
+  async function renderHistory() {
+    let list = [];
+    try {
+      if (ST)
+        list = (await ST.sessions()).filter(
+          (s) => !s.sim && s.estado !== "grabando",
+        );
+    } catch (e) {
+      list = [];
+    }
+    $("hist-card").hidden = !list.length;
+    const box = $("hist-list");
+    box.textContent = "";
+    for (const s of list) {
+      const row = document.createElement("div");
+      row.className = "hist-row";
+      const txt = document.createElement("div");
+      txt.className = "hist-txt";
+      const b = document.createElement("b");
+      b.textContent = sessionDate(s);
+      const sp = document.createElement("span");
+      sp.textContent = sessionLine(s);
+      txt.append(b, sp);
+      const act = document.createElement("div");
+      act.className = "hist-act";
+      const ver = document.createElement("button");
+      ver.type = "button";
+      ver.textContent = "Ver";
+      ver.addEventListener("click", () => viewSaved(s.id));
+      const del = document.createElement("button");
+      del.type = "button";
+      del.className = "danger";
+      del.textContent = "Borrar";
+      let armed = false;
+      del.addEventListener("click", async () => {
+        if (!armed) {
+          armed = true;
+          del.textContent =
+            s.pend && settings.garaje
+              ? "¿Sin subir? Otra vez"
+              : "¿Seguro? Otra vez";
+          setTimeout(() => {
+            armed = false;
+            del.textContent = "Borrar";
+          }, 4000);
+          return;
+        }
+        try {
+          await ST.deleteSession(s.id);
+        } catch (e) {
+          /* se queda en la lista */
+        }
+        renderHistory();
+        renderGarage();
+      });
+      act.append(ver, del);
+      row.append(txt, act);
+      box.appendChild(row);
+    }
+  }
+
+  // Ver una tanda guardada: se repasa la grabación con el mismo motor que en directo (deprisa, sin grabar, sin
+  // subir, sin avisos) y se enseña lo de siempre al terminar: la ruta con su mapa o el análisis de boxes.
+  async function viewSaved(id) {
+    if (viewJob || E || !ST) return;
+    const job = { cancelled: false };
+    viewJob = job;
+    const box = $("replaying");
+    const bar = $("replaying-bar");
+    setText("replaying-t", "Abriendo la grabación…");
+    bar.style.width = "0%";
+    box.hidden = false;
+    const fail = (msg) => {
+      setText("replaying-t", msg);
+      setTimeout(() => {
+        if (viewJob === job || viewJob === null) box.hidden = true;
+      }, 2500);
+    };
+    let eng = null;
+    try {
+      const meta = (await ST.sessions()).find((s) => s.id === id);
+      const chunks = await ST.chunksOf(id);
+      if (!meta || !chunks.length) {
+        viewJob = null;
+        return fail("Esta grabación está vacía.");
+      }
+      const S = F.mergeChunks(chunks).series;
+      const L = S.loc;
+      if (!L || !L.t.length) {
+        viewJob = null;
+        return fail("Esta grabación no tiene posiciones del GPS.");
+      }
+      eng = newEngine(true, meta.tipo === "ruta");
+      eng.t0 = 0;
+      eng.viewing = meta;
+      eng.viewEpoch = meta.epoch || null;
+      eng.crash = null;
+      eng.circTryAt = Infinity;
+      eng.orientTried = true;
+      eng.crashLog = Array.isArray(meta.caidas) ? meta.caidas.slice() : [];
+      if (meta.montaje && Number.isFinite(meta.montaje.angulo))
+        eng.screenAngle = meta.montaje.angulo;
+      E = eng;
+      if (Array.isArray(meta.calibracionManual)) {
+        eng.calib.manualU = norm3(meta.calibracionManual);
+        eng.calib.manualVer++;
+      }
+      setText("replaying-t", "Repasando la grabación…");
+      const A = S.acc;
+      const G = S.grav;
+      const W = S.gyro;
+      const nA = A && G && W ? Math.min(A.t.length, G.t.length, W.t.length) : 0;
+      // Grabaciones de antes de unificar los relojes: si los sensores empiezan lejos del GPS, se alinean.
+      const shift = nA && Math.abs(A.t[0] - L.t[0]) > 60 ? L.t[0] - A.t[0] : 0;
+      let iL = 0;
+      const feedFixes = (upTo) => {
+        while (iL < L.t.length && L.t[iL] <= upTo) {
+          sim.t = L.t[iL];
+          onFix(
+            L.t[iL],
+            L.lat[iL],
+            L.lon[iL],
+            L.speed[iL] >= 0 ? L.speed[iL] : null,
+            L.hacc[iL],
+          );
+          iL++;
+        }
+      };
+      const total = nA + L.t.length;
+      let lastYield = performance.now();
+      let lastI = 0;
+      for (let i = 0; i < nA; i++) {
+        const t = A.t[i] + shift;
+        feedFixes(t);
+        sim.t = t;
+        onMotion(
+          t,
+          [A.x[i], A.y[i], A.z[i]],
+          [G.x[i], G.y[i], G.z[i]],
+          [W.x[i], W.y[i], W.z[i]],
+        );
+        // Cada 40 ms (o cada 5.000 muestras) se deja respirar a la página: barra de avance y «Cancelar».
+        if (performance.now() - lastYield > 40 || i - lastI >= 5000) {
+          bar.style.width = Math.round(((i + iL) / total) * 100) + "%";
+          await new Promise((r) => setTimeout(r, 0));
+          lastYield = performance.now();
+          lastI = i;
+          if (job.cancelled || E !== eng) throw new Error("cancelado");
+        }
+      }
+      feedFixes(Infinity);
+      bar.style.width = "100%";
+      if (job.cancelled || E !== eng) throw new Error("cancelado");
+      if (eng.free) {
+        E = null;
+        lastE = eng;
+        showRouteSummary(eng);
+      } else enterPits();
+      viewJob = null;
+      box.hidden = true;
+    } catch (e) {
+      if (E === eng) E = null;
+      viewJob = null;
+      if (job.cancelled || (e && e.message === "cancelado")) box.hidden = true;
+      else fail("No se ha podido abrir esta grabación.");
+    }
+  }
+
+  function cancelView() {
+    if (viewJob) viewJob.cancelled = true;
+    $("replaying").hidden = true;
+  }
+
   function renderHome() {
     checkSensorBlock();
+    renderHistory();
     renderInstall();
     renderCircuits();
     let any = false;
@@ -4312,6 +4567,7 @@
     $("ruf-export").addEventListener("click", () => exportSession(lastE));
     $("ruf-save").addEventListener("click", saveCircuit);
     $("crash-ok").addEventListener("click", crashDismiss);
+    $("replaying-cancel").addEventListener("click", cancelView);
     $("crash-share").addEventListener("click", crashShare);
     $("caidaopt").addEventListener("change", () => {
       settings.caida = $("caidaopt").checked;
@@ -4390,6 +4646,11 @@
     });
     let confirmArmed = false;
     $("finish").addEventListener("click", () => {
+      // Repasando una tanda guardada no hay nada que terminar: se cierra sin más.
+      if (E && E.viewing) {
+        stopAll();
+        return;
+      }
       if (!confirmArmed) {
         confirmArmed = true;
         $("finish").textContent = "¿Terminar? Toca otra vez";

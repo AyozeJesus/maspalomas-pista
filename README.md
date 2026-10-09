@@ -91,6 +91,16 @@ guarda qué receptor se usó y a cuántos Hz; en boxes lo dice. Hace falta Chrom
 usar Bluetooth ni USB desde una página. Sin probar aún con aparatos de verdad: el formato del RaceBox sale de su
 documentación y el resto, de la norma NMEA y del código del BonoGPS.
 
+## Tus rutas y tandas en el móvil
+
+En la portada, «Tus rutas y tandas» lista lo grabado en este móvil (fecha, ruta o circuito, km, vueltas, mejor
+vuelta, duración), también sin internet. «Ver» repasa la grabación con el mismo motor del directo, deprisa y sin
+grabar, subir ni avisar de nada, y enseña lo de siempre al terminar: la ruta con su mapa, curvas, frenadas,
+caballitos y vueltas, o el análisis de boxes de una tanda de circuito (solo para mirar, con «Cerrar»). Usa la
+calibración y la postura del móvil que se guardaron, y alinea los sensores de grabaciones antiguas con los relojes
+desfasados. En el Vivo Y33s, una ruta de 33 min y 61 km (200.000 muestras de sensores) se abre en 3 s.
+«Borrar» (dos toques) la quita solo del móvil.
+
 ## Ruta libre (cualquier carretera)
 
 Va dibujando tu línea de trazada sobre un mapa que te sigue: en rojo donde frenas, en verde donde aceleras, en

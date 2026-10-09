@@ -92,6 +92,19 @@
   .muted { color: var(--muted); font-size: 14px; }
   .start { display: grid; gap: 8px; }
   .install p { margin: 0; }
+  /* Tus rutas y tandas: una fila por grabación, con «Ver» y «Borrar». */
+  .hist-list { display: grid; gap: 4px; }
+  .hist-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 10px 0; border-top: 1px solid var(--line); }
+  .hist-row:first-child { border-top: 0; }
+  .hist-txt { display: grid; gap: 2px; min-width: 0; }
+  .hist-txt b { font-weight: 700; }
+  .hist-txt span { overflow-wrap: anywhere; }
+  .hist-act { display: flex; gap: 6px; flex: none; }
+  .hist-act button { padding: 10px 12px; }
+  .replaying { position: fixed; inset: 0; z-index: 40; display: grid; align-content: center; justify-items: center; gap: 16px; padding: 24px; background: var(--bg); text-align: center; }
+  .replaying p { margin: 0; font-size: 20px; font-weight: 700; }
+  .replaying-bar { width: min(80vw, 420px); height: 10px; border-radius: 999px; background: var(--surface-3); overflow: hidden; }
+  .replaying-bar span { display: block; height: 100%; width: 0; background: var(--primary); }
   .circ-list { display: grid; gap: 8px; }
   .circ-list > div { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
   .circ-list span { min-width: 0; overflow-wrap: anywhere; }
@@ -387,6 +400,11 @@
       </div>
       <p class="muted">RaceBox, BonoGPS o cualquier receptor NMEA por Bluetooth, o uno por cable USB-C (u-blox M9/M10): de 10 a 25 posiciones por segundo y casi sin retraso. Mientras llegan sus posiciones, sustituyen a las del móvil; si se pierde, vuelve solo el GPS del móvil. Conéctalo antes de salir.</p>
     </section>
+    <section class="card" aria-labelledby="hist-h" id="hist-card" hidden>
+      <h2 id="hist-h">Tus rutas y tandas</h2>
+      <div class="hist-list" id="hist-list"></div>
+      <p class="muted">Guardadas en este móvil: se ven también sin internet. «Ver» repasa la grabación y enseña lo mismo que al terminar (la ruta con su mapa, o el análisis de boxes de una tanda). «Borrar» solo la quita del móvil.</p>
+    </section>
     <section class="card" aria-labelledby="mac-h">
       <h2 id="mac-h">Tus tandas y el Mac</h2>
       <div class="status">
@@ -653,6 +671,13 @@
   </main>
 
   <div class="flash" id="flash" hidden></div>
+
+  <!-- Repaso de una grabación guardada (Tus rutas y tandas → Ver). -->
+  <div class="replaying" id="replaying" hidden role="status" aria-live="polite">
+    <p id="replaying-t">Abriendo la grabación…</p>
+    <div class="replaying-bar"><span id="replaying-bar"></span></div>
+    <button id="replaying-cancel">Cancelar</button>
+  </div>
 
   <!-- Aviso de caída (ruta libre): cuenta atrás y, si nadie la para, alarma con la posición y el 112. -->
   <section class="crash" id="crash" hidden role="alertdialog" aria-modal="true" aria-labelledby="crash-h" aria-describedby="crash-t">
