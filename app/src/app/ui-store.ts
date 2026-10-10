@@ -28,7 +28,9 @@ export interface CrashUiState {
   title: string;
   text: string;
   where: string;
+  // Teléfono de emergencia de Ajustes (solo cifras y «+», para el enlace) y el texto de su botón.
   tel: string;
+  telText: string;
   shareText: string;
 }
 

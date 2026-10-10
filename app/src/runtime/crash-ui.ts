@@ -54,7 +54,8 @@ export function createCrashUi(
       timer: setInterval(tick, 200),
     };
     const pos = lastPosition(E);
-    const tel = (settings.get().emergencia || "").replace(/[^\d+]/g, "");
+    const emergencia = settings.get().emergencia || "";
+    const tel = emergencia.replace(/[^\d+]/g, "");
     uiStore.setState({
       crash: {
         alarm: false,
@@ -63,6 +64,7 @@ export function createCrashUi(
         text: "Parece una caída. Si no tocas «Estoy bien», suena la alarma para que te encuentren.",
         where: pos ? posText(pos) : "Sin posición del GPS",
         tel,
+        telText: "Llamar al " + emergencia.trim(),
         shareText: "Compartir la ubicación",
       },
     });

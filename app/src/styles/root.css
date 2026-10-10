@@ -1,0 +1,5 @@
+/* React pinta dentro de #root: que no cuente como caja, para que las pantallas se coloquen como hijas directas de body
+   (como en la app de siempre: .page con min-height: 100 %, etc.). */
+#root {
+  display: contents;
+}

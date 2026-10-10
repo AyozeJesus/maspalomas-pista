@@ -4,6 +4,7 @@
 import type { CircuitTrack, LapTimer } from "../core/circuito";
 import type { CrashDetector, CrashEvent } from "../core/caida";
 import { CrashDetector as CrashDetectorClass } from "../core/caida";
+import type { Turnaround } from "../core/cortar";
 import * as T from "../core/maspalomas";
 import { Recorrido } from "../core/recorrido";
 import type { GateTracker, StoredPass, Tracker, PassResult, LatLon } from "../core/tramos";
@@ -397,6 +398,11 @@ export interface Engine {
   segment?: number;
   // «Salida aquí» puesta.
   mark?: Mark | null;
+  // Lo que apunta la interfaz en el resumen: el nombre puesto (vacío: quitado), si ya se ha guardado como tramo y la
+  // vuelta atrás de una ida y vuelta (para «Guardar ida y vuelta»).
+  nombre?: string;
+  tramoSaved?: boolean;
+  tramoTurn?: Turnaround | null;
 }
 
 export function newCalib(): Calib {

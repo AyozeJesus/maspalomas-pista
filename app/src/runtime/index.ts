@@ -4,6 +4,7 @@
 import type { Engine } from "../engine";
 import { localStorageKV, type KeyValueStore } from "../engine/kv";
 import { pistaStore, type PistaStore } from "../storage";
+import type { Vista3D } from "../ui/three/vista3d";
 import { refreshHome, uiStore } from "../app/ui-store";
 import { createCircuitWorker } from "./circuit-worker";
 import { createCrashUi, type CrashUi } from "./crash-ui";
@@ -14,9 +15,10 @@ import { createSession } from "./session";
 import { createSettings } from "./settings";
 import { createViewer, type Viewer } from "./viewer";
 
-// La vista 3D de la vuelta de ejemplo: la crea y la pinta el panel; aquí solo se cierra al terminar.
+// La vista 3D de la vuelta de ejemplo: la crea y la pinta el panel; aquí se cierra al terminar y la ven las pruebas.
 export interface View3dSlot {
   close: (() => void) | null;
+  view: Vista3D | null;
 }
 
 export function createRuntime(opts: { kv?: KeyValueStore; store?: PistaStore | null } = {}) {
@@ -25,7 +27,7 @@ export function createRuntime(opts: { kv?: KeyValueStore; store?: PistaStore | n
     opts.store !== undefined ? opts.store : typeof indexedDB === "undefined" ? null : pistaStore;
   const settings = createSettings(kv);
   const circuitWorker = createCircuitWorker();
-  const view3d: View3dSlot = { close: null };
+  const view3d: View3dSlot = { close: null, view: null };
   // Se conectan entre sí al crearlos (la sesión los usa a través de hooks).
   let viewer: Viewer | null = null;
   let crash: CrashUi | null = null;
