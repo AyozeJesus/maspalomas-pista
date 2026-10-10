@@ -3,3 +3,7 @@ coverage
 dev-dist
 node_modules
 .vitest
+# Copiado tal cual del index.html de siempre (una regla por línea, como allí).
+src/styles/app.css
+# Resúmenes del motor generados por las pruebas: se comparan tal cual salen.
+test/golden

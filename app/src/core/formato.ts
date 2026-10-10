@@ -17,8 +17,11 @@ export const SERIES = {
 export type SeriesKey = keyof typeof SERIES;
 export type ColumnOf<K extends SeriesKey> = (typeof SERIES)[K][number];
 
-// Una serie tal como viaja y se guarda (JSON: NaN se convierte en null).
-export type StoredSeries<K extends SeriesKey> = Record<ColumnOf<K>, (number | null)[]>;
+// Una columna tal como se guarda: en el móvil (IndexedDB), Float64Array; al viajar al Mac (JSON), lista, con null en
+// lugar de NaN.
+export type StoredColumn = (number | null)[] | Float64Array;
+// Una serie tal como viaja y se guarda.
+export type StoredSeries<K extends SeriesKey> = Record<ColumnOf<K>, StoredColumn>;
 // Una serie ya unida, para calcular (null → NaN).
 export type MergedSeries<K extends SeriesKey> = Record<ColumnOf<K>, Float64Array>;
 
@@ -94,8 +97,17 @@ export function cleanChunk(c: {
   return { v: VERSION, id: c.id, seq: c.seq, epoch: c.epoch, series };
 }
 
+// Un trozo con sus columnas como sean (listas del JSON o Float64Array del móvil).
+export interface ChunkLike {
+  v?: number;
+  id?: string;
+  seq: number;
+  epoch: number;
+  series: { [K in SeriesKey]?: Record<ColumnOf<K>, ArrayLike<number | null>> };
+}
+
 // Une los trozos de una tanda (en cualquier orden) en una serie por sensor, ordenada por tiempo.
-export function mergeChunks(chunks: readonly Chunk[]): {
+export function mergeChunks(chunks: readonly ChunkLike[]): {
   epoch: number | null;
   series: MergedSeriesSet;
 } {
@@ -116,7 +128,7 @@ export function mergeChunks(chunks: readonly Chunk[]): {
     for (const col of cols) s[col] = new Float64Array(n);
     let o = 0;
     for (const c of sorted) {
-      const src = c.series[key] as Record<string, (number | null)[]> | undefined;
+      const src = c.series[key] as Record<string, ArrayLike<number | null>> | undefined;
       if (!src) continue;
       for (const col of cols) {
         const a = src[col];
