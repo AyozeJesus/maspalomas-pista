@@ -105,10 +105,19 @@
     this.laps = [];
     this.best = null;
     this.fix = null;
+    // Cruces de meta puestos a mano (s del reloj de la tanda): un circuito marcado con «Salida aquí» y «Meta aquí»
+    // empieza parado en la línea (sin pasar lanzado por ella), así que su primera vuelta va entre esos dos momentos.
+    this.forced = [];
+    // Dos cruces más seguidos que esto no son una vuelta (el cruce a mano y el de verdad, o el GPS rebotando en la
+    // línea): el segundo no cuenta.
+    this.minLap = Math.max(5, this.L / 60);
   }
 
   // Fijo del GPS (t en s, el reloj de la tanda). Devuelve la vuelta si con él se ha cerrado una.
   LapTimer.prototype.onFix = function (t, lat, lon, v) {
+    let forcedLap = null;
+    while (this.forced.length && t >= this.forced[0])
+      forcedLap = this.cross(this.forced.shift()) || forcedLap;
     const [x, y] = this.xy(lat, lon);
     let m =
       this.prevI !== null
@@ -146,11 +155,12 @@
     this.prev = { t, s, on };
     this.prevI = on ? m.i : null;
     this.fix = { t, s, v, on };
-    return done;
+    return done || forcedLap;
   };
 
   // Cruce de meta en tc: cierra la vuelta en curso (si la había) y empieza otra.
   LapTimer.prototype.cross = function (tc) {
+    if (this.lapStart !== null && tc - this.lapStart < this.minLap) return null;
     let lap = null;
     if (this.lapStart !== null) {
       const time = tc - this.lapStart;

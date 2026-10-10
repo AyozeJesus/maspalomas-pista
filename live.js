@@ -8,7 +8,7 @@
   const ST = window.PistaStore;
   const APP_VERSION = 2;
   // Versión publicada (la misma que la copia de sw.js, «pista-vN»): se ve en la portada.
-  const BUILD = 28;
+  const BUILD = 29;
   const G = 9.80665;
   const REC_EVERY = 10; // segundos entre trozos guardados en el móvil
   const $ = (id) => document.getElementById(id);
@@ -1967,6 +1967,8 @@
               ? window.MaspaCircuito.compact(eng.circTrack)
               : null,
             sentido: eng.circReverse ? "inverso" : "normal",
+            // Circuito marcado a mano: los cruces de su primera vuelta (para repasarla igual).
+            forzadas: eng.circForced || null,
           }
         : null,
       // «Nuevo tramo»: el número de esta parte de la ruta (la primera, 1).
@@ -3294,8 +3296,13 @@
   }
 
   // A partir de ahora, cronómetro en ese circuito; lo ya rodado por él cuenta (las vueltas con que se ha detectado).
-  function useCircuit(track, reverse, saved) {
+  // forced: cruces de meta puestos a mano (la primera vuelta de un circuito marcado con «Salida aquí»).
+  function useCircuit(track, reverse, saved, forced) {
     const timer = new window.MaspaCircuito.LapTimer(track, reverse);
+    if (Array.isArray(forced)) {
+      timer.forced = forced.slice();
+      E.circForced = forced.slice();
+    }
     const l = E.loc.view();
     for (let i = 0; i < l.t.length; i++)
       if (l.hacc[i] <= 25)
@@ -3309,6 +3316,8 @@
     E.circTrack = track;
     E.circReverse = !!reverse;
     E.circSaved = saved;
+    // Con circuito ya no hay salida que marcar (ni que pintar).
+    E.mark = null;
     saveMeta("grabando");
   }
 
@@ -3380,6 +3389,13 @@
     // «Nuevo tramo», siempre que se esté grabando (dos toques): en Los Loros se dio la vuelta arriba sin llegar a
     // parar, y con el botón solo parado no habría salido.
     $("ru-seg").hidden = !E.rec || E.sim;
+    // «Salida aquí» / «Meta aquí»: grabando de verdad y sin circuito en marcha (ese ya tiene su meta).
+    const mb = $("ru-mark");
+    mb.hidden = !E.rec || E.sim || !!E.circ;
+    if (!markArmed) {
+      const lbl = E.mark ? "Meta aquí" : "Salida aquí";
+      if (mb.textContent !== lbl) mb.textContent = lbl;
+    }
     if (E.calib.f && moving) {
       const g = E.aEma / G;
       setText("ru-g", fmtSigned(g, 2));
@@ -3453,6 +3469,7 @@
       colorBy: mapView.colorBy,
       // La más reciente primero: si dos marcas se pisan, queda la de la curva que acabas de pasar.
       marks: curveMarks(E.route.curves).reverse(),
+      dots: liveDots(),
     });
     if (mapView.legendBy !== mapView.colorBy) {
       window.MaspaMapa.legend($("ru-legend"), mapView.colorBy);
@@ -3622,11 +3639,24 @@
   // en las guardadas. Cada pasada se apunta con su tiempo cada 20 m, y el resumen la compara con la mejor: dónde se
   // gana o se pierde y dónde se empieza a frenar. Guardados en el móvil (localStorage).
   const TRAMOS_KEY = "pista-tramos";
+  // Un tramo vale con su camino (guardado de una ruta) o con su salida y su meta (puestas con coordenadas o rodando).
   function loadTramos() {
     const l = load(TRAMOS_KEY, []);
+    const T2 = window.MaspaTramos;
     return Array.isArray(l)
-      ? l.filter((t) => t && t.id && Array.isArray(t.pts) && t.pts.length > 10)
+      ? l.filter(
+          (t) =>
+            t &&
+            t.id &&
+            ((Array.isArray(t.pts) && t.pts.length > 10) ||
+              (T2 && T2.isLatLon(t.salida) && T2.isLatLon(t.meta))),
+        )
       : [];
+  }
+  // ¿Se cronometra por su salida y su meta? (si no, siguiendo su camino)
+  function isGateTramo(tr) {
+    const T2 = window.MaspaTramos;
+    return !!(T2 && T2.isLatLon(tr.salida) && T2.isLatLon(tr.meta));
   }
   function saveTramos(list) {
     store(TRAMOS_KEY, list);
@@ -3723,61 +3753,286 @@
   // Seguidores de los tramos guardados para un motor (ruta libre, en directo o repasando).
   function tramoTrackers() {
     if (!window.MaspaTramos) return [];
-    return loadTramos().map((tr) => ({
+    return loadTramos().map(tramoTracker);
+  }
+  function tramoTracker(tr) {
+    const T2 = window.MaspaTramos;
+    return {
       id: tr.id,
       nombre: tr.nombre,
-      tk: new window.MaspaTramos.Tracker(tr),
+      gate: isGateTramo(tr),
+      tk: isGateTramo(tr) ? new T2.GateTracker(tr) : new T2.Tracker(tr),
       best: bestPass(tr),
-    }));
+    };
   }
   // Cada fijo bueno de la ruta libre: ¿empieza o acaba algún tramo?
   function tramoStep(t, lat, lon, v) {
     for (const x of E.tramos) {
       const r = x.tk.fix(t, lat, lon, v);
       if (!r || r.evento !== "fin") continue;
-      const sesion = E.viewing ? E.viewing.id : E.rec ? E.rec.id : null;
-      const lag = lagNow();
-      r.pasada.frenos = passBrakes(E, r.pasada, lag);
-      // La vuelta de ejemplo no apunta nada.
-      const saved =
-        E.sim && !E.viewing
-          ? r.pasada
-          : recordPass(x.id, sesion, engDate(E).getTime(), r.pasada) ||
-            r.pasada;
-      E.tramoPasses.push({
-        id: x.id,
-        nombre: x.nombre,
-        pasada: saved,
-        t0: r.pasada.t0,
-        t1: r.pasada.t1,
-        lag,
-      });
-      if (!E.viewing) {
-        const b = x.best;
-        toast(
-          x.nombre +
-            ": " +
-            fmtLap(r.pasada.tiempo, 1) +
-            (b
-              ? " · " +
-                (r.pasada.tiempo < b.tiempo
-                  ? "¡tu mejor! (" +
-                    fmtSigned(r.pasada.tiempo - b.tiempo, 1) +
-                    ")"
-                  : fmtSigned(r.pasada.tiempo - b.tiempo, 1) +
-                    " sobre tu mejor")
-              : " · primera pasada"),
-          6000,
-        );
-        E.tramoDone = {
-          nombre: x.nombre,
-          tiempo: r.pasada.tiempo,
-          best: b,
-          at: t,
-        };
-        if (!b || r.pasada.tiempo < b.tiempo) x.best = saved;
+      // De salida a meta: la pasada (y, la primera vez, el camino del tramo).
+      const pasada = r.pasada || gatePasada(x, r.t0, r.t1);
+      if (pasada) passFinished(x, pasada, t);
+    }
+  }
+  // Al acabar la grabación (o con «Nuevo tramo») estando aún en el círculo de una meta ya pasada: esa pasada vale.
+  // Devuelve cuántas.
+  function tramoFlush(t) {
+    let n = 0;
+    for (const x of E.tramos) {
+      const r = x.tk.flush ? x.tk.flush() : null;
+      if (!r) continue;
+      const pasada = gatePasada(x, r.t0, r.t1);
+      if (pasada) {
+        passFinished(x, pasada, t);
+        n++;
       }
     }
+    return n;
+  }
+  // Una pasada terminada (en directo o repasando): se apunta, va al resumen y, en directo, el panel lo dice.
+  function passFinished(x, pasada, t) {
+    const sesion = E.viewing ? E.viewing.id : E.rec ? E.rec.id : null;
+    const lag = lagNow();
+    pasada.frenos = passBrakes(E, pasada, lag);
+    // La vuelta de ejemplo no apunta nada.
+    const saved =
+      E.sim && !E.viewing
+        ? pasada
+        : recordPass(x.id, sesion, engDate(E).getTime(), pasada) || pasada;
+    E.tramoPasses.push({
+      id: x.id,
+      nombre: x.nombre,
+      pasada: saved,
+      t0: pasada.t0,
+      t1: pasada.t1,
+      lag,
+    });
+    if (E.viewing) return;
+    const b = x.best;
+    toast(
+      x.nombre +
+        ": " +
+        fmtLap(pasada.tiempo, 1) +
+        (b
+          ? " · " +
+            (pasada.tiempo < b.tiempo
+              ? "¡tu mejor! (" + fmtSigned(pasada.tiempo - b.tiempo, 1) + ")"
+              : fmtSigned(pasada.tiempo - b.tiempo, 1) + " sobre tu mejor")
+          : " · primera pasada"),
+      6000,
+    );
+    E.tramoDone = {
+      nombre: x.nombre,
+      tiempo: pasada.tiempo,
+      best: b,
+      at: t,
+    };
+    if (!b || pasada.tiempo < b.tiempo) x.best = saved;
+  }
+
+  // Puntos del mapa en directo: la salida marcada a mano y la salida y la meta de los tramos que las tienen.
+  function liveDots() {
+    const out = [];
+    const xy = (p) => T.toLocal(p[0], p[1]);
+    if (E.mark) {
+      const [x, y] = xy([E.mark.lat, E.mark.lon]);
+      out.push({ x, y, color: "#38d0ff", label: "salida" });
+    }
+    for (const tr of loadTramosCached())
+      if (isGateTramo(tr)) {
+        const [ax, ay] = xy(tr.salida);
+        const [bx, by] = xy(tr.meta);
+        out.push({ x: ax, y: ay, color: "#38d0ff", r: 5, label: "S" });
+        out.push({
+          x: bx,
+          y: by,
+          color: "#38d0ff",
+          r: 5,
+          ring: true,
+          label: "M",
+        });
+      }
+    return out;
+  }
+  // La lista de tramos para pintar el mapa (cada fotograma): leída de nuevo como mucho cada 2 s.
+  let tramosCache = { at: -Infinity, list: [] };
+  function loadTramosCached() {
+    const t = performance.now();
+    if (t - tramosCache.at > 2000) tramosCache = { at: t, list: loadTramos() };
+    return tramosCache.list;
+  }
+
+  // ---------- «Salida aquí» y «Meta aquí» (ruta libre) ----------
+  // Marcar la salida donde se está y, al llegar, la meta: queda un tramo cronometrado de punto a punto (la próxima vez
+  // cuenta solo al pasar por la salida y para al llegar a la meta) o, si la meta cae donde la salida tras una vuelta
+  // de más de 300 m, un circuito (con esa primera vuelta y las siguientes, cada vez que se pasa por meta).
+  let markArmed = null;
+  let markTimer = 0;
+  // La posición buena más reciente: {t, lat, lon} o null.
+  function lastGoodFix() {
+    const l = E.loc.view();
+    for (let i = l.t.length - 1; i >= 0; i--)
+      if (l.hacc[i] <= 25 && Number.isFinite(l.lat[i]))
+        return { t: l.t[i], lat: l.lat[i], lon: l.lon[i] };
+    return null;
+  }
+  const round6 = (x) => Math.round(x * 1e6) / 1e6;
+  // Qué haría ahora «Meta aquí»: "quitar" (sin moverse aún de la salida), "meta" o null (y avisa por qué no).
+  function markMetaKind() {
+    const p = lastGoodFix();
+    if (!p || now() - p.t > 5) {
+      toast("Esperando al GPS: vuelve a tocar en un momento");
+      return null;
+    }
+    const ridden = E.route.stats.dist - E.mark.dist0;
+    if (ridden < 100) return "quitar";
+    const d = window.MaspaTramos.meters(
+      [E.mark.lat, E.mark.lon],
+      [p.lat, p.lon],
+    );
+    if (d < 50 && ridden < 300) {
+      toast("Para un circuito, la vuelta tiene que tener más de 300 m");
+      return null;
+    }
+    return "meta";
+  }
+  function markSalida() {
+    const p = lastGoodFix();
+    if (!p || now() - p.t > 5) {
+      toast("Esperando al GPS: vuelve a tocar en un momento");
+      return;
+    }
+    E.mark = { t: p.t, lat: p.lat, lon: p.lon, dist0: E.route.stats.dist };
+    toast("Salida marcada: al llegar, «Meta aquí»", 4000);
+  }
+  // Un nombre que no esté ya («Tramo 3», «Circuito 2»).
+  function freeName(base, names) {
+    let n = 1;
+    while (names.includes(base + " " + n)) n++;
+    return base + " " + n;
+  }
+  // Meta en la salida (o tocada poco después de volver a pasar por ella): un circuito; si no, un tramo de punto a punto.
+  function markMeta() {
+    const T2 = window.MaspaTramos;
+    const p = lastGoodFix();
+    const mk = E.mark;
+    if (!p || !mk || !T2) return;
+    const salida = [round6(mk.lat), round6(mk.lon)];
+    const meta = [round6(p.lat), round6(p.lon)];
+    const near = T2.meters(salida, meta) < 50;
+    const loop = T2.loopEnd(E.loc.view(), salida, mk.t, p.t);
+    let ok = false;
+    if (loop && (near || loop.after < 150)) ok = markCircuit(mk, p, loop);
+    else if (near)
+      toast(
+        E.route.stats.dist - mk.dist0 < 300
+          ? "Para un circuito, la vuelta tiene que tener más de 300 m"
+          : "Has vuelto por el mismo camino: pon la meta donde das la vuelta (o, en el resumen, «Guardar ida y vuelta»)",
+        6000,
+      );
+    else ok = markTramo(salida, meta);
+    if (ok) E.mark = null;
+  }
+  // De punto a punto: el tramo (con su salida y su meta) y la pasada que se acaba de hacer, que le enseña el camino.
+  // Se llama «Crono 1», «Crono 2»… (no «Tramo 2»: así se llaman las partes de una ruta con «Nuevo tramo»).
+  function markTramo(salida, meta) {
+    const T2 = window.MaspaTramos;
+    const list = loadTramos();
+    const tr = {
+      id: newTramoId(),
+      nombre: freeName(
+        "Crono",
+        list.map((q) => q.nombre),
+      ),
+      creado: new Date().toISOString(),
+      salida,
+      meta,
+      pasadas: [],
+    };
+    list.push(tr);
+    saveTramos(list);
+    const x = tramoTracker(tr);
+    E.tramos.push(x);
+    // La pasada de ahora: hasta este momento (se está en la meta, aunque no se haya parado).
+    const w = T2.findGatePasses(tr, E.loc.view(), true).pop();
+    const pasada = w ? gatePasada(x, w.t0, w.t1) : null;
+    if (pasada) passFinished(x, pasada, now());
+    else
+      toast(
+        "«" + tr.nombre + "» guardado: la próxima vez se cronometra solo",
+        5000,
+      );
+    renderTramosHome();
+    return true;
+  }
+  // Una vuelta (la meta donde la salida): un circuito con su trazado de esta vuelta, la línea donde se echó a rodar y
+  // esta primera vuelta contada: desde la salida (parado en ella, al echar a rodar) hasta pasar otra vez por ella (o
+  // llegar y parar). Son los cruces puestos a mano, que van también en la grabación para que al repasarla salga igual.
+  // loop: lo que dice MaspaTramos.loopEnd; si aún se está llegando, la primera vuelta la cierra el cruce de la línea.
+  function markCircuit(mk, p, loop) {
+    const T2 = window.MaspaTramos;
+    const loc = E.loc.view();
+    let t0 = mk.t;
+    for (let i = 0; i < loc.t.length; i++) {
+      if (loc.t[i] < mk.t || !(loc.hacc[i] <= 25)) continue;
+      if (loc.speed[i] > 1) break;
+      t0 = loc.t[i];
+    }
+    const t1 = loop.pending ? p.t : loop.t;
+    const g = T2.fromLoc(loc, t0, t1);
+    if (!g) {
+      toast("Esa vuelta es muy corta para un circuito (menos de 300 m)");
+      return false;
+    }
+    const first = g.pts[0];
+    const last = g.pts[g.pts.length - 1];
+    const name = freeName(
+      "Circuito",
+      loadCircuits().map((c) => c.name),
+    );
+    const track = window.MaspaCircuito.compact({
+      name,
+      origin: { lat: first[0], lon: first[1] },
+      centerline: g.pts,
+      length: g.largo + T2.meters(last, first),
+    });
+    store("pista-circuitos", loadCircuits().concat([track]));
+    E.circForced = loop.pending ? [t0] : [t0, t1];
+    useCircuit(track, false, true, E.circForced);
+    const lap = E.circ.laps[0];
+    toast(
+      "«" +
+        name +
+        "» guardado" +
+        (lap
+          ? ": primera vuelta " +
+            fmtLap(lap.time) +
+            ". Cada vez que pases por meta cuenta otra vuelta"
+          : ". La primera vuelta cuenta al pasar por meta"),
+      6000,
+    );
+    return true;
+  }
+  // Una pasada de salida a meta (t0–t1 en el reloj de la grabación). La primera le enseña al tramo su camino (de donde
+  // se echó a rodar a la meta), para dibujarlo, poner las marcas cada 20 m y comparar pasadas; el tiempo lo siguen
+  // dando la salida y la meta. La vuelta de ejemplo no guarda nada.
+  function gatePasada(x, t0, t1) {
+    const T2 = window.MaspaTramos;
+    const loc = E.loc.view();
+    const list = loadTramos();
+    const tr = list.find((q) => q.id === x.id);
+    if (!tr) return null;
+    if (T2.needsPath(tr)) {
+      const g = T2.learnPath(tr, loc, t0, t1);
+      if (g) {
+        tr.pts = g.pts;
+        tr.largo = g.largo;
+        if (!(E.sim && !E.viewing)) saveTramos(list);
+        x.tk = new T2.GateTracker(tr);
+      }
+    }
+    return T2.gatePass(tr, loc, t0, t1);
   }
   // Tiempo de una pasada (sus marcas cada 20 m) a s m de la salida.
   function passTimeAt(tiempos, s) {
@@ -3799,14 +4054,37 @@
       }
     }
     const done = E.tramoDone && t - E.tramoDone.at < 12 ? E.tramoDone : null;
-    $("ru-laps").hidden = !run && !done;
+    // Una salida marcada a mano, mientras no haya un tramo en marcha.
+    const mk = !run && !done && E.mark ? E.mark : null;
+    $("ru-laps").hidden = !run && !done && !mk;
+    if (mk) {
+      setText(
+        "ru-lap",
+        "Desde la salida · " +
+          fmt(Math.max(0, E.route.stats.dist - mk.dist0) / 1000, 1) +
+          " km",
+      );
+      setText("ru-delta", fmtClock(Math.max(0, t - mk.t)));
+      setCls("ru-delta", "num");
+      setText("ru-best", "Al llegar, «Meta aquí»");
+      return;
+    }
     if (run) {
       const { x, st } = run;
       setText("ru-lap", x.nombre + " · " + fmtLap(st.tiempo, 0));
-      const d = x.best ? st.tFix - passTimeAt(x.best.tiempos, st.s) : null;
+      // Diferencia con la mejor en el mismo punto (con camino); si no, lo que falta: % del camino o la distancia a la
+      // meta en línea recta (tramo puesto con coordenadas, aún sin ninguna pasada).
+      const d =
+        x.best && st.s !== null && x.best.tiempos && x.best.tiempos.length > 1
+          ? st.tFix - passTimeAt(x.best.tiempos, st.s)
+          : null;
       setText(
         "ru-delta",
-        d === null ? Math.round(st.frac * 100) + " %" : fmtSigned(d, 1),
+        d !== null
+          ? fmtSigned(d, 1)
+          : st.frac !== null && st.frac !== undefined
+            ? Math.round(st.frac * 100) + " %"
+            : "a " + fmtMeters(st.dMeta),
       );
       setCls(
         "ru-delta",
@@ -3842,6 +4120,7 @@
   }
   // Busca un tramo en todas las rutas y tandas guardadas en el móvil. Devuelve cuántas pasadas nuevas.
   async function scanTramo(id, onProgress) {
+    const T2 = window.MaspaTramos;
     const tr = loadTramos().find((x) => x.id === id);
     if (!tr || !ST) return 0;
     const before = (tr.pasadas || []).length;
@@ -3858,8 +4137,27 @@
         continue;
       }
       if (!loc.t.length) continue;
-      for (const p of window.MaspaTramos.findPasses(tr, loc))
-        recordPass(id, s.id, s.epoch, p);
+      if (isGateTramo(tr)) {
+        // De salida a meta: cada pasada; la primera enseña el camino al tramo (para la meta, las marcas y comparar).
+        const now = loadTramos().find((x) => x.id === id);
+        if (!now) break;
+        for (const w of T2.findGatePasses(now, loc)) {
+          const all = loadTramos();
+          const cur = all.find((x) => x.id === id);
+          if (!cur) break;
+          if (T2.needsPath(cur)) {
+            const g = T2.learnPath(cur, loc, w.t0, w.t1);
+            if (g) {
+              cur.pts = g.pts;
+              cur.largo = g.largo;
+              saveTramos(all);
+            }
+          }
+          recordPass(id, s.id, s.epoch, T2.gatePass(cur, loc, w.t0, w.t1));
+        }
+      } else
+        for (const p of T2.findPasses(tr, loc))
+          recordPass(id, s.id, s.epoch, p);
       await new Promise((r) => setTimeout(r, 0));
     }
     const after = loadTramos().find((x) => x.id === id);
@@ -4140,6 +4438,29 @@
         .concat(bp.a.map((s) => dot(s, "#5aa5f0", false))),
     });
   }
+  // Qué parte del rato rodando de una grabación (del primer al último fijo en marcha) cubren sus pasadas por tramos.
+  function tramoCoverage(eng) {
+    const l = eng.loc.view();
+    let a = null;
+    let z = null;
+    for (let i = 0; i < l.t.length; i++)
+      if (l.speed[i] > 2) {
+        if (a === null) a = l.t[i];
+        z = l.t[i];
+      }
+    if (a === null || !(z > a)) return 0;
+    const iv = eng.tramoPasses
+      .map((p) => [p.t0, p.t1])
+      .sort((p, q) => p[0] - q[0]);
+    let sum = 0;
+    let end = -Infinity;
+    for (const [p0, p1] of iv) {
+      const s = Math.max(p0, end);
+      if (p1 > s) sum += p1 - s;
+      end = Math.max(end, p1);
+    }
+    return sum / (z - a);
+  }
   function renderTramoCard(eng) {
     const T2 = window.MaspaTramos;
     const card = $("ruf-tr");
@@ -4160,7 +4481,8 @@
       const item = document.createElement("div");
       item.className = "tr-item";
       const h = document.createElement("h3");
-      h.textContent = tp.nombre + " · " + fmt(tr.largo / 1000, 1) + " km";
+      h.textContent =
+        tp.nombre + (tr.largo ? " · " + fmt(tr.largo / 1000, 1) + " km" : "");
       const tt = document.createElement("div");
       tt.className = "tr-time";
       tt.textContent = fmtLap(mine.tiempo, 1);
@@ -4173,7 +4495,11 @@
         : "primera pasada";
       tt.appendChild(sm);
       item.append(h, tt);
-      if (other) {
+      // La comparación punto a punto necesita las marcas cada 20 m de las dos (un tramo de salida y meta las tiene
+      // desde que aprende el camino).
+      const marks = (q) =>
+        q && Array.isArray(q.tiempos) && q.tiempos.length > 2;
+      if (other && marks(mine) && marks(other) && !T2.needsPath(tr)) {
         const p = document.createElement("p");
         p.className = "muted";
         p.textContent =
@@ -4244,6 +4570,8 @@
       } catch (e) {
         sug = null;
       }
+      // Ya cronometrada casi entera por tus tramos (la subida y la bajada marcadas): sin «ida y vuelta».
+      if (sug && tramoCoverage(eng) > 0.8) sug = null;
       eng.tramoTurn = sug;
       $("ruf-tr-two").hidden = !sug;
       setText(
@@ -4257,9 +4585,30 @@
     }
   }
   // Tus tramos, en la portada: largo, pasadas y la mejor; «Buscar» en las rutas guardadas y «Borrar».
+  // Google Maps con la salida y la meta (el camino entre las dos, en coche): para verlo en su mapa.
+  function mapsLink(a, b) {
+    return (
+      "https://www.google.com/maps/dir/?api=1&origin=" +
+      a[0] +
+      "," +
+      a[1] +
+      "&destination=" +
+      b[0] +
+      "," +
+      b[1] +
+      "&travelmode=driving"
+    );
+  }
+  // Salida y meta de un tramo: las suyas o, si se guardó de una ruta, el principio y el final de su camino.
+  function tramoEnds(tr) {
+    return isGateTramo(tr)
+      ? [tr.salida, tr.meta]
+      : [tr.pts[0], tr.pts[tr.pts.length - 1]];
+  }
+
   function renderTramosHome() {
     const list = loadTramos();
-    $("trs-card").hidden = !list.length;
+    $("trs-empty").hidden = list.length > 0;
     const box = $("trs-list");
     box.textContent = "";
     for (const tr of list) {
@@ -4273,8 +4622,12 @@
       const best = bestPass(tr);
       const n = (tr.pasadas || []).length;
       sp.textContent =
-        fmt(tr.largo / 1000, 1) +
-        " km · " +
+        (tr.largo
+          ? fmt(tr.largo / 1000, 1) + " km"
+          : "Salida y meta, " +
+            fmtMeters(window.MaspaTramos.meters(tr.salida, tr.meta)) +
+            " en línea recta") +
+        " · " +
         n +
         (n === 1 ? " pasada" : " pasadas") +
         (best
@@ -4342,10 +4695,208 @@
         saveTramos(loadTramos().filter((x) => x.id !== tr.id));
         renderTramosHome();
       });
-      act.append(find, ren, del);
+      // Su salida y su meta en Google Maps.
+      const ends = tramoEnds(tr);
+      const map = document.createElement("a");
+      map.className = "btn";
+      map.textContent = "Mapa";
+      map.href = mapsLink(ends[0], ends[1]);
+      map.target = "_blank";
+      map.rel = "noopener";
+      act.append(find, map, ren, del);
       row.append(txt, act);
       box.appendChild(row);
     }
+  }
+
+  // ---------- nuevo tramo con salida y meta (coordenadas) ----------
+  // En «Mis rutas»: pegar las coordenadas (o el enlace) de Google Maps de la salida y la meta, o «Aquí» con la posición
+  // del momento. Se comprueba al escribir, se dibujan los dos puntos y «Ver en Google Maps» abre el camino entre ellos.
+  // Al guardarlo se busca en las rutas del móvil (si ya se pasó por él, ahí están sus pasadas y su camino).
+  function tramoFormNote(txt, bad) {
+    setText("trs-note", txt);
+    $("trs-note").className = "muted" + (bad ? " bad" : "");
+  }
+  // {a, b} si la salida y la meta escritas valen; si no, null (y la nota dice por qué).
+  function tramoFormCheck() {
+    const T2 = window.MaspaTramos;
+    const ta = $("trs-a").value.trim();
+    const tb = $("trs-b").value.trim();
+    const a = T2.parseCoords(ta);
+    const b = T2.parseCoords(tb);
+    $("trs-maps").hidden = !(a && b);
+    if (a && b) $("trs-maps").href = mapsLink(a, b);
+    $("trs-prev").hidden = !(a || b) || !$("trs-new").open;
+    if (!$("trs-prev").hidden) drawTramoPrev(a, b);
+    const bad = (what, txt) =>
+      txt
+        ? "No entiendo " +
+          what +
+          ": pega «28.355628, -16.418573» o un enlace de Google Maps con las coordenadas (los cortos, maps.app.goo.gl, no las llevan)."
+        : "Falta " + what + ".";
+    if (!ta && !tb) {
+      tramoFormNote("");
+      return null;
+    }
+    if (!a) {
+      tramoFormNote(bad("la salida", ta), !!ta);
+      return null;
+    }
+    if (!b) {
+      tramoFormNote(bad("la meta", tb), !!tb);
+      return null;
+    }
+    const d = T2.meters(a, b);
+    // Con menos de 60 m, los círculos de 30 m de la salida y de la meta se pisan.
+    if (d < 60) {
+      tramoFormNote(
+        "La salida y la meta están casi en el mismo sitio (a menos de 60 m). Para una vuelta, márcala rodando con «Salida aquí» y «Meta aquí»: queda un circuito.",
+        true,
+      );
+      return null;
+    }
+    if (d > 45000) {
+      tramoFormNote("Demasiado lejos: más de 45 km en línea recta.", true);
+      return null;
+    }
+    tramoFormNote(
+      "De la salida a la meta, " + fmtMeters(d) + " en línea recta.",
+    );
+    return { a, b };
+  }
+  // La salida (punto) y la meta (aro), y una raya entre las dos, con el norte arriba.
+  function drawTramoPrev(a, b) {
+    const cv = $("trs-prev");
+    const dpr = Math.min(3, window.devicePixelRatio || 1);
+    cv.width = Math.max(1, Math.round(cv.clientWidth * dpr));
+    cv.height = Math.max(1, Math.round(cv.clientHeight * dpr));
+    const g = cv.getContext("2d");
+    g.clearRect(0, 0, cv.width, cv.height);
+    const pts = [a, b].filter(Boolean);
+    if (!pts.length) return;
+    const o = pts[0];
+    const kx = 111320 * Math.cos((o[0] * Math.PI) / 180);
+    const xy = (p) => [(p[1] - o[1]) * kx, -(p[0] - o[0]) * 110574];
+    const P = pts.map(xy);
+    const pad = 36 * dpr;
+    let x0 = Math.min(...P.map((p) => p[0]));
+    let x1 = Math.max(...P.map((p) => p[0]));
+    let y0 = Math.min(...P.map((p) => p[1]));
+    let y1 = Math.max(...P.map((p) => p[1]));
+    const span = Math.max(100, x1 - x0, y1 - y0);
+    const sc = Math.min(cv.width - 2 * pad, cv.height - 2 * pad) / span;
+    const cx = (x0 + x1) / 2;
+    const cy = (y0 + y1) / 2;
+    const to = (p) => [
+      cv.width / 2 + (p[0] - cx) * sc,
+      cv.height / 2 + (p[1] - cy) * sc,
+    ];
+    g.lineWidth = 3 * dpr;
+    g.strokeStyle = "rgba(56,208,255,0.7)";
+    g.setLineDash([8 * dpr, 6 * dpr]);
+    if (P.length === 2) {
+      const [p, q] = P.map(to);
+      g.beginPath();
+      g.moveTo(p[0], p[1]);
+      g.lineTo(q[0], q[1]);
+      g.stroke();
+    }
+    g.setLineDash([]);
+    g.font = "bold " + 13 * dpr + "px Roboto, system-ui, sans-serif";
+    g.textBaseline = "middle";
+    [a, b].forEach((p, k) => {
+      if (!p) return;
+      const [x, y] = to(xy(p));
+      g.beginPath();
+      g.arc(x, y, 7 * dpr, 0, Math.PI * 2);
+      g.lineWidth = 3 * dpr;
+      g.strokeStyle = "#38d0ff";
+      g.fillStyle = "#38d0ff";
+      if (k === 0) g.fill();
+      else g.stroke();
+      g.fillStyle = "#f3f5f6";
+      g.fillText(k === 0 ? "salida" : "meta", x + 12 * dpr, y);
+    });
+    g.fillStyle = "#949fa7";
+    g.fillText("N ↑", cv.width - 36 * dpr, 16 * dpr);
+  }
+  async function saveTramoForm() {
+    const ok = tramoFormCheck();
+    if (!ok) return;
+    const list = loadTramos();
+    const nombre =
+      $("trs-name").value.trim().slice(0, 40) ||
+      freeName(
+        "Crono",
+        list.map((q) => q.nombre),
+      );
+    const tr = {
+      id: newTramoId(),
+      nombre,
+      creado: new Date().toISOString(),
+      salida: ok.a,
+      meta: ok.b,
+      pasadas: [],
+    };
+    list.push(tr);
+    saveTramos(list);
+    for (const id of ["trs-name", "trs-a", "trs-b"]) $(id).value = "";
+    $("trs-new").open = false;
+    tramoFormCheck();
+    renderTramosHome();
+    toast("«" + nombre + "» guardado: buscándolo en tus rutas…", 3000);
+    let added = 0;
+    try {
+      added = await scanTramo(tr.id);
+    } catch (e) {
+      added = 0;
+    }
+    toast(
+      added
+        ? "«" +
+            nombre +
+            "»: " +
+            added +
+            (added === 1 ? " pasada" : " pasadas") +
+            " en tus rutas"
+        : "«" + nombre + "» guardado: al pasar por la salida empieza a contar",
+      5000,
+    );
+    renderTramosHome();
+  }
+  function wireTramoForm() {
+    for (const id of ["trs-a", "trs-b"])
+      $(id).addEventListener("input", tramoFormCheck);
+    $("trs-new").addEventListener("toggle", tramoFormCheck);
+    for (const [btnId, inputId] of [
+      ["trs-a-here", "trs-a"],
+      ["trs-b-here", "trs-b"],
+    ])
+      $(btnId).addEventListener("click", () => {
+        const btn = $(btnId);
+        if (!navigator.geolocation || btn.disabled) return;
+        btn.disabled = true;
+        tramoFormNote("Buscando tu posición…");
+        navigator.geolocation.getCurrentPosition(
+          (pos) => {
+            btn.disabled = false;
+            $(inputId).value =
+              pos.coords.latitude.toFixed(6) +
+              ", " +
+              pos.coords.longitude.toFixed(6);
+            tramoFormCheck();
+          },
+          () => {
+            btn.disabled = false;
+            tramoFormNote(
+              "No se ha podido saber tu posición (¿GPS encendido y con permiso?).",
+              true,
+            );
+          },
+          { enableHighAccuracy: true, timeout: 20000, maximumAge: 5000 },
+        );
+      });
+    $("trs-save").addEventListener("click", saveTramoForm);
   }
 
   // ---------- gráfica de frenada, gas y tiempo muerto ----------
@@ -5928,6 +6479,7 @@
   async function newSegment() {
     if (!E || E.sim || E.viewing || !E.free || !E.rec) return false;
     const old = E;
+    const passes = tramoFlush(now());
     recFlush(true);
     saveMeta("terminada");
     const saved = old.rec.queue;
@@ -5943,11 +6495,12 @@
     E = eng;
     lastE = empty ? null : old;
     mapView.drawnAt = 0;
-    toast(
-      empty
-        ? "Tramo " + eng.segment + ": empieza de nuevo (parado no se guarda)"
-        : "Tramo " + eng.segment + ": el anterior queda guardado",
-    );
+    const msg = empty
+      ? "Tramo " + eng.segment + ": empieza de nuevo (parado no se guarda)"
+      : "Tramo " + eng.segment + ": el anterior queda guardado";
+    // Con una pasada acabada ahí mismo, primero su tiempo.
+    if (passes) setTimeout(() => toast(msg), 4000);
+    else toast(msg);
     // La grabación nueva cierra como «cortada» lo que quede a medias: primero, que el anterior quede terminado.
     await saved.catch(() => {});
     if (E === eng) recStart(eng.wall0);
@@ -5980,6 +6533,7 @@
 
   function stopAll() {
     if (E) {
+      if (E.free && !E.viewing) tramoFlush(now());
       recFlush(true);
       saveMeta("terminada");
     }
@@ -6479,6 +7033,7 @@
     const total = nA + L.t.length;
     let iL = 0;
     let i = 0;
+    let flushed = false;
     const feedFixes = (upTo) => {
       while (iL < L.t.length && L.t[iL] <= upTo) {
         sim.t = L.t[iL];
@@ -6500,7 +7055,12 @@
         // Ruta libre por un circuito: el suyo desde el principio (las vueltas salen igual que en directo).
         const c = meta.circuito;
         if (i === 0 && iL === 0 && eng.free && c && c.trazado)
-          useCircuit(c.trazado, c.sentido === "inverso", !!c.guardado);
+          useCircuit(
+            c.trazado,
+            c.sentido === "inverso",
+            !!c.guardado,
+            c.forzadas,
+          );
         const tStart = performance.now();
         const i0 = i;
         while (i < nA) {
@@ -6520,7 +7080,13 @@
           )
             break;
         }
-        if (i >= nA) feedFixes(Infinity);
+        if (i >= nA) {
+          feedFixes(Infinity);
+          if (eng.free && !flushed) {
+            flushed = true;
+            tramoFlush(sim.t);
+          }
+        }
       } finally {
         E = null;
       }
@@ -6922,6 +7488,7 @@
     wireInstall();
     wireScrub();
     wireTabs();
+    wireTramoForm();
     for (const b of document.querySelectorAll(".choice [data-orient]"))
       b.addEventListener("click", () => {
         settings.pantalla = b.dataset.orient;
@@ -6963,6 +7530,35 @@
       segArmed = false;
       btn.textContent = "Nuevo tramo";
       newSegment();
+    });
+    // «Salida aquí» (un toque) y «Meta aquí» (dos toques); sin haberse movido de la salida, quitarla (dos toques).
+    $("ru-mark").addEventListener("click", () => {
+      const btn = $("ru-mark");
+      if (!E || !E.rec || E.sim || E.circ) return;
+      if (!E.mark) {
+        markSalida();
+        return;
+      }
+      const want = markMetaKind();
+      if (!want) return;
+      if (markArmed !== want) {
+        markArmed = want;
+        btn.textContent =
+          want === "quitar"
+            ? "¿Quitar la salida? Otra vez"
+            : "¿Meta aquí? Otra vez";
+        clearTimeout(markTimer);
+        markTimer = setTimeout(() => {
+          markArmed = null;
+        }, 4000);
+        return;
+      }
+      markArmed = null;
+      clearTimeout(markTimer);
+      if (want === "quitar") {
+        E.mark = null;
+        toast("Salida quitada");
+      } else markMeta();
     });
     $("ru-color").addEventListener("click", () => {
       mapView.colorBy = mapView.colorBy === "fase" ? "incl" : "fase";

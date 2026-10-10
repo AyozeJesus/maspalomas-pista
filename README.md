@@ -13,8 +13,8 @@ La portada tiene tres pestañas abajo:
 - **Rodar**: «Salir a pista» (el circuito de Maspalomas) y «Ruta libre» (cualquier carretera), cada uno con una
   línea que dice qué hace; «Probar los sensores» y la vuelta de ejemplo; si el GPS y los sensores están listos y tu
   mejor vuelta guardada; «Antes de salir», plegado.
-- **Mis rutas**: lo grabado en el móvil (con «Ver» y «Borrar»), tus tramos y, con el Mac conectado, los tiempos del
-  día de todos los pilotos.
+- **Mis rutas**: lo grabado en el móvil (con «Ver» y «Borrar»), tus tramos (con «Nuevo tramo con salida y meta»)
+  y, con el Mac conectado, los tiempos del día de todos los pilotos.
 - **Ajustes**: piloto y objetivo, pantalla en pista, panel y avisos (mapa, aviso de frenada, aviso de caída),
   receptor GPS externo, el Mac (garaje) y los circuitos (línea de meta, otros guardados).
 
@@ -186,12 +186,38 @@ cabeceo); al soltar, «hundió N mm» durante 4 s.
 **Nuevo tramo**: mientras grabas, junto a «Terminar» está «Nuevo tramo» (dos toques). Guarda lo grabado hasta ahí
 como una ruta terminada y sigue grabando otra al momento, con la calibración, los ejes, el sesgo del giroscopio y el
 retraso del GPS que ya había aprendido: para hacer un tramo subiendo y otro bajando sin terminar y volver a salir
-(que obligaba a aprenderlo todo otra vez). Si el tramo que se cierra no llegó a moverse, no se guarda.
+(que obligaba a aprenderlo todo otra vez). Si el tramo que se cierra no llegó a moverse, no se guarda. Una pasada
+que acaba justo ahí (en la meta de uno de tus tramos) cuenta igual.
+
+**Salida aquí y Meta aquí**: grabando una ruta libre, «Salida aquí» (un toque) marca la salida donde estás; el panel
+lleva el tiempo y los km desde ella. Al llegar, «Meta aquí» (dos toques) la cierra y queda un tramo de salida y meta
+(«Crono 1», «Crono 2»…; «Nombre» lo cambia) con esa primera pasada: la próxima vez empieza a contar solo al pasar
+por la salida y para al llegar a la meta. Así la subida y la bajada de Los Loros son dos tramos distintos: salida
+abajo y meta arriba, y luego otra salida arriba y la meta abajo. Si la meta cae en la salida tras una vuelta de más
+de 300 m (o se toca poco después de volver a pasar por ella, en el mismo sentido), queda un circuito: ver
+«Cualquier otro circuito». Volver a la salida por el mismo camino (ida y vuelta) no es un circuito: la app dice que
+pongas la meta donde das la vuelta. Sin moverte aún de la salida, el botón ofrece quitarla; «Nuevo tramo» también
+la quita.
+
+**Tramos con salida y meta** (en «Mis rutas» → «Tus tramos» → «Nuevo tramo con salida y meta»): pega las coordenadas
+de Google Maps (deja el dedo en el punto y copia los números de arriba, «28.355628, -16.418573») o un enlace suyo
+con ellas (`@lat,lon`, `?q=`, `!3d…!4d…`, `geo:`, grados con N/S/E/O/W; los cortos, `maps.app.goo.gl`, no las
+llevan), o «Aquí» con tu posición. Se comprueba al escribir, dibuja los dos puntos con el norte arriba, dice la
+distancia en línea recta y «Ver en Google Maps» abre el camino entre ellos. Al guardarlo se busca en las rutas del
+móvil. El tiempo va de salida a meta, en el momento en que se pasa más cerca de cada una (entre dos posiciones del
+GPS, en línea recta: a 80 km/h hay 22 m de una a otra; parado en la salida, desde que echas a rodar; parando en la
+meta, al llegar). La primera pasada le enseña el camino (para comparar pasadas y dibujarlo); con él, la meta solo
+vale con el 75 % del camino hecho, y sin él, pasando a menos de 15 m (o parando a menos de 30): en la subida de Los
+Loros una herradura de abajo pasa a 25 m de la meta de arriba. Irse por otro lado (muy lejos de la meta, o 5 min sin
+avanzar por el camino) anula la pasada. Cada tramo de «Tus tramos» tiene «Mapa»: su salida y su meta en Google
+Maps.
 
 **Tramos** (`tramos.js`): en el resumen de una ruta, «Guardar como tramo» con un nombre (o, si es de ida y vuelta
-por la misma carretera, «Guardar ida y vuelta», que guarda un tramo por sentido). Desde entonces, cada vez que pases
-por él en el mismo sentido se reconoce solo por la posición (salida y meta 10 m dentro del trazado; parar en medio
-vale y cuenta en el tiempo; salirse de la carretera o perder el GPS más de 12 s, no): en la ruta libre el panel
+por la misma carretera, «Guardar ida y vuelta», que guarda un tramo por sentido; no se ofrece si tus tramos ya
+cubren la ruta casi entera). Desde entonces, cada vez que pases
+por él en el mismo sentido se reconoce solo por la posición (salida y meta 10 m dentro del trazado; esperar parado
+en los primeros 30 m no cuenta: el tiempo empieza al echar a rodar; parar en medio vale y cuenta en el tiempo;
+salirse de la carretera o perder el GPS más de 12 s, no): en la ruta libre el panel
 lleva el tramo con su tiempo y la diferencia con tu mejor pasada en ese mismo punto, y al acabar avisa del tiempo.
 Al repasar una grabación también se apunta, y en «Mis rutas» («Tus tramos») «Buscar» lo busca en todas las rutas
 guardadas: así las pasadas de distintos días quedan juntas. Cada pasada guarda su tiempo cada 20 m, y el resumen la
@@ -201,7 +227,8 @@ tarde (y dónde cambia más). Las frenadas salen del acelerómetro (su principio
 del GPS de la pasada lo llevan al metro del tramo) si las dos pasadas se repasaron con el motor; si no, del GPS
 (máximo de velocidad seguido de una bajada de 15 km/h: ±20 m, pero igual en todas las pasadas). Un mapa del tramo
 marca dónde empieza a frenar cada pasada (▼ en la gráfica, ● en el mapa). Con la ruta de Los Loros del 9 de
-octubre: subida en 5:06,9 y bajada en 4:57,2.
+octubre: subida en 4:50,4 y bajada en 4:57,2 (antes la subida salía en 5:06,9: contaba los 14 s de espera parado
+a 20 m de la salida); marcadas con «Salida aquí» y «Meta aquí», 4:52,0 y 5:03,3.
 
 **Compartir**: en el resumen de la ruta («Compartir», arriba, o «Compartir (imagen)», abajo) y en boxes, se hace al
 momento una imagen de 1080 × 1350 (`compartir.js`): la ruta con la trazada en color (o la tanda con la mejor
@@ -251,6 +278,13 @@ así que al repasarla salen las mismas vueltas aunque no se guardara (o se borre
 guardar desde «Ver». Con la tanda de ejemplo tratada como un
 circuito desconocido: detectado a los 192 s, vueltas a ≤ 21 ms de la verdad en su línea. No trae el modelo, el
 entrenador ni el análisis de Maspalomas (que dependen de su trazado y su trazada óptima).
+
+También lo puedes marcar tú sin esperar a 2 vueltas: «Salida aquí» en la línea y, tras una vuelta, «Meta aquí» al
+volver a pasar por ella (o parado en ella). Se guarda como «Circuito 1» (2, 3…) con el trazado de esa vuelta y la
+meta donde echaste a rodar, cuenta esa primera vuelta (desde que arrancas hasta que vuelves a pasar) y las
+siguientes cada vez que pasas por meta; la grabación apunta esa primera vuelta para que al repasarla salga igual.
+Con la tanda de ejemplo: primera vuelta 1:16,63 (0,8 s más que desde el arranque real: cuenta desde la última
+posición parada) y las siguientes a ≤ 0,04 s de la verdad.
 
 ## Garaje en el Mac
 

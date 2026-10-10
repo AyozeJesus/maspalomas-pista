@@ -233,6 +233,8 @@
         g.font = "bold " + 13 * px * dpr + "px Roboto, system-ui, sans-serif";
         g.textBaseline = "middle";
         g.lineWidth = 4 * px * dpr;
+        // Borde oscuro a la letra (el de un aro es de su color).
+        g.strokeStyle = "#050607";
         g.strokeText(d.label, r * 1.6, 0);
         g.fillStyle = "#f3f5f6";
         g.fillText(d.label, r * 1.6, 0);
