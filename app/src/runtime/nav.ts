@@ -5,10 +5,11 @@
 // se salta las que una página añade sin que nadie la haya tocado.
 import { refreshHome, setTab, show, toast, uiStore } from "../app/ui-store";
 import type { CrashUi } from "./crash-ui";
+import type { SensorTest } from "./sensor-test";
 import type { Session } from "./session";
 import type { Viewer } from "./viewer";
 
-export function createNav(session: Session, viewer: Viewer, crash: CrashUi) {
+export function createNav(session: Session, viewer: Viewer, crash: CrashUi, sensors: SensorTest) {
   const rt = session.rt;
 
   function goHome(): void {
@@ -56,8 +57,12 @@ export function createNav(session: Session, viewer: Viewer, crash: CrashUi) {
       else toast("Para seguir, «Volver a pista»; para acabar, «Terminar»");
       return backArm();
     }
-    if (ui.screen === "ruta-fin" || ui.screen === "sensores") {
+    if (ui.screen === "ruta-fin") {
       goHome();
+      return backArm();
+    }
+    if (ui.screen === "sensores") {
+      sensors.stop();
       return backArm();
     }
     if (ui.screen === "dia") {

@@ -11,6 +11,7 @@ import { createCrashUi, type CrashUi } from "./crash-ui";
 import { createExtGps, type ExtGps } from "./ext-gps";
 import { createGarageUi } from "./garage";
 import { createNav } from "./nav";
+import { createSensorTest } from "./sensor-test";
 import { createSession } from "./session";
 import { createSettings } from "./settings";
 import { createViewer, type Viewer } from "./viewer";
@@ -57,7 +58,8 @@ export function createRuntime(opts: { kv?: KeyValueStore; store?: PistaStore | n
   );
   ext = createExtGps(session, settings);
   const garage = createGarageUi(store, settings);
-  const nav = createNav(session, viewer, crash);
+  const sensors = createSensorTest(session);
+  const nav = createNav(session, viewer, crash, sensors);
 
   // Una grabación sin nada (sin moverse) no se queda en la lista.
   function discardRecording(eng: Engine): Promise<void> {
@@ -122,6 +124,7 @@ export function createRuntime(opts: { kv?: KeyValueStore; store?: PistaStore | n
     crash,
     ext: ext as ExtGps,
     garage,
+    sensors,
     nav,
     view3d,
     discardRecording,
