@@ -1,5 +1,5 @@
 #!/bin/zsh
-# Doble clic en el Finder: abre el garaje de Modo pista (servidor en este Mac + túnel para el móvil).
+# Doble clic en el Finder: abre el garaje de poortelemetry (servidor en este Mac + túnel para el móvil).
 # Para cerrarlo, cierra esta ventana o pulsa Ctrl+C.
 cd "${0:A:h}" || exit 1
 export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"

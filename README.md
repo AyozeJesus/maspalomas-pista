@@ -1,4 +1,4 @@
-# Modo pista Maspalomas
+# poortelemetry
 
 Panel en directo para el circuito de Maspalomas (trazado corto de 2.270 m) con el GPS y los sensores del móvil:
 delta frente a tu mejor vuelta a pantalla completa (verde ganas, rojo pierdes), inclinación y frenada medidas con
@@ -291,7 +291,7 @@ posición parada) y las siguientes a ≤ 0,04 s de la verdad.
 Guarda todas tus tandas en `~/Maspalomas-telemetria` (hasta que tú borres la carpeta) y las analiza allí.
 
 1. Doble clic en `garaje/Abrir garaje.command` (la primera vez instala `cloudflared` con Homebrew).
-2. Se abre la página del garaje con un código QR. Escanéalo con la cámara del móvil: Modo pista queda conectado.
+2. Se abre la página del garaje con un código QR. Escanéalo con la cámara del móvil: poortelemetry queda conectado.
 3. Deja el Mac encendido, enchufado y con la tapa abierta mientras ruedas. El móvil sube cada tanda por un túnel
    https temporal; si no hay cobertura en el circuito, todo se queda en el móvil y se sube al volver a conectar.
 4. En la página del garaje, «Analizar» abre la tanda completa con gráficas, mapa y curvas, el entrenador (plan

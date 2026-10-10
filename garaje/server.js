@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Garaje de Modo pista: guarda en este Mac las tandas que sube el móvil y las deja ver y analizar aquí.
+// Garaje de poortelemetry: guarda en este Mac las tandas que sube el móvil y las deja ver y analizar aquí.
 // Sin dependencias: Node y, para que el móvil llegue desde el circuito, cloudflared (túnel https gratuito).
 //
 // Dos puertas, las dos solo en 127.0.0.1:
