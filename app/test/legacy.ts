@@ -47,7 +47,9 @@ export function liveFunctions<T>(
   const sandbox: Record<string, unknown> = { ...opts.globals };
   sandbox.window = sandbox;
   vm.createContext(sandbox);
-  vm.runInContext(pieces.join("\n") + "\nwindow.__fns = { " + names.join(", ") + " };", sandbox, {
+  // Las constantes también se pueden pedir (las hay que son funciones: «const fmtDive = (b) => …»).
+  const all = names.concat(opts.consts || []);
+  vm.runInContext(pieces.join("\n") + "\nwindow.__fns = { " + all.join(", ") + " };", sandbox, {
     filename: "live.js",
   });
   return sandbox.__fns as T;
