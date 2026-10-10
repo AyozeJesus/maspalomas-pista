@@ -31,11 +31,16 @@
     return PHASE[p.ph] || PHASE.mantiene;
   }
 
-  // Ajusta el canvas a su tamaño en pantalla (con la densidad del móvil) y devuelve su contexto.
-  function prepare(canvas) {
-    const dpr = Math.min(3, window.devicePixelRatio || 1);
-    const w = Math.max(1, Math.round(canvas.clientWidth * dpr));
-    const h = Math.max(1, Math.round(canvas.clientHeight * dpr));
+  // Ajusta el canvas a su tamaño en pantalla (con la densidad del móvil) y devuelve su contexto. size: {w, h, dpr}
+  // para pintar fuera de la pantalla (la imagen para compartir), en píxeles.
+  function prepare(canvas, size) {
+    const dpr = size
+      ? size.dpr || 1
+      : Math.min(3, window.devicePixelRatio || 1);
+    const w = size ? size.w : Math.max(1, Math.round(canvas.clientWidth * dpr));
+    const h = size
+      ? size.h
+      : Math.max(1, Math.round(canvas.clientHeight * dpr));
     if (canvas.width !== w || canvas.height !== h) {
       canvas.width = w;
       canvas.height = h;
@@ -64,9 +69,10 @@
   }
 
   // o: { trail:[{x,y,ph,lean}], outline:[[x,y]], sectors:[{pts:[[x,y]], state}], brakes:[[x,y]],
-  //      pos:{x,y,heading}, follow:bool, span:m, colorBy:'fase'|'incl', marks:[{x,y,text}], width:m (ancho de pista) }
+  //      pos:{x,y,heading}, follow:bool, span:m, colorBy:'fase'|'incl', marks:[{x,y,text}], width:m (ancho de pista),
+  //      size:{w,h,dpr} (fuera de pantalla), dots:[{x,y,color,label}] (puntos señalados: el corte, el principio…) }
   function draw(canvas, o) {
-    const { g, w, h, dpr } = prepare(canvas);
+    const { g, w, h, dpr } = prepare(canvas, o.size);
     const pad = 14 * dpr;
     // Vista: siguiendo (centrada en la moto, la dirección de marcha hacia arriba) o el recorrido entero.
     let scale;
@@ -174,6 +180,30 @@
       g.restore();
     }
 
+    // Puntos señalados (el corte de una ruta, el principio y el final…): círculo con borde y su letra al lado.
+    for (const d of o.dots || []) {
+      g.save();
+      g.translate(d.x, d.y);
+      g.rotate(-rot);
+      const r = 7 * px * dpr;
+      g.fillStyle = d.color || "#ffffff";
+      g.strokeStyle = "#050607";
+      g.lineWidth = 2.5 * px * dpr;
+      g.beginPath();
+      g.arc(0, 0, r, 0, Math.PI * 2);
+      g.fill();
+      g.stroke();
+      if (d.label) {
+        g.font = "bold " + 13 * px * dpr + "px Roboto, system-ui, sans-serif";
+        g.textBaseline = "middle";
+        g.lineWidth = 4 * px * dpr;
+        g.strokeText(d.label, r * 1.6, 0);
+        g.fillStyle = "#f3f5f6";
+        g.fillText(d.label, r * 1.6, 0);
+      }
+      g.restore();
+    }
+
     // Posición: flecha en el sentido de marcha.
     if (o.pos) {
       g.save();
@@ -195,26 +225,29 @@
     }
   }
 
+  // Los colores de la leyenda ([texto, color]) para el modo de color elegido.
+  function legendItems(by) {
+    return by === "incl"
+      ? [
+          ["< 15°", "#8a969e"],
+          ["15–30°", "#5aa5f0"],
+          ["30–40°", "#22c35f"],
+          ["40–50°", "#f2b300"],
+          ["50°+", "#ff5b4f"],
+        ]
+      : [
+          ["frena", PHASE.freno],
+          ["acelera", PHASE.gas],
+          ["sin gas en curva", PHASE.muerto],
+          ["mantiene", PHASE.mantiene],
+          ["caballito", WHEELIE],
+        ];
+  }
+
   // Leyenda en HTML (texto y color) para el modo de color elegido.
   function legend(el, by) {
-    const items =
-      by === "incl"
-        ? [
-            ["< 15°", "#8a969e"],
-            ["15–30°", "#5aa5f0"],
-            ["30–40°", "#22c35f"],
-            ["40–50°", "#f2b300"],
-            ["50°+", "#ff5b4f"],
-          ]
-        : [
-            ["frena", PHASE.freno],
-            ["acelera", PHASE.gas],
-            ["sin gas en curva", PHASE.muerto],
-            ["mantiene", PHASE.mantiene],
-            ["caballito", WHEELIE],
-          ];
     el.textContent = "";
-    for (const [text, c] of items) {
+    for (const [text, c] of legendItems(by)) {
       const s = document.createElement("span");
       s.textContent = text;
       s.style.setProperty("--c", c);
@@ -222,5 +255,5 @@
     }
   }
 
-  root.MaspaMapa = { draw, legend, PHASE, leanColor };
+  root.MaspaMapa = { draw, legend, legendItems, PHASE, leanColor };
 })(typeof window !== "undefined" ? window : globalThis);

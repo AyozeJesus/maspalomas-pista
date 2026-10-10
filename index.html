@@ -563,6 +563,7 @@
   <main class="page" id="ruta-fin" hidden>
     <div class="toolbar">
       <button class="quiet back" id="ruf-back"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg>Volver</button>
+      <button id="ruf-share"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15V3M7 8l5-5 5 5M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6"/></svg>Compartir</button>
     </div>
     <header class="page-head">
       <h1 class="title">Tu ruta</h1>
@@ -591,6 +592,7 @@
     <p class="muted">En carretera respeta las normas y los límites: el mapa y estos datos son para revisarlos parado.</p>
     <div class="actions">
       <button class="primary" id="ruf-home">Volver al inicio</button>
+      <button id="ruf-share2">Compartir (imagen)</button>
       <button id="ruf-export">Exportar la ruta (.zip)</button>
     </div>
   </main>
@@ -621,6 +623,7 @@
       <button class="primary" id="resume">Volver a pista</button>
       <button id="p-calib">Calibrar inclinación</button>
       <button id="pits-day" hidden>Tiempos del día</button>
+      <button id="p-share">Compartir (imagen)</button>
       <button id="export">Exportar tanda (.zip)</button>
       <button class="danger" id="finish">Terminar</button>
     </div>
@@ -720,6 +723,7 @@
   <script src="recorrido.js"></script>
   <script src="circuito.js"></script>
   <script src="caida.js"></script>
+  <script src="compartir.js"></script>
   <script src="gnss-ble.js"></script>
   <script src="gnss-usb.js"></script>
   <script src="live.js"></script>

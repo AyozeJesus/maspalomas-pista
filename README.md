@@ -119,6 +119,12 @@ ahí como una ruta terminada y sigue grabando otra al momento, con la calibraci�
 y el retraso del GPS que ya había aprendido: para hacer un tramo subiendo y otro bajando sin terminar y volver a
 salir (que obligaba a aprenderlo todo otra vez).
 
+**Compartir**: en el resumen de la ruta («Compartir», arriba, o «Compartir (imagen)», abajo) y en boxes, se hace al
+momento una imagen de 1080 × 1350 (`compartir.js`): la ruta con la trazada en color (o la tanda con la mejor
+vuelta, todas las vueltas y el circuito) y lo más importante (distancia, tiempo, punta, inclinación a cada lado,
+frenada máxima, curvas, frenadas, caballitos). Se manda con lo que ofrezca el móvil (WhatsApp, Telegram…); sin
+red, WhatsApp la deja en cola. Si el navegador no sabe compartir archivos, se descarga.
+
 **Atrás**: el atrás del móvil ya no cierra la app. Desde el resumen de la ruta, la prueba de sensores o los tiempos
 del día vuelve a la portada (y el resumen tiene «Volver» arriba); repasando una grabación, la cierra; rodando no
 para nada (avisa de que para acabar está «Terminar»); en la portada avisa y el segundo atrás sale.

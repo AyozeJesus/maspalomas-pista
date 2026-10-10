@@ -1,7 +1,7 @@
 // Funciona sin cobertura en el circuito: la página se guarda en el móvil la primera vez que se abre.
 // La página principal se pide primero a la red (para recibir las actualizaciones) y, si no hay red, sale de la copia.
 // Igual que BUILD en live.js (se ve en la portada).
-const CACHE = "pista-v23";
+const CACHE = "pista-v24";
 const FILES = [
   "./",
   "index.html",
@@ -13,6 +13,7 @@ const FILES = [
   "recorrido.js",
   "circuito.js",
   "caida.js",
+  "compartir.js",
   "circuito-worker.js",
   "trackbuilder.js",
   "gnss-ble.js",

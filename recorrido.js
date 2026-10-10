@@ -513,14 +513,22 @@
 
   Recorrido.prototype.endBrake = function (t, b, vOut) {
     const dur = t - b.t0;
-    let peak = 0;
+    // El pico, en media de 0,3 s: con la vibración, una muestra suelta lleva ±0,1–0,2 g de más (en una carretera de
+    // montaña salía 1,2 g de pico). Una frenada de verdad sostiene su pico más que eso.
+    const sm = [];
     let sum = 0;
-    for (const x of b.g) {
-      sum += x[1];
-      if (x[1] > peak) peak = x[1];
+    let j0 = 0;
+    let acc = 0;
+    for (let i = 0; i < b.g.length; i++) {
+      sum += b.g[i][1];
+      acc += b.g[i][1];
+      while (b.g[i][0] - b.g[j0][0] > 0.3) acc -= b.g[j0++][1];
+      sm.push([b.g[Math.floor((i + j0) / 2)][0], acc / (i - j0 + 1)]);
     }
+    let peak = 0;
+    for (const x of sm) if (x[1] > peak) peak = x[1];
     if (peak < BRK_MIN_G || dur < 0.4 || b.v0 < 20 / 3.6) return null;
-    const t80 = b.g.find((x) => x[1] >= 0.8 * peak)[0];
+    const t80 = sm.find((x) => x[1] >= 0.8 * peak)[0];
     const pMin = isFinite(b.pMin) ? b.pMin : b.pMinLean;
     const dive =
       b.pRef === b.pRef && isFinite(pMin) ? Math.max(0, b.pRef - pMin) : null;
@@ -653,7 +661,13 @@
       punta: Math.round(st.vMax * 3.6 * 10) / 10,
       inclDerecha: Math.round(st.leanR * 10) / 10,
       inclIzquierda: Math.round(st.leanL * 10) / 10,
-      frenadaMax: Math.round(st.brakeMax * 100) / 100,
+      // La frenada más fuerte de las de verdad (un bache o un pico de ruido de un instante no cuenta).
+      frenadaMax:
+        Math.round(
+          this.brakes
+            .filter((b) => b.gps !== false)
+            .reduce((m, b) => Math.max(m, b.peak), 0) * 100,
+        ) / 100,
       aceleracionMax: Math.round(st.accMax * 100) / 100,
       curvas: cs.length,
       caballitos: this.wheelies.length,

@@ -8,7 +8,7 @@
   const ST = window.PistaStore;
   const APP_VERSION = 2;
   // Versión publicada (la misma que la copia de sw.js, «pista-vN»): se ve en la portada.
-  const BUILD = 23;
+  const BUILD = 24;
   const G = 9.80665;
   const REC_EVERY = 10; // segundos entre trozos guardados en el móvil
   const $ = (id) => document.getElementById(id);
@@ -4408,6 +4408,175 @@
       $("export").textContent = "Exportada";
   }
 
+  // ---------- compartir (imagen) ----------
+  // Una imagen hecha al momento (compartir.js) con el mapa y lo más importante, para mandarla por WhatsApp o lo que
+  // ofrezca el móvil; sin «compartir archivos», se descarga. Sin red también: WhatsApp la manda cuando la haya.
+  function engDate(eng) {
+    return new Date(
+      eng.rec
+        ? eng.rec.epoch
+        : eng.viewEpoch || (eng.sim || !eng.wall0 ? Date.now() : eng.wall0),
+    );
+  }
+  function fileStamp(d) {
+    const p = (x) => String(x).padStart(2, "0");
+    return (
+      d.getFullYear() +
+      p(d.getMonth() + 1) +
+      p(d.getDate()) +
+      "-" +
+      p(d.getHours()) +
+      p(d.getMinutes())
+    );
+  }
+  const PIE = "ayozejesus.github.io/maspalomas-pista";
+
+  function routeShareData(eng) {
+    const s = eng.route.summary();
+    const d = engDate(eng);
+    const fecha = d.toLocaleDateString("es-ES", {
+      weekday: "long",
+      day: "numeric",
+      month: "long",
+    });
+    const deg = (x) => (x ? fmt(x, 0) + "°" : "—");
+    const stats = [
+      ["Distancia", fmt(s.distancia / 1000, 1) + " km"],
+      ["Tiempo", fmtClock(s.duracion)],
+      ["Punta", fmt(s.punta, 0) + " km/h"],
+      ["Incl. derecha", deg(s.inclDerecha)],
+      ["Incl. izquierda", deg(s.inclIzquierda)],
+      ["Frenada máx.", s.frenadaMax ? fmt(s.frenadaMax, 2) + " g" : "—"],
+      ["Curvas", String(s.curvas)],
+      ["Frenadas", String(s.frenadas || 0)],
+      [
+        "Caballitos",
+        s.caballitos
+          ? s.caballitos + " · " + s.caballitosMetros + " m"
+          : "ninguno",
+      ],
+    ];
+    const circ = eng.circ || null;
+    if (circ && circ.best) {
+      stats.splice(2, 0, ["Mejor vuelta", fmtLap(circ.best.time), true]);
+      stats.length = 9;
+    }
+    const titulo = circ
+      ? eng.circTrack.name
+      : eng.segment > 1
+        ? "Ruta libre · tramo " + eng.segment
+        : "Ruta libre";
+    return {
+      titulo,
+      subtitulo:
+        fecha.charAt(0).toUpperCase() +
+        fecha.slice(1) +
+        " · " +
+        fmt(s.distancia / 1000, 1) +
+        " km · " +
+        fmtClock(s.duracion),
+      trail: eng.route.trail,
+      // Solo las 4 curvas más tumbadas: con todas (en una carretera de montaña, 100), el mapa no se ve.
+      marks: curveMarks(
+        eng.route.curves
+          .filter((c) => c.leanMax)
+          .slice()
+          .sort((a, b) => b.leanMax - a.leanMax)
+          .slice(0, 4),
+      ),
+      colorBy: summaryColor,
+      stats,
+      pie: PIE,
+      text:
+        titulo +
+        " · " +
+        fecha +
+        " · " +
+        fmt(s.distancia / 1000, 1) +
+        " km · punta " +
+        fmt(s.punta, 0) +
+        " km/h",
+      name: "maspalomas-ruta-" + fileStamp(d) + ".png",
+    };
+  }
+
+  function tandaShareData(eng) {
+    const s = eng.route.summary();
+    const d = engDate(eng);
+    const fecha = d.toLocaleDateString("es-ES", {
+      weekday: "long",
+      day: "numeric",
+      month: "long",
+    });
+    const valid = eng.laps.filter((l) => l.valid);
+    const best = valid.length
+      ? valid.reduce((a, b) => (b.time < a.time ? b : a))
+      : null;
+    const lm = Math.max(s.inclDerecha || 0, s.inclIzquierda || 0);
+    return {
+      titulo: "Circuito de Maspalomas",
+      subtitulo:
+        fecha.charAt(0).toUpperCase() +
+        fecha.slice(1) +
+        " · " +
+        valid.length +
+        (valid.length === 1 ? " vuelta" : " vueltas"),
+      mejor: best ? fmtLap(best.time) : "—",
+      mejorNota: best
+        ? "Vuelta " + best.num + " · objetivo " + fmtLap(target(), 1)
+        : "Sin vueltas completas",
+      vueltas: eng.laps.map((l) => ({
+        num: l.num,
+        time: fmtLap(l.time),
+        valid: l.valid,
+        best: best === l,
+      })),
+      outline: GEO.main,
+      trail: eng.route.trail,
+      stats: [
+        ["Punta", fmt(s.punta, 0) + " km/h"],
+        ["Incl. máx.", lm ? fmt(lm, 0) + "°" : "—"],
+        ["Frenada máx.", s.frenadaMax ? fmt(s.frenadaMax, 2) + " g" : "—"],
+        ["Vueltas", String(valid.length)],
+        [
+          "Frente al objetivo",
+          best ? fmtSigned(best.time - target(), 2) + " s" : "—",
+        ],
+        // La mejor de siempre de este piloto (la de esta tanda, si la ha batido).
+        [
+          "Tu mejor vuelta",
+          eng.best ? fmtLap(eng.best.time) : "—",
+          !!(best && eng.best && Math.abs(eng.best.time - best.time) < 0.001),
+        ],
+      ],
+      pie: PIE,
+      text:
+        "Maspalomas · " +
+        fecha +
+        (best ? " · mejor vuelta " + fmtLap(best.time) : ""),
+      name: "maspalomas-tanda-" + fileStamp(d) + ".png",
+    };
+  }
+
+  async function shareImage(btn, kind) {
+    const eng = kind === "tanda" ? E || lastE : lastE;
+    if (!eng || !window.MaspaCompartir || btn.disabled) return;
+    btn.disabled = true;
+    try {
+      const d = kind === "tanda" ? tandaShareData(eng) : routeShareData(eng);
+      const blob =
+        kind === "tanda"
+          ? await window.MaspaCompartir.tandaImage(d)
+          : await window.MaspaCompartir.routeImage(d);
+      const r = await window.MaspaCompartir.share(blob, d.name, d.text);
+      if (r === "descargada") toast("Imagen guardada en Descargas");
+    } catch (e) {
+      toast("No se ha podido hacer la imagen");
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
   // La última tanda guardada en el móvil (vale también después de cerrar la página).
   async function exportStored() {
     const btn = $("home-export");
@@ -4993,6 +5162,11 @@
       passive: true,
     });
     $("ruf-export").addEventListener("click", () => exportSession(lastE));
+    for (const id of ["ruf-share", "ruf-share2"])
+      $(id).addEventListener("click", () => shareImage($(id), "ruta"));
+    $("p-share").addEventListener("click", () =>
+      shareImage($("p-share"), "tanda"),
+    );
     $("ruf-save").addEventListener("click", saveCircuit);
     $("crash-ok").addEventListener("click", crashDismiss);
     $("replaying-cancel").addEventListener("click", cancelView);
