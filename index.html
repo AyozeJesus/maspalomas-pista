@@ -105,6 +105,17 @@
   .replaying p { margin: 0; font-size: 20px; font-weight: 700; }
   .replaying-bar { width: min(80vw, 420px); height: 10px; border-radius: 999px; background: var(--surface-3); overflow: hidden; }
   .replaying-bar span { display: block; height: 100%; width: 0; background: var(--primary); }
+  /* Tramos: cada pasada de la ruta con su comparación (texto y gráfica de velocidad y diferencia). */
+  .tr-list { display: grid; gap: 14px; }
+  .tr-item { display: grid; gap: 8px; padding-top: 12px; border-top: 1px solid var(--line); }
+  .tr-item:first-child { padding-top: 0; border-top: 0; }
+  .tr-item h3 { margin: 0; font-size: 17px; font-weight: 800; }
+  .tr-item .tr-time { font-size: 30px; font-weight: 900; font-variant-numeric: tabular-nums; }
+  .tr-item .tr-time small { font-size: 16px; font-weight: 700; margin-left: 8px; }
+  .tr-chart { display: block; width: 100%; height: 240px; border-radius: var(--r-md); background: #0a0d10; }
+  .tr-legend { margin: 0; display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 13px; font-weight: 600; color: var(--ink-2); }
+  .tr-legend span::before { content: ""; display: inline-block; width: 12px; height: 4px; border-radius: 2px; margin-right: 5px; vertical-align: middle; background: var(--c); }
+  .tr-legend span.plain::before { display: none; }
   .circ-list { display: grid; gap: 8px; }
   .circ-list > div { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
   .circ-list span { min-width: 0; overflow-wrap: anywhere; }
@@ -412,6 +423,11 @@
       <div class="hist-list" id="hist-list"></div>
       <p class="muted">Guardadas en este móvil: se ven también sin internet. «Ver» repasa la grabación y enseña lo mismo que al terminar (la ruta con su mapa, o el análisis de boxes de una tanda). «Borrar» solo la quita del móvil.</p>
     </section>
+    <section class="card" aria-labelledby="trs-h" id="trs-card" hidden>
+      <h2 id="trs-h">Tus tramos</h2>
+      <div class="hist-list" id="trs-list"></div>
+      <p class="muted">Se reconocen solos al pasar por ellos (en el mismo sentido), en la ruta libre y al repasar una grabación. «Buscar» los busca en todas las rutas guardadas en el móvil.</p>
+    </section>
     <section class="card" aria-labelledby="mac-h">
       <h2 id="mac-h">Tus tandas y el Mac</h2>
       <div class="status">
@@ -574,6 +590,15 @@
       <div class="actions"><button id="ruf-color">Color: fases</button></div>
       <p class="legend" id="ruf-legend"></p>
     </section>
+    <section class="card" aria-labelledby="ruf-tr-h" id="ruf-tr" hidden>
+      <h2 id="ruf-tr-h">Tramos</h2>
+      <div class="tr-list" id="ruf-tr-list"></div>
+      <div id="ruf-tr-save">
+        <p class="muted" id="ruf-tr-note"></p>
+        <div class="pilot"><label for="ruf-tr-name">Nombre</label><input id="ruf-tr-name" type="text" maxlength="40" autocomplete="off" placeholder="Los Loros"></div>
+        <div class="actions"><button id="ruf-tr-go">Guardar como tramo</button><button id="ruf-tr-two" hidden>Guardar ida y vuelta (dos tramos)</button></div>
+      </div>
+    </section>
     <section class="card" aria-labelledby="ruf-cut-h" id="ruf-cut" hidden>
       <h2 id="ruf-cut-h">Cortar en dos</h2>
       <p class="muted" id="ruf-cut-note"></p>
@@ -732,6 +757,7 @@
   <script src="caida.js"></script>
   <script src="compartir.js"></script>
   <script src="cortar.js"></script>
+  <script src="tramos.js"></script>
   <script src="gnss-ble.js"></script>
   <script src="gnss-usb.js"></script>
   <script src="live.js"></script>

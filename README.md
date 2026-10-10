@@ -126,6 +126,18 @@ ahí como una ruta terminada y sigue grabando otra al momento, con la calibraci�
 y el retraso del GPS que ya había aprendido: para hacer un tramo subiendo y otro bajando sin terminar y volver a
 salir (que obligaba a aprenderlo todo otra vez).
 
+**Tramos** (`tramos.js`): en el resumen de una ruta, «Guardar como tramo» con un nombre (o, si es de ida y vuelta
+por la misma carretera, «Guardar ida y vuelta», que guarda un tramo por sentido). Desde entonces, cada vez que pases
+por él en el mismo sentido se reconoce solo por la posición (salida y meta 10 m dentro del trazado; parar en medio
+vale y cuenta en el tiempo; salirse de la carretera o perder el GPS más de 12 s, no): en la ruta libre el panel
+lleva el tramo con su tiempo y la diferencia con tu mejor pasada en ese mismo punto, y al acabar avisa del tiempo.
+Al repasar una grabación también se apunta, y en la portada («Tus tramos») «Buscar» lo busca en todas las rutas
+guardadas: así las pasadas de distintos días quedan juntas. Cada pasada guarda su tiempo cada 20 m, y el resumen la
+compara con la mejor (o con la anterior mejor, si esta la bate): velocidad de las dos a lo largo del tramo, dónde
+empieza cada frenada (máximo de velocidad seguido de una bajada de 15 km/h; con el GPS del móvil, ±20 m, pero
+igual en todas las pasadas), la diferencia de tiempo punto a punto, dónde más ganas y pierdes, y si frenas antes o
+más tarde. Con la ruta de Los Loros del 9 de octubre: subida en 5:06,9 y bajada en 4:57,2.
+
 **Compartir**: en el resumen de la ruta («Compartir», arriba, o «Compartir (imagen)», abajo) y en boxes, se hace al
 momento una imagen de 1080 × 1350 (`compartir.js`): la ruta con la trazada en color (o la tanda con la mejor
 vuelta, todas las vueltas y el circuito) y lo más importante (distancia, tiempo, punta, inclinación a cada lado,
