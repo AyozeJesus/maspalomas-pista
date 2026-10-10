@@ -104,6 +104,13 @@ calibración y la postura del móvil que se guardaron, y alinea los sensores de 
 desfasados. En el Vivo Y33s, una ruta de 33 min y 61 km (200.000 muestras de sensores) se abre en 3 s.
 «Borrar» (dos toques) la quita solo del móvil.
 
+**Cortar en dos** (en el resumen de una ruta guardada): una barra elige dónde y el mapa lo marca con un punto blanco;
+«Cortar aquí» (dos toques) deja dos rutas nuevas con todos sus datos (cada una con su hora de principio) y borra la
+entera del móvil (en el Mac, si ya se subió, sigue también la entera; las partes se suben como rutas nuevas). Si la
+ruta es de ida y vuelta por la misma carretera (como subir y bajar Los Loros), el corte sale ya puesto en la vuelta
+atrás (el punto más lejano del principio, o la mitad de la parada si paraste allí): en la ruta del 9 de octubre,
+dos partes de 6,3 y 6,2 km (`cortar.js`).
+
 ## Ruta libre (cualquier carretera)
 
 Va dibujando tu línea de trazada sobre un mapa que te sigue: en rojo donde frenas, en verde donde aceleras, en

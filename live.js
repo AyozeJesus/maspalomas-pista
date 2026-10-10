@@ -8,7 +8,7 @@
   const ST = window.PistaStore;
   const APP_VERSION = 2;
   // Versión publicada (la misma que la copia de sw.js, «pista-vN»): se ve en la portada.
-  const BUILD = 24;
+  const BUILD = 25;
   const G = 9.80665;
   const REC_EVERY = 10; // segundos entre trozos guardados en el móvil
   const $ = (id) => document.getElementById(id);
@@ -3522,6 +3522,183 @@
     renderRouteLaps(eng);
   }
 
+  // ---------- cortar una ruta guardada en dos ----------
+  // Una ruta que fue subida y bajada (o dos tramos seguidos sin «Nuevo tramo») se parte en dos grabaciones nuevas
+  // (cortar.js); la entera se borra del móvil (en el Mac, si ya se subió, queda también la entera). Si es de ida y
+  // vuelta por la misma carretera, el corte sale ya puesto en la vuelta atrás.
+  let cutUi = null;
+  function summaryMapDots() {
+    if (!cutUi || cutUi.t === null) return [];
+    const p = cutPoint(cutUi.eng, cutUi.t);
+    return p ? [{ x: p.x, y: p.y, color: "#ffffff", label: "corte" }] : [];
+  }
+  // Las n curvas más tumbadas (en el mapa entero de una carretera de montaña, con las 100 no se ve nada).
+  function topCurves(curves, n) {
+    return curves
+      .filter((c) => c.leanMax)
+      .slice()
+      .sort((a, b) => b.leanMax - a.leanMax)
+      .slice(0, n);
+  }
+  function drawSummaryMap(eng) {
+    window.MaspaMapa.draw($("ruf-map"), {
+      trail: eng.route.trail,
+      follow: false,
+      colorBy: summaryColor,
+      marks: curveMarks(topCurves(eng.route.curves, 12)),
+      dots: cutUi && cutUi.eng === eng ? summaryMapDots() : [],
+    });
+  }
+  // Punto de la trazada en el instante t (el más cercano), con los metros recorridos hasta ahí (velocidad × tiempo,
+  // como la distancia del resumen: sumar los puntos de la trazada salía un 10 % más).
+  function cutPoint(eng, t) {
+    const tr = eng.route.trail;
+    if (!tr.length) return null;
+    let d = 0;
+    let best = tr[0];
+    let bestD = 0;
+    for (let i = 1; i < tr.length; i++) {
+      const dt = tr[i].t - tr[i - 1].t;
+      if (!tr[i].gap && dt > 0 && dt < 5)
+        d += ((tr[i].v + tr[i - 1].v) / 2) * dt;
+      if (Math.abs(tr[i].t - t) < Math.abs(best.t - t)) {
+        best = tr[i];
+        bestD = d;
+      }
+    }
+    return { x: best.x, y: best.y, v: best.v, t: best.t, d: bestD };
+  }
+  function cutSessionId(eng) {
+    return eng.viewing ? eng.viewing.id : eng.rec ? eng.rec.id : null;
+  }
+  function setupCut(eng) {
+    const tr = eng.route.trail;
+    const sid = cutSessionId(eng);
+    const t0 = tr.length ? tr[0].t : 0;
+    const t1 = tr.length ? tr[tr.length - 1].t : 0;
+    // Repasando una grabación el motor va con el reloj del simulador (eng.sim), pero es una ruta de verdad.
+    const ok = !!(
+      ST &&
+      sid &&
+      (eng.viewing || !eng.sim) &&
+      eng.free &&
+      tr.length > 20 &&
+      t1 - t0 > 60
+    );
+    $("ruf-cut").hidden = !ok;
+    // Repintando el mismo resumen (al cambiar el color del mapa), la barra se queda donde estaba.
+    const prevT = cutUi && cutUi.eng === eng ? cutUi.t : null;
+    cutUi = null;
+    if (!ok) return;
+    let sug = null;
+    try {
+      sug = window.MaspaCortar
+        ? window.MaspaCortar.turnaround(eng.loc.view())
+        : null;
+    } catch (e) {
+      sug = null;
+    }
+    cutUi = {
+      eng,
+      sid,
+      t: prevT !== null ? prevT : sug ? sug.t : (t0 + t1) / 2,
+      armed: false,
+    };
+    const input = $("ruf-cut-t");
+    input.min = String(Math.ceil(t0 + 10));
+    input.max = String(Math.floor(t1 - 10));
+    input.value = String(Math.round(cutUi.t));
+    setText(
+      "ruf-cut-note",
+      sug
+        ? "Sube y baja por la misma carretera: el corte va en la vuelta atrás" +
+            (sug.parada ? ", donde paraste" : "") +
+            ". Mueve la barra para cambiarlo. Quedan dos rutas; esta entera se borra del móvil" +
+            (settings.garaje ? " (en el Mac sigue también la entera)." : ".")
+        : "Mueve la barra hasta donde quieras partirla (el punto blanco del mapa). Quedan dos rutas; esta entera se borra del móvil" +
+            (settings.garaje ? " (en el Mac sigue también la entera)." : "."),
+    );
+    renderCut();
+  }
+  function renderCut() {
+    if (!cutUi) return;
+    const p = cutPoint(cutUi.eng, cutUi.t);
+    const t0 = cutUi.eng.route.trail[0].t;
+    setText(
+      "ruf-cut-at",
+      p
+        ? "a los " +
+            fmtClock(p.t - t0) +
+            " · km " +
+            fmt(p.d / 1000, 1) +
+            " · " +
+            fmt(p.v * 3.6, 0) +
+            " km/h"
+        : "—",
+    );
+    setText(
+      "ruf-cut-go",
+      cutUi.armed ? "¿Cortar? Toca otra vez" : "Cortar aquí",
+    );
+  }
+  // Escribe las dos rutas nuevas (trozos y resumen), comprueba que están y borra la entera.
+  async function cutSaved(sid, tCut) {
+    const K = window.MaspaCortar;
+    if (lastE && lastE.rec && lastE.rec.id === sid)
+      await lastE.rec.queue.catch(() => {});
+    const meta = (await ST.sessions()).find((s) => s.id === sid);
+    if (!meta) throw new Error("no está");
+    const S = F.mergeChunks(await ST.chunksOf(sid)).series;
+    const A0 = S.acc;
+    const L0 = S.loc;
+    const shift =
+      A0 && L0 && A0.t.length && L0.t.length && Math.abs(A0.t[0] - L0.t[0]) > 60
+        ? L0.t[0] - A0.t[0]
+        : 0;
+    const [A, B] = K.splitSeries(S, tCut, shift);
+    if (!A.loc || !B.loc || A.loc.t.length < 10 || B.loc.t.length < 10)
+      throw new Error("demasiado corta");
+    const epochB = meta.epoch + Math.round(tCut * 1000);
+    const parts = [
+      [A, meta.epoch, 1],
+      [B, epochB, 2],
+    ].map(([series, epoch, parte]) => {
+      const id = K.idAt(epoch);
+      const rs = K.lightSummary(series);
+      const m = Object.assign({}, meta, {
+        id,
+        epoch,
+        inicio: new Date(epoch).toISOString(),
+        fin: new Date(epoch + rs.duracion * 1000).toISOString(),
+        estado: "terminada",
+        recorrido: rs,
+        // Las vueltas y avisos de la entera no son de una parte: al verla se sacan otra vez.
+        circuito: null,
+        vueltas: [],
+        caidas: null,
+        analisis: null,
+        corte: { de: meta.id, parte },
+      });
+      delete m.pend;
+      return { meta: m, chunks: K.chunksOf(series, id, epoch, F.VERSION) };
+    });
+    try {
+      for (const p of parts) {
+        for (const c of p.chunks) await ST.putChunk(c);
+        await ST.putSession(p.meta);
+      }
+      for (const p of parts)
+        if ((await ST.chunksOf(p.meta.id)).length !== p.chunks.length)
+          throw new Error("no se han guardado bien");
+    } catch (e) {
+      // A medias no se queda nada: se quitan las partes y la entera sigue como estaba.
+      for (const p of parts) await ST.deleteSession(p.meta.id).catch(() => {});
+      throw e;
+    }
+    await ST.deleteSession(sid);
+    return parts.map((p) => p.meta);
+  }
+
   function showRouteSummary(eng) {
     show("ruta-fin");
     renderRouteLaps(eng);
@@ -3540,12 +3717,8 @@
         " km · " +
         fmtClock(s.duracion),
     );
-    window.MaspaMapa.draw($("ruf-map"), {
-      trail: r.trail,
-      follow: false,
-      colorBy: summaryColor,
-      marks: curveMarks(r.curves),
-    });
+    setupCut(eng);
+    drawSummaryMap(eng);
     window.MaspaMapa.legend($("ruf-legend"), summaryColor);
     setText(
       "ruf-color",
@@ -4476,14 +4649,8 @@
         " km · " +
         fmtClock(s.duracion),
       trail: eng.route.trail,
-      // Solo las 4 curvas más tumbadas: con todas (en una carretera de montaña, 100), el mapa no se ve.
-      marks: curveMarks(
-        eng.route.curves
-          .filter((c) => c.leanMax)
-          .slice()
-          .sort((a, b) => b.leanMax - a.leanMax)
-          .slice(0, 4),
-      ),
+      // Solo las 4 curvas más tumbadas: la imagen se ve pequeña.
+      marks: curveMarks(topCurves(eng.route.curves, 4)),
       colorBy: summaryColor,
       stats,
       pie: PIE,
@@ -5162,6 +5329,53 @@
       passive: true,
     });
     $("ruf-export").addEventListener("click", () => exportSession(lastE));
+    $("ruf-cut-t").addEventListener("input", () => {
+      if (!cutUi) return;
+      cutUi.t = Number($("ruf-cut-t").value);
+      cutUi.armed = false;
+      renderCut();
+      drawSummaryMap(cutUi.eng);
+    });
+    $("ruf-cut-go").addEventListener("click", async () => {
+      const ui = cutUi;
+      if (!ui || ui.busy) return;
+      if (!ui.armed) {
+        ui.armed = true;
+        renderCut();
+        setTimeout(() => {
+          if (cutUi === ui && !ui.busy) {
+            ui.armed = false;
+            renderCut();
+          }
+        }, 4000);
+        return;
+      }
+      ui.busy = true;
+      setText("ruf-cut-go", "Cortando…");
+      try {
+        const parts = await cutSaved(ui.sid, ui.t);
+        cutUi = null;
+        show("home");
+        renderHome();
+        toast(
+          "Cortada en dos: " +
+            parts
+              .map((m) => fmt(m.recorrido.distancia / 1000, 1) + " km")
+              .join(" y "),
+          4000,
+        );
+      } catch (e) {
+        ui.busy = false;
+        ui.armed = false;
+        renderCut();
+        toast(
+          e && e.message === "demasiado corta"
+            ? "Así una de las dos quedaría casi vacía: corta más al medio"
+            : "No se ha podido cortar (la ruta sigue entera)",
+          4000,
+        );
+      }
+    });
     for (const id of ["ruf-share", "ruf-share2"])
       $(id).addEventListener("click", () => shareImage($(id), "ruta"));
     $("p-share").addEventListener("click", () =>

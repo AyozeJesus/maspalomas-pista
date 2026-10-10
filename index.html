@@ -574,6 +574,13 @@
       <div class="actions"><button id="ruf-color">Color: fases</button></div>
       <p class="legend" id="ruf-legend"></p>
     </section>
+    <section class="card" aria-labelledby="ruf-cut-h" id="ruf-cut" hidden>
+      <h2 id="ruf-cut-h">Cortar en dos</h2>
+      <p class="muted" id="ruf-cut-note"></p>
+      <label for="ruf-cut-t" class="range-label">Cortar <b id="ruf-cut-at">—</b></label>
+      <input type="range" id="ruf-cut-t" min="0" max="100" step="1" value="50">
+      <div class="actions"><button id="ruf-cut-go">Cortar aquí</button></div>
+    </section>
     <section class="card" aria-labelledby="ruf-sum-h"><h2 id="ruf-sum-h">Resumen</h2><div class="readouts" id="ruf-stats"></div></section>
     <section class="card" aria-labelledby="ruf-l-h" id="ruf-l" hidden><h2 id="ruf-l-h">Vueltas</h2><p class="muted" id="ruf-l-note"></p>
       <div class="cmp-wrap"><table class="cmp-table"><thead><tr><th>Vuelta</th><th class="num">Tiempo</th><th class="num">Frente a la mejor</th></tr></thead><tbody id="ruf-laps"></tbody></table></div>
@@ -724,6 +731,7 @@
   <script src="circuito.js"></script>
   <script src="caida.js"></script>
   <script src="compartir.js"></script>
+  <script src="cortar.js"></script>
   <script src="gnss-ble.js"></script>
   <script src="gnss-usb.js"></script>
   <script src="live.js"></script>
