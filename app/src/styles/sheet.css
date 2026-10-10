@@ -1,0 +1,43 @@
+/* Hoja desde abajo sobre la portada (el selector del circuito al salir a pista): encima de la barra de pestañas y
+   debajo de los avisos, el repaso de una grabación y el aviso de caída. */
+.sheet-back {
+  position: fixed;
+  inset: 0;
+  z-index: 35;
+  display: grid;
+  align-items: end;
+  background: rgba(0, 0, 0, 0.62);
+}
+.sheet {
+  display: grid;
+  gap: 12px;
+  width: 100%;
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 20px max(16px, env(safe-area-inset-right)) calc(16px + env(safe-area-inset-bottom))
+    max(16px, env(safe-area-inset-left));
+  background: var(--surface);
+  border-top: 1px solid var(--line-strong);
+  border-radius: var(--r-lg) var(--r-lg) 0 0;
+}
+.sheet h2 {
+  margin: 0;
+}
+.sheet-list {
+  display: grid;
+  gap: 8px;
+}
+.sheet button.circuit {
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+  text-align: center;
+}
+.sheet button.circuit small {
+  font-size: 14px;
+  font-weight: 400;
+  opacity: 0.85;
+}
+.sheet #pick-cancel {
+  justify-self: center;
+}

@@ -147,13 +147,8 @@ export function createViewer(session: Session, store: PistaStore | null) {
   // ---------- resúmenes al día ----------
   // Las rutas guardadas con otra versión de la app (o cuyo repaso al terminar no se hizo) se repasan solas, una a una,
   // mientras se mira la portada, y su línea de la lista se pone al día. Empezar a rodar, «Ver» o salir de la portada
-  // lo para; sigue la próxima vez.
-  let refreshTimer: ReturnType<typeof setTimeout> | undefined;
+  // lo para; sigue la próxima vez. Cuándo empezar lo decide «Mis rutas» (useStoredRefresh).
   let refreshing = false;
-  function scheduleRefresh(): void {
-    clearTimeout(refreshTimer);
-    refreshTimer = setTimeout(refreshStored, 1500);
-  }
   function refreshBlocked(): boolean {
     return !!(rt.E || viewJob || uiStore.getState().screen !== "home");
   }
@@ -204,7 +199,6 @@ export function createViewer(session: Session, store: PistaStore | null) {
     viewSaved,
     finishRide,
     cancelView,
-    scheduleRefresh,
     refreshStored,
     showRouteSummary,
     keepResult,

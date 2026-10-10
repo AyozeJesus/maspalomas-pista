@@ -84,7 +84,7 @@ export function routeShareData(eng: Engine, colorBy: ColorBy): RouteImageData {
       " km · punta " +
       fmt(s.punta, 0) +
       " km/h",
-    name: "maspalomas-ruta-" + fileStamp(d) + ".png",
+    name: "poortelemetry-ruta-" + fileStamp(d) + ".png",
   };
 }
 
@@ -127,7 +127,7 @@ export function tandaShareData(eng: Engine, settings: Settings): TandaImageData 
     ],
     pie: PIE,
     text: "Maspalomas · " + fecha + (best ? " · mejor vuelta " + fmtLap(best.time) : ""),
-    name: "maspalomas-tanda-" + fileStamp(d) + ".png",
+    name: "poortelemetry-tanda-" + fileStamp(d) + ".png",
   };
 }
 

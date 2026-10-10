@@ -13,6 +13,8 @@ import {
 
 export const W = 1080;
 export const H = 1350;
+// La marca, arriba de cada imagen.
+export const BRAND = "POORTELEMETRY";
 const PAD = 48;
 const C = {
   bg: "#050607",
@@ -112,7 +114,7 @@ function header(g: CanvasRenderingContext2D, titulo: string, subtitulo: string):
   g.fillStyle = C.ink2;
   g.font = font(700, 26);
   g.textBaseline = "middle";
-  g.fillText("MODO PISTA · MASPALOMAS", PAD + 76, PAD + 10);
+  g.fillText(BRAND, PAD + 76, PAD + 10);
   g.fillStyle = C.ink;
   g.font = font(800, 64);
   g.textBaseline = "alphabetic";

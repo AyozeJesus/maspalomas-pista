@@ -5,12 +5,12 @@ import { csvFiles, mergeChunks, type CsvFile } from "../core/formato";
 import { engDate, type Engine } from "../engine";
 import type { PistaStore } from "../storage";
 
-// «maspalomas-20261009-1631.zip» (con «-simulador» si es la vuelta de ejemplo).
+// «poortelemetry-20261009-1631.zip» (con «-simulador» si es la vuelta de ejemplo).
 export function zipName(epochMs: number, isSim: boolean): string {
   const d = new Date(epochMs);
   const p = (x: number) => String(x).padStart(2, "0");
   return (
-    "maspalomas-" +
+    "poortelemetry-" +
     d.getFullYear() +
     p(d.getMonth() + 1) +
     p(d.getDate()) +
@@ -41,14 +41,15 @@ export async function downloadZip(
   return true;
 }
 
-// Lo grabado por un motor (en directo, acabado o repasando una grabación).
+// Lo grabado por un motor (en directo, acabado o repasando una grabación). Repasando, el motor va con el reloj del
+// simulador, pero es una tanda de verdad: su .zip no lleva «-simulador» (la app de antes se lo ponía).
 export async function exportSession(eng: Engine | null): Promise<boolean> {
   if (!eng) return false;
   const ms0 = engDate(eng).getTime();
   const series: Parameters<typeof csvFiles>[0] = {};
   for (const key of ["loc", "acc", "gyro", "grav", "canal"] as const)
     if (eng[key].n) (series as Record<string, unknown>)[key] = eng[key].view();
-  return downloadZip(csvFiles(series, ms0), ms0, !!eng.sim);
+  return downloadZip(csvFiles(series, ms0), ms0, !!eng.sim && !eng.viewing);
 }
 
 // La última tanda guardada en el móvil (vale también después de cerrar la página). «nada»: no hay ninguna.

@@ -40,7 +40,9 @@ export function liveFunctions<T>(
     pieces.push(src.slice(start, src.indexOf(";\n", start) + 1));
   }
   for (const n of names) {
-    const start = src.indexOf("\n  function " + n + "(");
+    // También las «async function» (renderHistory, scanTramo…).
+    let start = src.indexOf("\n  function " + n + "(");
+    if (start < 0) start = src.indexOf("\n  async function " + n + "(");
     if (start < 0) throw new Error("live.js no define la función " + n);
     pieces.push(src.slice(start, src.indexOf("\n  }\n", start) + 4));
   }

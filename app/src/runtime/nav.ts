@@ -3,7 +3,7 @@
 // prueba de sensores, a la portada; repasando una grabación, la cierra; rodando no para nada (avisa de cómo terminar);
 // en la portada, la primera vez avisa y la segunda sale. La entrada se pone al tocar la pantalla: al ir atrás, Chrome
 // se salta las que una página añade sin que nadie la haya tocado.
-import { refreshHome, setTab, show, toast, uiStore } from "../app/ui-store";
+import { closeCircuitPicker, refreshHome, setTab, show, toast, uiStore } from "../app/ui-store";
 import type { CrashUi } from "./crash-ui";
 import type { SensorTest } from "./sensor-test";
 import type { Session } from "./session";
@@ -38,6 +38,11 @@ export function createNav(session: Session, viewer: Viewer, crash: CrashUi, sens
     const E = rt.E;
     // La alarma de caída no se quita con atrás: para eso está «Estoy bien».
     if (crash.active()) return backArm();
+    // El selector del circuito («Salir a pista»): se cierra.
+    if (ui.circuitPicker) {
+      closeCircuitPicker();
+      return backArm();
+    }
     if (viewer.busy()) {
       viewer.cancelView();
       return backArm();

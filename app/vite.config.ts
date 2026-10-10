@@ -1,6 +1,6 @@
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
-import { pwa } from "./pwa.config";
+import { pwa } from "./pwa.config.ts";
 
 // La app se publica en https://ayozejesus.github.io/maspalomas-pista/ (misma dirección que la de siempre: así el
 // móvil conserva sus rutas, tramos y ajustes, que viven en el almacenamiento de esa dirección). Rutas relativas («./»):

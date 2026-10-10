@@ -2,7 +2,7 @@
 // GPS del móvil. Un USB ya permitido se abre solo al enchufarlo (y al abrir la página).
 import type { GnssFix } from "../core/gnss";
 import { mapClock, newClock, type ClockMap } from "../engine/clock";
-import { refreshHome, uiStore } from "../app/ui-store";
+import { refreshExt, uiStore } from "../app/ui-store";
 import { MaspaGNSS, MaspaGNSSUSB, type GnssHandle, type GnssStatus } from "../platform/gnss";
 import type { Session } from "./session";
 import type { SettingsService } from "./settings";
@@ -67,7 +67,7 @@ export function createExtGps(session: Session, settings: SettingsService) {
     // Un USB desenchufado ya no vale: al enchufarlo otra vez se abre de nuevo (ext.auto).
     if (ext.kind === "usb" && (s.state === "desconectado" || s.state === "error"))
       ext.handle = null;
-    refreshHome();
+    refreshExt();
   }
 
   // Hay que llamarlo desde el toque de un botón (Chrome solo enseña la lista de aparatos así), salvo un USB ya
@@ -79,7 +79,7 @@ export function createExtGps(session: Session, settings: SettingsService) {
     ext.last = null;
     ext.lastMs = null;
     ext.clock = newClock();
-    refreshHome();
+    refreshExt();
     try {
       ext.handle =
         kind === "usb"
@@ -92,7 +92,7 @@ export function createExtGps(session: Session, settings: SettingsService) {
       ext.handle = null;
     }
     ext.busy = false;
-    refreshHome();
+    refreshExt();
   }
 
   function disconnect(): void {
@@ -104,7 +104,7 @@ export function createExtGps(session: Session, settings: SettingsService) {
     ext.clock = newClock();
     settings.update({ receptor: null });
     if (h) Promise.resolve(h.disconnect()).catch(() => {});
-    refreshHome();
+    refreshExt();
   }
 
   function rate(): number {
@@ -156,8 +156,8 @@ export function createExtGps(session: Session, settings: SettingsService) {
       const r = rate();
       if (r > (E.extInfo.hz || 0)) E.extInfo.hz = r;
     }
-    // Rodando no se repinta la portada (no se ve).
-    if (uiStore.getState().screen === "home") refreshHome();
+    // Rodando no se repinta (no se ve); en la portada, solo la línea del receptor.
+    if (uiStore.getState().screen === "home") refreshExt();
   }
 
   function wire(): () => void {

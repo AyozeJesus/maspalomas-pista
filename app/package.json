@@ -1,9 +1,9 @@
 {
-  "name": "maspalomas-pista-app",
+  "name": "poortelemetry",
   "private": true,
   "version": "0.0.0",
   "type": "module",
-  "description": "Modo pista Maspalomas en React + TypeScript (migración de la app del móvil).",
+  "description": "poortelemetry: telemetría de moto con el móvil (React + TypeScript).",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",

@@ -1,6 +1,7 @@
 // La app: todas las pantallas están siempre en la página y solo se ve una (como en la de siempre, con los mismos ids;
 // así el panel no se vuelve a montar al ir y venir de boxes y la batería de pruebas de siempre sirve igual). Encima,
-// las capas: el destello, los avisos, el repaso de una grabación y el aviso de caída.
+// las capas: el selector del circuito, el destello, los avisos, el repaso de una grabación y el aviso de caída.
+import { CircuitPicker } from "./ui/overlays/CircuitPicker";
 import { Crash } from "./ui/overlays/Crash";
 import { Flash } from "./ui/overlays/Flash";
 import { Replaying } from "./ui/overlays/Replaying";
@@ -23,6 +24,7 @@ export function App() {
       <Pits />
       <Sensores />
       <Dia />
+      <CircuitPicker />
       <Flash />
       <Toast />
       <Replaying />

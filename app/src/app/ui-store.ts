@@ -47,6 +47,11 @@ export interface UiState {
   homeVersion: number;
   // Cambia cada vez que el resumen de la ruta o boxes tienen que volver a pintarse.
   summaryVersion: number;
+  // Cambia con cada novedad del receptor GPS externo (y cada segundo con la portada a la vista, por su ritmo): solo se
+  // repinta su línea de Ajustes, no la portada entera (que lee IndexedDB).
+  extVersion: number;
+  // «Salir a pista»: el selector del circuito a la vista.
+  circuitPicker: boolean;
 }
 
 export const uiStore = createStore<UiState>(() => ({
@@ -59,6 +64,8 @@ export const uiStore = createStore<UiState>(() => ({
   crash: null,
   homeVersion: 0,
   summaryVersion: 0,
+  extVersion: 0,
+  circuitPicker: false,
 }));
 
 export function useUi<T>(select: (s: UiState) => T): T {
@@ -100,4 +107,16 @@ export function refreshHome(): void {
 
 export function refreshSummary(): void {
   uiStore.setState((s) => ({ summaryVersion: s.summaryVersion + 1 }));
+}
+
+export function refreshExt(): void {
+  uiStore.setState((s) => ({ extVersion: s.extVersion + 1 }));
+}
+
+export function openCircuitPicker(): void {
+  uiStore.setState({ circuitPicker: true });
+}
+
+export function closeCircuitPicker(): void {
+  uiStore.setState({ circuitPicker: false });
 }

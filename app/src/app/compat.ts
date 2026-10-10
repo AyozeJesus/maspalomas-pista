@@ -3,7 +3,7 @@
 // normal. Se pone al cargar el módulo principal, antes de DOMContentLoaded: hay pruebas que espían MaspaCompartir en
 // ese momento (y la app llama a compartir a través del mismo objeto).
 import * as Formato from "../core/formato";
-import { MaspaAnalysis, MaspaSim, MaspaTelemetry } from "../core/maspalomas";
+import { MASPA_GEO, MaspaAnalysis, MaspaSim, MaspaTelemetry } from "../core/maspalomas";
 import { BRAKE, diveMm, GAS, phaseOf, Recorrido } from "../core/recorrido";
 import { onFix, onMotion, predicted } from "../engine";
 import type { Runtime } from "../runtime";
@@ -55,6 +55,8 @@ export function installCompat(runtime: Runtime): void {
   w.MaspaAnalysis = { ...MaspaAnalysis };
   w.MaspaFormato = { ...Formato };
   w.MaspaRecorrido = { Recorrido, phaseOf, diveMm, BRAKE, GAS };
+  // El trazado de Maspalomas (track-data.js): truta mide con él lo que se aparta la trazada del eje.
+  w.MASPA_GEO = MASPA_GEO;
   // El mismo objeto que usa la app: lo que cambie una prueba (un espía) lo usa también la app.
   w.MaspaCompartir = compartir;
   w.MaspaMapa = mapa;

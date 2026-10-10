@@ -69,16 +69,20 @@ describe("analyze (igual que el de antes)", () => {
     expect(T.analyze(s).gpsHz).toBeCloseTo(5, 6);
   });
 
-  it("con opciones (meta en otro sitio, otro objetivo, otra potencia, sentido forzado): igual", () => {
-    const opts: AnalyzeOptions[] = [
-      { finish: { osm: 120, rev: 33 }, target: 70 },
-      { finish: { rev: 33 } },
-      { finish: null, target: 0 },
-      { power: MAPS.oem.power, target: 60 },
-      { dir: "rev" },
-      { dir: "osm", finish: { osm: 400 } },
-    ];
-    for (const o of opts) same(demo7.session, o);
+  // Una prueba por opción: juntas eran 12 análisis seguidos (2,5 s) y con la suite entera en marcha pasaban del límite.
+  const OPTIONS: [string, AnalyzeOptions][] = [
+    ["meta en otro sitio y otro objetivo", { finish: { osm: 120, rev: 33 }, target: 70 }],
+    ["meta solo en el otro sentido", { finish: { rev: 33 } }],
+    ["sin meta y objetivo 0", { finish: null, target: 0 }],
+    ["otra potencia", { power: MAPS.oem.power, target: 60 }],
+    ["sentido forzado al revés", { dir: "rev" }],
+    ["sentido forzado y meta lejos", { dir: "osm", finish: { osm: 400 } }],
+  ];
+  it.each(OPTIONS)("con opciones (%s): igual", (_name, o) => {
+    same(demo7.session, o);
+  });
+
+  it("con la meta movida, el trazado empieza en ella", () => {
     const moved = T.analyze(demo7.session, { finish: { osm: 120, rev: 33 } });
     expect(moved.track.start).toBe(120);
     expect(moved.laps.length).toBeGreaterThanOrEqual(5);

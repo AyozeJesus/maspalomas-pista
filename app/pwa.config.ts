@@ -12,10 +12,10 @@ export function pwa() {
     injectRegister: false,
     manifestFilename: "manifest.webmanifest",
     manifest: {
-      name: "Modo pista Maspalomas",
-      short_name: "Pista",
+      name: "poortelemetry",
+      short_name: "poortelemetry",
       description:
-        "Delta en directo, vueltas y sectores en el circuito de Maspalomas con el GPS del móvil.",
+        "Telemetría de moto con el móvil: delta en directo, vueltas y sectores en circuito, y cada curva por cualquier carretera.",
       lang: "es",
       start_url: "./",
       scope: "./",

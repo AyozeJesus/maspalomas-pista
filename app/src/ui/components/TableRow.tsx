@@ -1,10 +1,10 @@
 // Una fila de tabla de las de boxes y del resumen: la primera celda tal cual y las demás numéricas; una celda puede
-// llevar su nota debajo (pequeña).
+// llevar su nota debajo (pequeña). className: la de la fila («extra», las que se pliegan en el resumen).
 import type { Cell } from "../../lib/brakes";
 
-export function TableRow({ cells }: { cells: readonly Cell[] }) {
+export function TableRow({ cells, className }: { cells: readonly Cell[]; className?: string }) {
   return (
-    <tr>
+    <tr className={className}>
       {cells.map((cell, k) => (
         <td key={k} className={k ? "num" : undefined}>
           {typeof cell === "string" ? (

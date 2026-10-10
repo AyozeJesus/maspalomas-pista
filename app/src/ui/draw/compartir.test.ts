@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { circuitOutline, lapTrail, leanMarks, mountainTrail } from "../../../test/draw-fixtures";
 import { asDocument, DrawLog, type LogEntry } from "../../../test/fake-canvas";
 import { legacyDraw } from "../../../test/legacy-draw";
+import { renameImageLog } from "../../../test/renames";
 import * as C from "./compartir";
 import { mapa } from "./mapa";
 
@@ -43,7 +44,8 @@ async function make(
 async function same(run: (c: Compartir) => Promise<Blob>, blobFails = false): Promise<Made> {
   const mine = await make(C.compartir, run, blobFails);
   const theirs = await make(old, run, blobFails);
-  expect(mine.log).toStrictEqual(theirs.log);
+  // La marca de arriba es la de ahora (poortelemetry): lo demás, igual que antes.
+  expect(mine.log).toStrictEqual(renameImageLog(theirs.log));
   expect(mine.out).toEqual(theirs.out);
   return mine;
 }

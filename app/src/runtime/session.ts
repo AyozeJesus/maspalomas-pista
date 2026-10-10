@@ -326,8 +326,21 @@ export function createSession(deps: SessionDeps) {
     onMotion(E, t, lin, grav, gyro);
   }
 
-  // free: ruta libre por cualquier carretera (sin circuito).
+  // free: ruta libre por cualquier carretera (sin circuito). Entre el toque y el panel pasan pantalla completa y
+  // permisos (cientos de ms): un segundo toque entonces no arranca otra (dejaría un seguimiento del GPS que nadie
+  // para y que mandaría fijos repetidos a la siguiente).
+  let starting = false;
   async function startReal(free?: boolean): Promise<void> {
+    if (starting || (rt.E && !rt.E.viewing)) return;
+    starting = true;
+    try {
+      await startRealNow(free);
+    } finally {
+      starting = false;
+    }
+  }
+
+  async function startRealNow(free?: boolean): Promise<void> {
     const motionOk = await askMotion();
     if (!("geolocation" in navigator)) {
       setStatus("gps", "bad", "Este navegador no da acceso al GPS.");
@@ -556,6 +569,8 @@ export function createSession(deps: SessionDeps) {
     onVisible,
     lockOrientation,
     setStatus,
+    // La prueba de sensores también mantiene la pantalla encendida.
+    keepAwake,
   };
 }
 
