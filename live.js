@@ -8,7 +8,7 @@
   const ST = window.PistaStore;
   const APP_VERSION = 2;
   // Versión publicada (la misma que la copia de sw.js, «pista-vN»): se ve en la portada.
-  const BUILD = 22;
+  const BUILD = 23;
   const G = 9.80665;
   const REC_EVERY = 10; // segundos entre trozos guardados en el móvil
   const $ = (id) => document.getElementById(id);
@@ -1641,6 +1641,7 @@
     const viewing = !!E.viewing;
     $("resume").hidden = viewing;
     $("p-calib").hidden = viewing;
+    $("p-toolbar").hidden = !viewing;
     setText("finish", viewing ? "Cerrar" : "Terminar");
     show("pits");
     const valid = E.laps.filter((l) => l.valid);
@@ -2010,6 +2011,65 @@
       "ruta-fin",
     ])
       $(id).hidden = id !== which;
+  }
+
+  // ---------- atrás (el botón o el gesto del móvil) ----------
+  // Instalada, la app se cerraba con el atrás del móvil desde cualquier pantalla. Ahora lleva una entrada propia en
+  // el historial y atrás vuelve dentro de la app: el resumen de la ruta y la prueba de sensores, a la portada;
+  // repasando una grabación, la cierra; rodando no para nada (avisa de cómo terminar); en la portada, la primera vez
+  // avisa y la segunda sale. La entrada se pone al tocar la pantalla: al ir atrás, Chrome se salta las que una
+  // página añade sin que nadie la haya tocado.
+  function backArm() {
+    if (!(history.state && history.state.pista))
+      history.pushState({ pista: 1 }, "");
+  }
+  let toastTimer = 0;
+  function toast(text, ms) {
+    const el = $("toast");
+    el.textContent = text;
+    el.hidden = false;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => {
+      el.hidden = true;
+    }, ms || 2500);
+  }
+  function onBack() {
+    // La alarma de caída no se quita con atrás: para eso está «Estoy bien».
+    if (!$("crash").hidden) return backArm();
+    if (viewJob) {
+      cancelView();
+      return backArm();
+    }
+    if (!$("ruta").hidden || !$("dash").hidden) {
+      toast(
+        E && E.sim
+          ? "Para salir de la vuelta de ejemplo, «Boxes»"
+          : E && E.free
+            ? "Sigue grabando: para acabar, «Terminar»"
+            : "Sigue grabando: para parar, «Boxes»",
+      );
+      return backArm();
+    }
+    if (!$("pits").hidden) {
+      if (E && E.viewing) stopAll();
+      else toast("Para seguir, «Volver a pista»; para acabar, «Terminar»");
+      return backArm();
+    }
+    if (!$("ruta-fin").hidden) {
+      show("home");
+      renderHome();
+      return backArm();
+    }
+    if (!$("sensores").hidden) {
+      stopSensors();
+      return backArm();
+    }
+    if (!$("dia").hidden) {
+      leaveDay();
+      return backArm();
+    }
+    // En la portada: sin entrada propia, el siguiente atrás ya sale (de eso se encarga el móvil).
+    toast("Pulsa atrás otra vez para salir");
   }
 
   // ---------- prueba de sensores (en cualquier sitio, con el móvil de verdad) ----------
@@ -3211,7 +3271,6 @@
               ? " down"
               : ""),
     );
-    setText("ru-title", E.circTrack.name);
   }
 
   // Ruta libre: mapa que sigue a la moto, lo que mide el móvil, la última curva y los totales.
@@ -3221,6 +3280,14 @@
     const fl = $("flash");
     if (!fl.hidden && t > E.flashUntil) fl.hidden = true;
     renderCircuit(t);
+    setText(
+      "ru-title",
+      E.circ
+        ? E.circTrack.name
+        : E.segment > 1
+          ? "Tramo " + E.segment
+          : "Ruta libre",
+    );
     const fresh = E.lastFixT !== null && t - E.lastFixT < 2.5 && !E.gpsBad;
     setCls(
       "ru-gps",
@@ -3245,6 +3312,8 @@
       );
     }
     renderCalib("ru-calib", "ru-title", "ru-lean-l");
+    // «Nuevo tramo» va con «Calibrar»: solo con la moto parada (y grabando).
+    $("ru-seg").hidden = $("ru-calib").hidden || !E.rec;
     if (E.calib.f && moving) {
       const g = E.aEma / G;
       setText("ru-g", fmtSigned(g, 2));
@@ -4200,6 +4269,67 @@
     }
   }
 
+  // «Nuevo tramo» (ruta libre, con la moto parada): cierra la grabación de ahora (queda en «Tus rutas y tandas» y se
+  // sube como siempre) y empieza otra en el momento, sin parar los sensores ni el GPS y sin perder lo aprendido.
+  // Antes había que terminar y volver a salir, y la ruta nueva tenía que aprenderlo todo otra vez (en una de las del
+  // 9 de octubre no llegó a haber inclinación). Lo que no depende del reloj de la grabación pasa al tramo nuevo.
+  const SEGMENT_CARRY = [
+    // Ejes, calibración, inclinación y cabeceo (con el sesgo del giroscopio y el orden de sus ejes).
+    "calib",
+    "lean",
+    "pitch",
+    "pitchAxes",
+    "axes",
+    "leanAxes",
+    "leanKey",
+    "axesVer",
+    "leanSign",
+    "leanVote",
+    "mount",
+    "mountChk",
+    "screenAngle",
+    "calibManual",
+    "hasGyro",
+    "motionDenied",
+    "moved",
+    // Aceleración (y la pendiente que se le quita), retraso del GPS y traducción de su reloj.
+    "aRaw",
+    "aBias",
+    "aEma",
+    "wLp",
+    "lag",
+    "lagR2",
+    "phoneClock",
+    // Receptor externo y orientación de la pantalla.
+    "extGps",
+    "extUsed",
+    "extInfo",
+    "orientLock",
+    "orientTried",
+    "orientChecked",
+  ];
+  async function newSegment() {
+    if (!E || E.sim || E.viewing || !E.free || !E.rec) return false;
+    const old = E;
+    recFlush(true);
+    saveMeta("terminada");
+    const saved = old.rec.queue;
+    const eng = newEngine(false, true);
+    for (const k of SEGMENT_CARRY) eng[k] = old[k];
+    eng.segment = (old.segment || 1) + 1;
+    eng.t0 = perfNow();
+    eng.wall0 = Date.now();
+    // Los sensores pasan ya al tramo nuevo (se guardan en memoria hasta que tenga su grabación).
+    E = eng;
+    lastE = old;
+    mapView.drawnAt = 0;
+    toast("Tramo " + eng.segment + ": el anterior queda guardado");
+    // La grabación nueva cierra como «cortada» lo que quede a medias: primero, que el anterior quede terminado.
+    await saved.catch(() => {});
+    if (E === eng) recStart(eng.wall0);
+    return true;
+  }
+
   function stopAll() {
     if (E) {
       recFlush(true);
@@ -4804,6 +4934,22 @@
       btn.textContent = "Terminar";
       stopAll();
     });
+    let segArmed = false;
+    $("ru-seg").addEventListener("click", () => {
+      const btn = $("ru-seg");
+      if (!segArmed) {
+        segArmed = true;
+        btn.textContent = "¿Nuevo tramo? Otra vez";
+        setTimeout(() => {
+          segArmed = false;
+          btn.textContent = "Nuevo tramo";
+        }, 4000);
+        return;
+      }
+      segArmed = false;
+      btn.textContent = "Nuevo tramo";
+      newSegment();
+    });
     $("ru-color").addEventListener("click", () => {
       mapView.colorBy = mapView.colorBy === "fase" ? "incl" : "fase";
       mapView.drawnAt = 0;
@@ -4829,6 +4975,22 @@
     $("ruf-home").addEventListener("click", () => {
       show("home");
       renderHome();
+    });
+    $("ruf-back").addEventListener("click", () => {
+      show("home");
+      renderHome();
+    });
+    // Repasando una tanda guardada (boxes solo para mirar): cerrar.
+    $("p-back").addEventListener("click", () => {
+      if (E && E.viewing) stopAll();
+    });
+    // Atrás del móvil (ver onBack) y su entrada en el historial, que se pone al tocar la pantalla.
+    window.addEventListener("popstate", (ev) => {
+      if (!(ev.state && ev.state.pista)) onBack();
+    });
+    document.addEventListener("pointerdown", backArm, {
+      capture: true,
+      passive: true,
     });
     $("ruf-export").addEventListener("click", () => exportSession(lastE));
     $("ruf-save").addEventListener("click", saveCircuit);

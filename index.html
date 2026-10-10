@@ -241,7 +241,7 @@
     background: rgba(0, 0, 0, 0.3); font-size: 22px; font-weight: 800; line-height: 1.1;
   }
   /* A la izquierda: la vuelta (o el título de la ruta) y, con la moto parada, «Calibrar» en su sitio. */
-  .top-l { justify-self: start; min-width: 0; display: flex; align-items: center; }
+  .top-l { justify-self: start; min-width: 0; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
   .stop.calib { padding: 8px 12px; font-size: 14px; letter-spacing: 0.02em; white-space: nowrap; border-color: rgba(255, 255, 255, 0.85); }
   .gps { justify-self: end; display: flex; gap: 8px; align-items: baseline; white-space: nowrap; }
   .gps .dot { align-self: center; width: 12px; height: 12px; box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.9); }
@@ -253,6 +253,11 @@
   }
   @media (hover: hover) { .stop:hover { background: rgba(0, 0, 0, 0.7); border-color: #fff; } }
   .stop:active { background: rgba(0, 0, 0, 0.75); }
+  /* En vertical, con la moto parada caben «Calibrar» y «Nuevo tramo» a la izquierda sin pisar «Terminar». */
+  @media (max-width: 460px) {
+    .stop { padding-inline: 14px; }
+    .stop.calib { padding: 8px 10px; font-size: 13px; letter-spacing: 0; }
+  }
   .delta { display: grid; place-items: center; align-content: center; padding: 0 8px; font-weight: 900; line-height: 0.9; font-size: min(30vw, 34vh); letter-spacing: -0.04em; text-align: center; }
   .delta small { display: block; font-size: 0.16em; font-weight: 700; letter-spacing: 0; line-height: 1.2; opacity: 0.92; margin-top: 0.55em; }
   .dash-bottom { display: grid; gap: 8px; min-width: 0; padding: 0 max(14px, env(safe-area-inset-right)) max(14px, env(safe-area-inset-bottom)) max(14px, env(safe-area-inset-left)); }
@@ -350,6 +355,8 @@
   .crash.alarm { animation: crashflash 0.8s steps(2, end) infinite; }
   @keyframes crashflash { 0% { background: #b3261e; } 50% { background: #000; } 100% { background: #b3261e; } }
   @media (prefers-reduced-motion: reduce) { .crash.alarm { animation: none; } }
+  /* Aviso corto abajo, encima de todo (no tapa los botones del panel: va sobre la zona de datos). */
+  .toast { position: fixed; left: 50%; bottom: max(24px, env(safe-area-inset-bottom)); transform: translateX(-50%); z-index: 45; max-width: min(92vw, 520px); padding: 12px 18px; border-radius: 999px; background: rgba(5, 6, 7, 0.92); border: 1px solid var(--line-strong); color: var(--ink); font-weight: 700; font-size: 16px; text-align: center; pointer-events: none; }
   /* Avisos a pantalla completa: vuelta, sector y frenada. */
   .flash { position: fixed; inset: 0; display: grid; place-items: center; align-content: center; padding: 16px; text-align: center; font-weight: 900; pointer-events: none; }
   .flash.lap { background: #000; font-size: min(22vw, 26vh); line-height: 1; letter-spacing: -0.02em; }
@@ -516,7 +523,7 @@
   <!-- Ruta libre: cualquier carretera, la trazada se va dibujando -->
   <section class="dash ride" id="ruta" hidden aria-live="off">
     <div class="dash-top">
-      <span class="top-l"><span id="ru-title">Ruta libre</span><button class="stop calib" id="ru-calib" hidden aria-label="Calibrar la inclinación con la moto parada y derecha">Calibrar</button></span>
+      <span class="top-l"><span id="ru-title">Ruta libre</span><button class="stop calib" id="ru-calib" hidden aria-label="Calibrar la inclinación con la moto parada y derecha">Calibrar</button><button class="stop calib" id="ru-seg" hidden aria-label="Guardar lo grabado y empezar un tramo nuevo sin perder la calibración">Nuevo tramo</button></span>
       <button class="stop" id="ru-stop">Terminar</button>
       <span class="gps"><span class="dot" id="ru-gps"></span><small class="hz" id="ru-hz" hidden></small><span class="num" id="ru-speed">0</span><small class="unit">km/h</small></span>
     </div>
@@ -554,6 +561,9 @@
 
   <!-- Resumen de la ruta -->
   <main class="page" id="ruta-fin" hidden>
+    <div class="toolbar">
+      <button class="quiet back" id="ruf-back"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg>Volver</button>
+    </div>
     <header class="page-head">
       <h1 class="title">Tu ruta</h1>
       <p class="muted" id="ruf-sub"></p>
@@ -587,6 +597,9 @@
 
   <!-- Boxes -->
   <main class="page" id="pits" hidden>
+    <div class="toolbar" id="p-toolbar" hidden>
+      <button class="quiet back" id="p-back"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg>Volver</button>
+    </div>
     <header class="page-head">
       <h1 class="title">Boxes</h1>
       <p class="muted" id="p-sub"></p>
@@ -671,6 +684,8 @@
   </main>
 
   <div class="flash" id="flash" hidden></div>
+  <!-- Avisos cortos (el atrás del móvil, tramo nuevo…). -->
+  <div class="toast" id="toast" hidden role="status" aria-live="polite"></div>
 
   <!-- Repaso de una grabación guardada (Tus rutas y tandas → Ver). -->
   <div class="replaying" id="replaying" hidden role="status" aria-live="polite">

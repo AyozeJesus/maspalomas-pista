@@ -114,6 +114,15 @@ velocidad de entrada y la mínima, y el tiempo sin gas. Los caballitos se miden 
 como iba (morro arriba más de 6°, con la moto derecha, sin girar y sin frenar): duración, metros, ángulo y tiempo
 perdido aproximado. Al terminar, el mapa entero con las curvas más tumbadas.
 
+**Nuevo tramo**: con la moto parada, junto a «Calibrar» sale «Nuevo tramo» (dos toques). Guarda lo grabado hasta
+ahí como una ruta terminada y sigue grabando otra al momento, con la calibración, los ejes, el sesgo del giroscopio
+y el retraso del GPS que ya había aprendido: para hacer un tramo subiendo y otro bajando sin terminar y volver a
+salir (que obligaba a aprenderlo todo otra vez).
+
+**Atrás**: el atrás del móvil ya no cierra la app. Desde el resumen de la ruta, la prueba de sensores o los tiempos
+del día vuelve a la portada (y el resumen tiene «Volver» arriba); repasando una grabación, la cierra; rodando no
+para nada (avisa de que para acabar está «Terminar»); en la portada avisa y el segundo atrás sale.
+
 La trazada mezcla el giroscopio (entre posiciones del GPS) y el GPS (que la corrige poco a poco): sale suave y,
 en las pruebas, a ~2,5 m de la posición real frente a ~5 m usando solo el GPS. En carretera, respeta las normas:
 el mapa es para mirarlo parado o después.
