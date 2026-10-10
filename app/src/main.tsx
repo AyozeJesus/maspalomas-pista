@@ -4,6 +4,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "./App";
 import { installCompat } from "./app/compat";
+import { registerServiceWorker } from "./app/sw-register";
 import { createRuntime } from "./runtime";
 import { RuntimeContext } from "./ui/runtime-context";
 import "./styles/app.css";
@@ -23,3 +24,4 @@ createRoot(root).render(
   </StrictMode>,
 );
 runtime.start();
+registerServiceWorker(runtime);
