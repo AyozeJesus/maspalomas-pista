@@ -8,6 +8,10 @@
   const BRAKE = -0.15; // g
   const BRAKE_END = -0.1; // g
   const GAS = 0.05; // g: por encima, acelerando
+  // Una fase nueva cuenta si dura 0,25 s (el acelerómetro lleva ±0,1 g de ruido aun suavizado: sin esto la fase
+  // cambiaba una vez por segundo); una frenada fuerte (−0,3 g) entra en el momento.
+  const PH_HOLD = 0.25; // s
+  const BRAKE_NOW = -0.3; // g
   const YAW_IN = 0.15; // rad/s: giro claro → empieza una curva
   const YAW_OUT = 0.08; // rad/s: por debajo un rato → se acaba
   const STEP = 3; // m entre puntos de la trazada
@@ -21,6 +25,7 @@
   // horquilla lo compensa en parte). Es una estimación para comparar frenadas, no una medida del recorrido.
   const WHEELBASE_MM = 1440;
   const FORK_SHARE = 0.8;
+  const G = 9.80665;
 
   // braking: si ya se estaba frenando (para el margen).
   function phaseOf(a, braking) {
@@ -37,13 +42,19 @@
     this.fix = null;
     this.heading = null;
     this.yawS = 0;
+    this.ySig = 0;
     this.quiet = null;
     this.brake = null;
     this.lastT = null;
+    this.lastPh = "mantiene";
+    this.phCand = null;
     this.wheelies = [];
     this.wheelie = null;
     this.brakes = [];
     this.bk = null;
+    // Velocidades del GPS de los últimos 20 s y frenadas por confirmar con ellas.
+    this.vHist = [];
+    this.pendingBrk = [];
     this.lastBrk = null;
     this.pHist = [];
     // Posición suavizada (giroscopio + GPS) y signo del giro comprobado con el rumbo del GPS.
@@ -162,6 +173,40 @@
     }
     this.fix = { t, x, y, v };
     if (v > this.stats.vMax) this.stats.vMax = v;
+    this.vHist.push([t, v]);
+    while (this.vHist.length && t - this.vHist[0][0] > 20) this.vHist.shift();
+    this.checkBrakes(t);
+  };
+
+  // Velocidad del GPS en el instante t de la moto (el fijo de las t + lag lo describe), o null.
+  Recorrido.prototype.vAt = function (t) {
+    const H = this.vHist;
+    const tf = t + (this.lag || 0);
+    if (!H.length || tf < H[0][0] || tf > H[H.length - 1][0]) return null;
+    let k = 0;
+    while (k < H.length - 2 && H[k + 1][0] <= tf) k++;
+    const a = H[k];
+    const b = H[k + 1] || a;
+    if (b[0] - a[0] > 3) return null;
+    const f = b[0] > a[0] ? (tf - a[0]) / (b[0] - a[0]) : 0;
+    return a[1] + (b[1] - a[1]) * f;
+  };
+
+  // Una frenada del acelerómetro vale si el GPS la ve: la velocidad tiene que bajar al menos el 40 % de lo que
+  // dice el acelerómetro (y 2 km/h). Con la vibración, alguna «frenada» de 0,3–0,4 g sin bajar la velocidad era
+  // ruido o un bache (en 3 rutas de un Vivo Y33s, 8–20 %). Se mira cuando el GPS ya ha visto el final (medio
+  // segundo después); sin GPS se queda como está.
+  Recorrido.prototype.checkBrakes = function (tFix) {
+    const lag = this.lag || 0;
+    this.pendingBrk = this.pendingBrk.filter((b) => {
+      if (tFix - lag < b.endT + 0.5) return true;
+      const v0 = this.vAt(b.t - 0.3);
+      const v1 = this.vAt(b.endT + 0.3);
+      if (v0 === null || v1 === null) return false;
+      const drop = (v0 - v1) * 3.6;
+      b.gps = drop >= Math.max(2, 0.4 * b.mean * G * b.dur * 3.6);
+      return false;
+    });
   };
 
   // Estimación guardada en el instante t (la más cercana del historial de 4 s).
@@ -231,8 +276,11 @@
     if (st.t0 === null) st.t0 = t;
     st.t1 = t;
     const moving = s.v > 3;
-    const ph = phaseOf(s.a, this.lastPh === "freno");
-    this.lastPh = ph;
+    // Dos fases: la de los umbrales tal cual (brk), para las frenadas y las curvas (cada frenada se valida aparte:
+    // pico, duración), y la sostenida (ph), la que se ve en la trazada y en el panel.
+    const brk = phaseOf(s.a, this.rawPh === "freno");
+    this.rawPh = brk;
+    const ph = this.phaseStep(t, s.a);
     // Distancia por la velocidad (sumar las posiciones del GPS añadiría su temblor).
     if (moving) st.dist += s.v * dt;
     if (moving && s.a === s.a) {
@@ -248,7 +296,7 @@
     const pos = this.position(t, s.v, s.lag);
 
     // Frenada en curso (para la curva que venga): inicio, punto, velocidad de entrada, máximo, fin.
-    if (ph === "freno" && moving) {
+    if (brk === "freno" && moving) {
       if (!this.brake || this.brake.tEnd !== null) {
         this.brake = { t0: t, pos, v0: s.v, g: 0, tEnd: null };
       }
@@ -262,10 +310,21 @@
     )
       this.brake = null;
 
-    this.brakeStep(t, s, ph, pos, dt);
+    this.brakeStep(t, s, brk, pos, dt);
 
-    // Curvas: giro claro sostenido.
-    this.yawS += ((s.yaw || 0) - this.yawS) * (1 - Math.exp(-dt / 0.3));
+    // Curvas: giro claro sostenido. Con signo (ySig), para partir las enlazadas: una izquierda seguida de una derecha
+    // son dos curvas aunque entre medias el giro no llegue a pararse (en una carretera de montaña salían curvas de
+    // 30–40 s, y con ellas tiempos muertos de 20–30 s).
+    const ks = 1 - Math.exp(-dt / 0.3);
+    this.yawS += ((s.yaw || 0) - this.yawS) * ks;
+    if (s.yawRate === s.yawRate) this.ySig += (s.yawRate - this.ySig) * ks;
+    if (
+      this.curve &&
+      this.curve.dir &&
+      Math.sign(this.ySig) === -this.curve.dir &&
+      Math.abs(this.ySig) > YAW_IN
+    )
+      this.endCurve(t, s);
     const c = this.curve;
     if (!c && this.yawS > YAW_IN && moving) {
       const b = this.brake;
@@ -290,9 +349,11 @@
         gasT: null,
         gasCand: null,
         yawMax: this.yawS,
+        dir: 0,
       };
       this.quiet = null;
     } else if (c) {
+      if (!c.dir && Math.abs(this.ySig) > YAW_IN) c.dir = Math.sign(this.ySig);
       if (s.lean === s.lean && Math.abs(s.lean) > c.leanMax) {
         c.leanMax = Math.abs(s.lean);
         c.lean = s.lean;
@@ -347,6 +408,24 @@
     }
   };
 
+  // Fase de ahora (g): la que dicen los umbrales, si se sostiene PH_HOLD s.
+  Recorrido.prototype.phaseStep = function (t, a) {
+    const cur = this.lastPh || "mantiene";
+    const want = phaseOf(a, cur === "freno");
+    if (want === cur || (want === "freno" && a < BRAKE_NOW)) {
+      this.phCand = null;
+      this.lastPh = want;
+      return want;
+    }
+    if (!this.phCand || this.phCand.ph !== want) this.phCand = { ph: want, t };
+    if (t - this.phCand.t >= PH_HOLD) {
+      this.phCand = null;
+      this.lastPh = want;
+      return want;
+    }
+    return cur;
+  };
+
   // Cierra la curva: tiempo muerto = de soltar el freno (o de entrar sin frenar) a volver a dar gas.
   Recorrido.prototype.endCurve = function (t, s) {
     const c = this.curve;
@@ -386,11 +465,11 @@
   // Frenadas: g de cada instante, metros, velocidad, cabeceo (para el hundimiento) e inclinación (frenar
   // tumbado). Al soltar el freno se resume y, si es de verdad, queda en la lista.
   Recorrido.prototype.brakeStep = function (t, s, ph, pos, dt) {
-    if (s.pitch === s.pitch) {
-      this.pHist.push([t, s.pitch]);
-      while (this.pHist.length && t - this.pHist[0][0] > 1.5)
-        this.pHist.shift();
-    }
+    // El cabeceo solo vale con la moto casi sin girar ni cambiar de lado (turn, rad/s): frenando mientras se pasa
+    // de una curva a la siguiente, el cambio de lado lo movía ±6° y salían hundimientos de 11°.
+    const pitchOk = s.pitch === s.pitch && !(s.turn > 0.08);
+    if (pitchOk) this.pHist.push([t, s.pitch]);
+    while (this.pHist.length && t - this.pHist[0][0] > 1.5) this.pHist.shift();
     let b = this.bk;
     if (ph === "freno" && s.v > 3 && s.a === s.a) {
       if (!b) {
@@ -419,10 +498,8 @@
       const lean = Math.abs(s.lean);
       // El hundimiento se mide con la moto casi recta: tumbada, el cabeceo que da el móvil es menos fiable.
       // Si la frenada empieza ya tumbado (curvas enlazadas) y nunca se endereza, vale hasta 30°.
-      if (s.pitch === s.pitch && !(lean > TRAIL_LEAN))
-        b.pMin = Math.min(b.pMin, s.pitch);
-      if (s.pitch === s.pitch && !(lean > 30))
-        b.pMinLean = Math.min(b.pMinLean, s.pitch);
+      if (pitchOk && !(lean > TRAIL_LEAN)) b.pMin = Math.min(b.pMin, s.pitch);
+      if (pitchOk && !(lean > 30)) b.pMinLean = Math.min(b.pMinLean, s.pitch);
       if (lean === lean && g >= TRAIL_G) b.leanMax = Math.max(b.leanMax, lean);
       if (lean > TRAIL_LEAN && g >= TRAIL_G) {
         b.trailDist += s.v * dt;
@@ -473,6 +550,7 @@
       gTurn: b.gTurn === null ? null : r2(b.gTurn),
     };
     this.brakes.push(res);
+    this.pendingBrk.push(res);
     // A la curva en la que se suelta el freno o, si aún no ha empezado, a la siguiente.
     const c = this.curve;
     if (c) {
@@ -482,9 +560,12 @@
     return res;
   };
 
-  // Caballitos: morro arriba más de 5,5° lanzado (y sin ir tumbado). Se acaba cuando baja de 3°. Lo que se
-  // pierde: mientras la rueda va en el aire se acelera menos que justo antes (la mediana de 1,5 s antes de
-  // levantar); esa velocidad que falta se arrastra hasta la siguiente frenada (o 8 s). Es una estimación.
+  // Caballitos: morro arriba más de 6° lanzado, con la moto derecha (menos de 15°), sin girar ni cambiar de lado
+  // (turn: curva o balanceo, rad/s; ahí el cabeceo que da el móvil no es fiable) y sin frenar. El cabeceo es respecto
+  // a como iba la moto justo antes (la sentadilla de acelerar ya no cuenta). Se acaba cuando baja de 3°; cuenta si
+  // dura medio segundo y pasa de 7°. Lo que se pierde: mientras la rueda va en el aire se acelera
+  // menos que justo antes (la mediana de 1,5 s antes de levantar); esa velocidad que falta se arrastra hasta la
+  // siguiente frenada (o 8 s). Es una estimación.
   Recorrido.prototype.wheelieStep = function (t, s, ph, pos, dt) {
     const aW = s.aW === s.aW ? s.aW : s.a;
     if (aW === aW) {
@@ -494,7 +575,14 @@
     }
     const pitch = s.pitch;
     const wh = this.wheelie;
-    if (!wh && pitch > 5.5 && s.v > 8 && !(Math.abs(s.lean) > 25)) {
+    if (
+      !wh &&
+      pitch > 6 &&
+      s.v > 8 &&
+      !(Math.abs(s.lean) > 15) &&
+      !(s.turn > 0.08) &&
+      ph !== "freno"
+    ) {
       const as = this.aHist.map((x) => x[1]).sort((x, y) => x - y);
       this.wheelie = {
         t0: t,
@@ -531,7 +619,7 @@
     const wh = this.wheelie;
     this.wheelie = null;
     const dur = t - wh.t0;
-    if (dur < 0.4 || wh.max < 6.5) return null;
+    if (dur < 0.5 || wh.max < 7) return null;
     if (this.lossOpen) {
       this.lossOpen.w.lost =
         Math.round((this.lossOpen.w.lossIn + this.lossOpen.post) * 100) / 100;
@@ -597,7 +685,8 @@
         brakeG: c.brakeG === null ? null : Math.round(c.brakeG * 100) / 100,
         dead: Math.round(c.dead * 10) / 10,
       })),
-      ...brakeSummary(this.brakes),
+      // Las que el GPS no vio no cuentan (gps === false).
+      ...brakeSummary(this.brakes.filter((b) => b.gps !== false)),
     };
   };
 

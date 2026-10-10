@@ -41,7 +41,9 @@ dibujar en 3D, lo dice y el panel sigue igual.
 
 - **Velocidad y posición**: GPS (el del móvil o un receptor externo), adelantado con el acelerómetro para compensar
   su retraso.
-- **Frenada y gas (g)**: acelerómetro, en el eje de la moto que el móvil aprende solo comparándose con el GPS.
+- **Frenada y gas (g)**: acelerómetro en bruto (no la aceleración «lineal» de Android, que la vibración estropea),
+  en el eje de la moto que el móvil aprende solo comparándose con el GPS, menos la pendiente de la carretera (lo
+  que mide de más respecto al GPS, en media lenta). Ver «Con la vibración de la moto».
 - **Inclinación**: giroscopio. En curva la moto gira alrededor de la vertical del mundo y, vista desde la moto
   tumbada, ese giro se reparte entre su vertical y su eje lateral: de ahí sale el ángulo, sin depender de la
   gravedad (que en un giro equilibrado apunta al suelo de la moto). En curvas rápidas se ayuda de la velocidad.
@@ -66,7 +68,8 @@ dibujar en 3D, lo dice y el panel sigue igual.
   metros, velocidad de entrada y salida, cuánto baja el morro (cabeceo desde justo antes de frenar, en grados y
   ≈ mm de horquilla: batalla × tan(cabeceo) × 0,8, una estimación para comparar) y cuánto frenas tumbado (metros
   con más de 0,25 g y más de 12°, y la inclinación a la que sueltas). Cuenta como frenada lo que pasa de 0,3 g
-  durante 0,4 s; soltar gas no. Sale en el resumen de cada curva, en boxes («Frenadas por curva», lo mejor de la
+  durante 0,4 s y que el GPS confirma (la velocidad baja al menos el 40 % de lo que dice el acelerómetro); soltar
+  gas no. El hundimiento solo se mide con la moto casi sin girar. Sale en el resumen de cada curva, en boxes («Frenadas por curva», lo mejor de la
   tanda) y en el resumen de la ruta libre. El móvil mide la deceleración total (frenos, freno motor y aire): no
   separa delante de detrás ni mide la presión de la maneta.
 
@@ -104,10 +107,12 @@ desfasados. En el Vivo Y33s, una ruta de 33 min y 61 km (200.000 muestras de sen
 ## Ruta libre (cualquier carretera)
 
 Va dibujando tu línea de trazada sobre un mapa que te sigue: en rojo donde frenas, en verde donde aceleras, en
-ámbar el tiempo sin gas en curva (entre soltar el freno y volver a dar gas) y en morado los caballitos. Las curvas
-se detectan solas por el giroscopio; de cada una, la tumbada máxima, la frenada, la velocidad de entrada y la
-mínima, y el tiempo sin gas. Los caballitos se miden por el cabeceo de la moto (morro arriba más de ~6°): duración,
-metros, ángulo y tiempo perdido aproximado. Al terminar, el mapa entero con las curvas más tumbadas.
+ámbar el tiempo sin gas en curva (entre soltar el freno y volver a dar gas) y en morado los caballitos. La fase
+cambia cuando se sostiene un cuarto de segundo (una frenada fuerte, al momento). Las curvas se detectan solas por
+el giroscopio (una izquierda seguida de una derecha son dos); de cada una, la tumbada máxima, la frenada, la
+velocidad de entrada y la mínima, y el tiempo sin gas. Los caballitos se miden por el cabeceo de la moto respecto a
+como iba (morro arriba más de 6°, con la moto derecha, sin girar y sin frenar): duración, metros, ángulo y tiempo
+perdido aproximado. Al terminar, el mapa entero con las curvas más tumbadas.
 
 La trazada mezcla el giroscopio (entre posiciones del GPS) y el GPS (que la corrige poco a poco): sale suave y,
 en las pruebas, a ~2,5 m de la posición real frente a ~5 m usando solo el GPS. En carretera, respeta las normas:
@@ -231,6 +236,39 @@ Android 13, Chrome 146, Helio G85, conectado por cable al Mac (adb y DevTools):
   dormido; los fijos del GPS, con el de pared. Con la app abierta desde antes de dormirlo, los dos se separaban y
   el análisis fallaba («No he podido orientar el móvil respecto a la moto»). Ahora todo va en el reloj de los
   sensores y la hora de cada fijo se traduce a él (`mapClock` en `live.js`, como la del receptor externo).
+
+## Con la vibración de la moto (4 rutas reales, 9 de octubre)
+
+Las primeras rutas con el Vivo en el soporte de la ZX-10R (60 min en total, 1 Hz de GPS y 60 Hz de sensores)
+sacaron 37 caballitos que no hubo, frenadas que no se veían hundir y curvas que no se acababan nunca. Cada cosa se
+comparó segundo a segundo con el GPS (que no vibra: la aceleración sale de su velocidad y la inclinación, de
+atan(v·giro del rumbo/g)), con `rutas-analisis.js` (repasa cada ruta con el motor de la app) y `eval-app.js`:
+
+- **El soporte vibra** (±1 g y 0,3–0,5 rad/s por muestra). La aceleración «lineal» y la gravedad que separa Android
+  salen de una fusión que eso estropea: su gravedad se desviaba hasta 11° de la real. Ahora se usa el acelerómetro
+  en bruto (la suma de las dos), que sí cuadra con el GPS.
+- **La vertical** se buscaba en rectas sin giro, y con la vibración casi ninguna muestra lo parecía: en dos rutas
+  no hubo inclinación hasta el final. Ahora es la media del acelerómetro rodando (en curva apunta igual al suelo de
+  la moto), quitándole a cada muestra la aceleración.
+- **El eje adelante** del GPS salía girado hasta 30° alrededor de la vertical (la aceleración apenas lo nota). Al
+  cambiar de lado en curvas enlazadas, el balanceo se colaba en el cabeceo: esos eran los caballitos. Ahora se afina
+  con el propio balanceo (el bueno es el que no lo mezcla con el cabeceo; en el primer medio minuto ya no se mueve).
+- **El cabeceo** solo se mide con la moto casi sin girar y es respecto a como iba (la pendiente de una cuesta no es
+  un caballito); en curva vuelve a 0.
+- **Las curvas** sumaban el ruido del giroscopio (el módulo de cada muestra nunca bajaba del umbral de salida): ahora
+  el giro va en media de 0,3 s, y una izquierda seguida de una derecha son dos curvas.
+
+| Contra el GPS                              | Antes                    | Ahora                    |
+| ------------------------------------------ | ------------------------ | ------------------------ |
+| Inclinación (r)                            | 0,92–0,96 (y sin ella en 2 rutas) | 0,94–0,97, siempre |
+| Aceleración (r / error)                    | 0,32–0,70 / 0,26–0,35 g  | 0,68–0,90 / 0,10–0,16 g  |
+| Fase frena / acelera / suelta (acierto)    | 49 %, cambia 35–74 veces/min | 67 %, 14–22 veces/min |
+| Curvas (el GPS ve 82 / 53 / 14 / 97)       | 24 / 1 / 0 / 1           | 107 / 59 / 13 / 103      |
+| Caballitos (no hubo ninguno)               | 37 / 17 / 0 / 1          | 0                        |
+| Hundimiento en frenadas fuertes rectas     | 0–40° (ruido)            | 1–3°                     |
+
+La inclinación es la del chasis (con giro claro sale de la división de los giros); la de la física de la curva (la
+del GPS) es 2–10° menor, lo que se espera del ancho del neumático.
 
 ## Privacidad y seguridad
 

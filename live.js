@@ -8,7 +8,7 @@
   const ST = window.PistaStore;
   const APP_VERSION = 2;
   // Versión publicada (la misma que la copia de sw.js, «pista-vN»): se ve en la portada.
-  const BUILD = 21;
+  const BUILD = 22;
   const G = 9.80665;
   const REC_EVERY = 10; // segundos entre trozos guardados en el móvil
   const $ = (id) => document.getElementById(id);
@@ -259,7 +259,14 @@
       prevCueS: null,
       deltaEma: null,
       calib: newCalib(),
+      // Aceleración adelante (m/s²): la del acelerómetro en bruto suavizada (aRaw) menos lo que mide de más respecto
+      // al GPS (aBias: la pendiente de la carretera, que el acelerómetro ve como aceleración). aEma = aRaw − aBias.
       aEma: 0,
+      aRaw: 0,
+      aBias: 0,
+      // Últimos 6 s de la fuerza específica en sumas acumuladas [t, Σx, Σy, Σz] (medias entre dos instantes).
+      sfHist: [],
+      sfHead: 0,
       aLast: null,
       aLong: new Series(["t", "a"]),
       // Inclinación con el giroscopio (grados, + derecha) y lo que calcula el móvil, a 10 Hz.
@@ -325,6 +332,8 @@
       slowSince: null,
       lag: 0,
       lagR2: null,
+      // Último cálculo del retraso del GPS en ruta libre (cada minuto).
+      lagAt: -Infinity,
       mode: "ride",
       flashUntil: 0,
     };
@@ -332,22 +341,30 @@
 
   function newCalib() {
     return {
+      // Sumas para el eje adelante: aceleración del GPS (y) frente a la fuerza específica media del móvil (X) en
+      // cada par de fijos: Σ X·Xᵀ, Σ X·y, Σ X, Σ y y cuántos.
       M: [
         [0, 0, 0],
         [0, 0, 0],
         [0, 0, 0],
       ],
       y: [0, 0, 0],
+      sx: [0, 0, 0],
+      sy: 0,
       count: 0,
+      // Gravedad con la moto parada (puede estar en el caballete, tumbada: solo si no hay otra cosa).
       up: [0, 0, 0],
       upN: 0,
-      // Vertical solo con la moto lanzada en recta (parada puede estar en el caballete, tumbada).
+      // Vertical de la moto rodando (media de la fuerza específica).
       upS: [0, 0, 0],
       upSN: 0,
       f: null,
       fVer: 0,
-      sum: [0, 0, 0],
-      n: 0,
+      gain: null,
+      // Eje adelante afinado con el balanceo (alignStep): sumas, eje resultante y su versión.
+      al: null,
+      fAl: null,
+      alVer: 0,
       // «Calibrar»: vertical de la moto parada y derecha (manda sobre la de las rectas, que la comprueba).
       manualU: null,
       manualVer: 0,
@@ -366,6 +383,9 @@
     E.mountChk = null;
     E.leanDeg = NaN;
     E.aEma = 0;
+    E.aRaw = 0;
+    E.aBias = 0;
+    E.wLp = null;
     E.moved = false;
   }
 
@@ -483,6 +503,11 @@
           T.nearestOn(GEO.main, x, y, 0, GEO.main.length - 1).dist > 300;
         if (!E.free) pitsCheck(t, v, false);
         else {
+          // Sin vueltas que lo pidan: el retraso del GPS se recalcula cada minuto.
+          if (!(t - E.lagAt < 60)) {
+            E.lagAt = t;
+            estimateLag();
+          }
           circStep(t, lat, lon, v);
           if (E.crash) {
             const ev = E.crash.fix(t, v);
@@ -754,8 +779,49 @@
   }
 
   // ---------- sensores ----------
-  // Pares de fijos para calibrar separados al menos 0,5 s (el acelerómetro se sigue sumando entre medias): a 1 Hz
-  // son todos; a 25 Hz, la diferencia de velocidad entre fijos seguidos sería casi todo ruido.
+  // Fuerza específica de los últimos 6 s en sumas acumuladas: la media entre dos instantes cualesquiera sale de
+  // restar dos sumas (para compararla con el GPS en el mismo tramo de tiempo, ya descontado su retraso).
+  function sfPush(t, sf) {
+    const H = E.sfHist;
+    const last = H.length > E.sfHead ? H[H.length - 1] : null;
+    H.push(
+      last
+        ? [t, last[1] + sf[0], last[2] + sf[1], last[3] + sf[2]]
+        : [t, sf[0], sf[1], sf[2]],
+    );
+    while (H.length - E.sfHead > 2 && t - H[E.sfHead][0] > 6) E.sfHead++;
+    if (E.sfHead > 2000) {
+      E.sfHist = H.slice(E.sfHead);
+      E.sfHead = 0;
+    }
+  }
+  // Media de la fuerza específica (m/s², ejes del móvil) entre ta y tb (s), o null si no hay suficiente historial.
+  function sfMean(ta, tb) {
+    const H = E.sfHist;
+    const at = (tt) => {
+      let lo = E.sfHead - 1;
+      let hi = H.length - 1;
+      if (hi < 0 || H[E.sfHead][0] > tt) return -1;
+      while (hi - lo > 1) {
+        const mid = (lo + hi) >> 1;
+        if (H[mid][0] <= tt) lo = mid;
+        else hi = mid;
+      }
+      return H[hi][0] <= tt ? hi : lo;
+    };
+    const i0 = at(ta);
+    const i1 = at(tb);
+    if (i0 < E.sfHead || i1 - i0 < 5) return null;
+    const n = i1 - i0;
+    return [
+      (H[i1][1] - H[i0][1]) / n,
+      (H[i1][2] - H[i0][2]) / n,
+      (H[i1][3] - H[i0][3]) / n,
+    ];
+  }
+
+  // Pares de fijos para calibrar separados al menos 0,5 s: a 1 Hz son todos; a 25 Hz, la diferencia de velocidad
+  // entre fijos seguidos sería casi todo ruido.
   function calibStep(fix) {
     const prev = E.calPrev;
     if (prev && fix.t > prev.t && fix.t - prev.t < 0.5) return;
@@ -763,42 +829,185 @@
     E.calPrev = fix;
   }
 
-  function calibPair(prev, fix) {
+  // Vertical de referencia de la moto: la de «Calibrar» o la de rodar (con al menos 5 s de datos).
+  function upRefOf(cal) {
+    return cal.manualU || (cal.upSN >= 300 ? cal.upS : null);
+  }
+  // Adelante para la inclinación y el cabeceo: el afinado con el balanceo si ya lo hay (y apunta hacia el mismo lado
+  // que el del GPS); si no, el del GPS.
+  function forwardOf(cal) {
+    return cal.fAl && dot3(cal.fAl, cal.f) > 0.5 ? cal.fAl : cal.f;
+  }
+  // Qué ejes hay puestos: cambia con cada eje nuevo del GPS, de «Calibrar» o del afinado.
+  function gpsKeyOf(cal) {
+    return "gps:" + cal.fVer + ":" + cal.manualVer + ":" + cal.alVer;
+  }
+
+  // Eje adelante afinado con el balanceo. El del GPS (la dirección en la que el acelerómetro mejor explica la
+  // aceleración) puede salir girado alrededor de la vertical: en 4 rutas de un Vivo Y33s, hasta 30°, y la
+  // aceleración apenas lo nota (es casi igual de parecida a la del GPS con 30° de error). El cabeceo sí: con el eje
+  // girado un ángulo β, el balanceo (ω·f) se cuela en el cabeceo como β·ω·f, y al cambiar de lado en unas curvas
+  // enlazadas (1–2 rad/s de balanceo) el morro «subía» 10–20° (caballitos falsos). El balanceo y el cabeceo de
+  // verdad no tienen nada que ver, así que el eje bueno es el que deja la suma Σ cabeceo·balanceo en 0. Con
+  // medias de 0,1 s rodando a más de 8 m/s, en una base fija (e1, e2) perpendicular a la vertical: con
+  // f = cos α·e1 + sen α·e2 y l = u × f = cos α·e2 − sen α·e1, la suma es
+  // sen α·cos α·(A22 − A11) + (cos²α − sen²α)·A12 − cos α·B1 − sen α·B2 (A, productos del giro en el plano por
+  // cos φ; B, del giro vertical por sen φ). Se toma la raíz más cercana al eje que ya se usa. En esas rutas, a
+  // partir del primer medio minuto ya no se movía más de 1–2°.
+  // w: giro sin sesgo (rad/s, ejes del móvil); phi: inclinación en los ejes del estimador (rad).
+  function alignStep(t, w, phi) {
     const c = E.calib;
-    // Vale cualquier tramo en marcha con buen GPS (circuito, carretera o en coche), no solo el trazado.
-    if (
-      prev &&
-      prev.v > 4 &&
-      fix.v > 4 &&
-      c.n > 5 &&
-      fix.t - prev.t < 2.5 &&
-      fix.t > prev.t
-    ) {
-      const X = [c.sum[0] / c.n, c.sum[1] / c.n, c.sum[2] / c.n];
-      const Y = (fix.v - prev.v) / (fix.t - prev.t);
-      for (let r = 0; r < 3; r++) {
-        for (let k = 0; k < 3; k++) c.M[r][k] += X[r] * X[k];
-        c.y[r] += X[r] * Y;
-      }
-      c.count++;
-      if (c.count >= 30 && c.count % 10 === 0 && c.upN > 50) {
-        // Un poco de regularización: con el móvil horizontal un eje apenas recibe aceleración y la matriz
-        // queda casi singular (sin esto, no calibraría nunca).
-        const lam = 1e-3 * ((c.M[0][0] + c.M[1][1] + c.M[2][2]) / 3 || 1);
-        const Mr = c.M.map((row, r) =>
-          row.map((x, k) => x + (r === k ? lam : 0)),
-        );
-        const w = solve3(Mr, c.y);
-        if (w) {
-          const u = norm3(c.upSN >= 100 ? c.upS : c.up);
-          const wu = dot3(w, u);
-          c.f = norm3([w[0] - wu * u[0], w[1] - wu * u[1], w[2] - wu * u[2]]);
-          c.fVer++;
-        }
+    const L = E.lean;
+    let a = c.al;
+    // La base se fija con la vertical de ese momento; si la vertical cambia más de 3°, se empieza de nuevo.
+    if (!a || dot3(a.u, L.u) < 0.9986) {
+      a = c.al = {
+        u: L.u.slice(),
+        e1: L.f.slice(),
+        e2: L.l.slice(),
+        A11: 0,
+        A12: 0,
+        A22: 0,
+        B1: 0,
+        B2: 0,
+        n: 0,
+        m: [0, 0, 0],
+        phi: 0,
+        k: 0,
+        t0: t,
+      };
+    }
+    a.m[0] += dot3(w, a.e1);
+    a.m[1] += dot3(w, a.e2);
+    a.m[2] += dot3(w, a.u);
+    a.phi += phi;
+    a.k++;
+    if (t - a.t0 < 0.1) return;
+    const m1 = a.m[0] / a.k;
+    const m2 = a.m[1] / a.k;
+    const mu = a.m[2] / a.k;
+    const ph = a.phi / a.k;
+    a.m = [0, 0, 0];
+    a.phi = 0;
+    a.k = 0;
+    a.t0 = t;
+    const cp = Math.cos(ph);
+    const sp = Math.sin(ph);
+    a.A11 += m1 * m1 * cp;
+    a.A12 += m1 * m2 * cp;
+    a.A22 += m2 * m2 * cp;
+    a.B1 += mu * sp * m1;
+    a.B2 += mu * sp * m2;
+    a.n++;
+    // Con poco giro en el plano (menos de ~0,05 rad/s de media) no hay nada que comparar: la suma sería 0 con
+    // cualquier eje.
+    if (a.n < 300 || a.n % 100 || (a.A11 + a.A22) / a.n < 0.002) return;
+    const g = (al) => {
+      const s = Math.sin(al);
+      const co = Math.cos(al);
+      return (
+        s * co * (a.A22 - a.A11) +
+        (co * co - s * s) * a.A12 -
+        co * a.B1 -
+        s * a.B2
+      );
+    };
+    // Ángulo del eje en uso dentro de la base, y la raíz más cercana (±60°) buscando cambios de signo.
+    const a0 = Math.atan2(dot3(L.f, a.e2), dot3(L.f, a.e1));
+    let best = null;
+    const STEP = Math.PI / 360;
+    for (let x = a0 - Math.PI / 3; x < a0 + Math.PI / 3; x += STEP) {
+      const g0 = g(x);
+      const g1 = g(x + STEP);
+      if (g0 === 0 || g0 * g1 < 0) {
+        const r = x + (STEP * g0) / (g0 - g1);
+        if (best === null || Math.abs(r - a0) < Math.abs(best - a0)) best = r;
       }
     }
-    c.sum = [0, 0, 0];
-    c.n = 0;
+    if (best === null) return;
+    const f = norm3([
+      Math.cos(best) * a.e1[0] + Math.sin(best) * a.e2[0],
+      Math.cos(best) * a.e1[1] + Math.sin(best) * a.e2[1],
+      Math.cos(best) * a.e1[2] + Math.sin(best) * a.e2[2],
+    ]);
+    // Solo si cambia algo (más de medio grado): cada cambio rehace los ejes.
+    if (c.fAl && dot3(f, c.fAl) > 0.99996) return;
+    c.fAl = f;
+    c.alVer++;
+  }
+
+  function calibPair(prev, fix) {
+    const c = E.calib;
+    // Vale cualquier tramo en marcha con buen GPS (circuito, carretera o en coche), no solo el trazado. El fijo dice
+    // la velocidad de hace `lag` s: el acelerómetro se toma en ese mismo tramo.
+    if (
+      !prev ||
+      !(prev.v > 4 && fix.v > 4) ||
+      !(fix.t > prev.t && fix.t - prev.t < 2.5)
+    )
+      return;
+    const lag = lagNow();
+    const X = sfMean(prev.t - lag, fix.t - lag);
+    if (!X) return;
+    const Y = (fix.v - prev.v) / (fix.t - prev.t);
+    for (let r = 0; r < 3; r++) {
+      for (let k = 0; k < 3; k++) c.M[r][k] += X[r] * X[k];
+      c.y[r] += X[r] * Y;
+      c.sx[r] += X[r];
+    }
+    c.sy += Y;
+    c.count++;
+    // Lo que el acelerómetro mide de más respecto al GPS, en media lenta (15 s): sobre todo la pendiente de la
+    // carretera (la gravedad a lo largo de la cuesta: subiendo, el acelerómetro lo cuenta como acelerar; bajando,
+    // como frenar). Lenta, porque cada par de fijos trae el ruido del retraso del GPS.
+    if (c.f) {
+      const k = 1 - Math.exp(-(fix.t - prev.t) / 15);
+      E.aBias += (dot3(X, c.f) - Y - E.aBias) * k;
+    }
+    if (c.count >= 30 && c.count % 10 === 0) solveForward(c);
+  }
+
+  // Eje adelante: la dirección, perpendicular a la vertical, en la que el acelerómetro mejor explica la aceleración
+  // del GPS. Con término independiente (la fuerza específica lleva la gravedad, que no cambia con la aceleración).
+  function solveForward(c) {
+    const ref = upRefOf(c) || (c.upN > 50 ? c.up : null);
+    if (!ref) return;
+    const u = norm3(ref);
+    // Base del plano perpendicular a u: el eje del móvil más tumbado respecto a u, y u × ese.
+    const ax = [0, 1, 2].sort((a, b) => Math.abs(u[a]) - Math.abs(u[b]))[0];
+    const e = [0, 0, 0];
+    e[ax] = 1;
+    const e1 = norm3([
+      e[0] - u[ax] * u[0],
+      e[1] - u[ax] * u[1],
+      e[2] - u[ax] * u[2],
+    ]);
+    const e2 = [
+      u[1] * e1[2] - u[2] * e1[1],
+      u[2] * e1[0] - u[0] * e1[2],
+      u[0] * e1[1] - u[1] * e1[0],
+    ];
+    const Me = (a, b) =>
+      dot3(a, [dot3(c.M[0], b), dot3(c.M[1], b), dot3(c.M[2], b)]);
+    // Un poco de regularización: con poca aceleración en un eje la matriz queda casi singular.
+    const lam = 1e-3 * (Me(e1, e1) + Me(e2, e2) || 1);
+    const A = [
+      [Me(e1, e1) + lam, Me(e1, e2), dot3(e1, c.sx)],
+      [Me(e2, e1), Me(e2, e2) + lam, dot3(e2, c.sx)],
+      [dot3(e1, c.sx), dot3(e2, c.sx), c.count],
+    ];
+    const w = solve3(A, [dot3(e1, c.y), dot3(e2, c.y), c.sy]);
+    if (!w || !(Math.hypot(w[0], w[1]) > 0)) return;
+    const f = norm3([
+      w[0] * e1[0] + w[1] * e2[0],
+      w[0] * e1[1] + w[1] * e2[1],
+      w[0] * e1[2] + w[1] * e2[2],
+    ]);
+    // Un eje nuevo muy distinto deja de valer la pendiente aprendida con el anterior.
+    if (c.f && dot3(c.f, f) < 0.9) E.aBias = 0;
+    c.f = f;
+    c.gain = Math.hypot(w[0], w[1]);
+    c.fVer++;
   }
 
   // gyroRaw: giro en rad/s en el orden que da el navegador (se graba así; el análisis también lo comprueba).
@@ -817,24 +1026,32 @@
     }
     const gyro = E.axes.map(gyroRaw);
     const c = E.calib;
-    c.sum[0] += lin[0];
-    c.sum[1] += lin[1];
-    c.sum[2] += lin[2];
-    c.n++;
+    // Lo que mide de verdad el acelerómetro (fuerza específica: aceleración + gravedad). La aceleración «lineal» y la
+    // gravedad que separa Android salen de una fusión que la vibración de la moto estropea (medido en un Vivo Y33s:
+    // su gravedad se desvía hasta 11° de la real y su aceleración adelante apenas se parece a la del GPS, r 0,4–0,8,
+    // frente a r 0,75–0,9 de la suma).
+    const sf = [lin[0] + grav[0], lin[1] + grav[1], lin[2] + grav[2]];
+    sfPush(t, sf);
     const v = E.fix ? E.fix.v : 0;
     const spin = Math.hypot(gyro[0], gyro[1], gyro[2]);
-    const straight = v > 15 && spin < 0.06;
-    if (v < 0.5 || straight) {
+    // Vertical de la moto: la media de la fuerza específica rodando. En un giro equilibrado apunta al suelo de la
+    // moto, así que curvas y rectas valen igual, y la vibración se va en la media (con el soporte vibrando, buscar
+    // rectas sin giro no funcionaba: casi ninguna muestra bajaba de 0,06 rad/s). Acelerando o frenando, la media se
+    // inclina hacia adelante o atrás (saliendo de boxes a fondo, 12° en los primeros segundos): con eje adelante se le
+    // quita a cada muestra la aceleración que mide el acelerómetro; sin él, solo valen las de aceleración suave según
+    // el GPS (menos de 0,1 g; en un circuito, pocas).
+    if (v > 5 && (c.f || Math.abs(E.aGps) < 1)) {
+      const a = c.f ? E.aEma : 0;
+      c.upS[0] += sf[0] - a * (c.f ? c.f[0] : 0);
+      c.upS[1] += sf[1] - a * (c.f ? c.f[1] : 0);
+      c.upS[2] += sf[2] - a * (c.f ? c.f[2] : 0);
+      c.upSN++;
+    }
+    if (v < 0.5) {
       c.up[0] += grav[0];
       c.up[1] += grav[1];
       c.up[2] += grav[2];
       c.upN++;
-    }
-    if (straight && E.hasGyro) {
-      c.upS[0] += grav[0];
-      c.upS[1] += grav[1];
-      c.upS[2] += grav[2];
-      c.upSN++;
     }
     // Parado, un giro brusco es el móvil en la mano o recolocado: ejes nuevos al volver a rodar.
     if (v < 2 && spin > 1.5) E.moved = true;
@@ -843,26 +1060,22 @@
       E.aLast === null ? 0.02 : Math.max(0.001, Math.min(0.1, t - E.aLast));
     E.aLast = t;
     if (E.calib.f) {
-      const a = dot3(lin, E.calib.f);
-      E.aEma += (a - E.aEma) * (1 - Math.exp(-dt / 0.2));
+      // Media de 0,2 s: con la vibración, una muestra suelta lleva ±1 g de ruido (la fase la sostiene recorrido.js).
+      E.aRaw += (dot3(sf, E.calib.f) - E.aRaw) * (1 - Math.exp(-dt / 0.2));
+      E.aEma = E.aRaw - E.aBias;
       E.aLong.push({ t, a: E.aEma });
     }
     const cal = E.calib;
+    // Vertical de la moto: la de «Calibrar» (parada y derecha) o, si no, la de rodar.
+    const upRef = upRefOf(cal);
     if (E.crash) {
-      const ev = E.crash.motion(
-        t,
-        lin,
-        grav,
-        cal.manualU || (cal.upSN >= 100 ? cal.upS : null),
-      );
+      const ev = E.crash.motion(t, lin, grav, upRef);
       if (ev) crashAlarm(ev);
     }
     if (E.calReq) calibCollect(t, grav, gyro);
-    // Vertical de la moto: la de «Calibrar» (parada y derecha) o, si no, la de las rectas.
-    const upRef = cal.manualU || (cal.upSN >= 100 ? cal.upS : null);
-    const gpsKey = "gps:" + cal.fVer + ":" + cal.manualVer;
+    const gpsKey = gpsKeyOf(cal);
     if (E.hasGyro && cal.f && upRef && E.leanKey !== gpsKey) {
-      E.lean.setAxes(cal.f, upRef);
+      E.lean.setAxes(forwardOf(cal), upRef);
       E.leanAxes = cal.fVer;
       E.leanKey = gpsKey;
       E.axesVer++;
@@ -883,8 +1096,11 @@
     checkManualCalib();
     const p = E.track && E.fix && E.fix.on ? predicted(t) : null;
     const vNow = p ? p.v : E.fix ? E.fix.v : NaN;
+    // La inclinación sale de la velocidad de ahora: la del último fijo (de hace `lag` s) adelantada con la
+    // aceleración (frenando fuerte, en 1 s cambia 10 m/s).
+    const vLean = p || !E.fix ? vNow : rideSpeed(t);
     E.leanDeg = E.hasGyro
-      ? E.leanSign * E.lean.step(dt, gyro, vNow, grav)
+      ? E.leanSign * E.lean.step(dt, gyro, vLean, grav)
       : NaN;
     cornerTrack(t, p);
     rideStep(t, dt, gyro, lin, grav, p, vNow);
@@ -1026,7 +1242,7 @@
     E.moved = false;
     E.screenAngle = screenAngle();
     // Adelante: el del GPS si ya lo hay; si no, el que ya se usaba; si no, el del montaje.
-    let f = cal.f || E.lean.f;
+    let f = cal.f ? forwardOf(cal) : E.lean.f;
     if (!f) {
       const m = mountOf(u);
       if (m) {
@@ -1039,7 +1255,7 @@
     E.lean.phi = 0;
     if (cal.f) {
       E.leanAxes = cal.fVer;
-      E.leanKey = "gps:" + cal.fVer + ":" + cal.manualVer;
+      E.leanKey = gpsKeyOf(cal);
     } else {
       if (!E.leanAxes) {
         E.leanAxes = "montaje";
@@ -1054,13 +1270,14 @@
     E.leanDeg = 0;
     E.calibManual = true;
   }
-  // Si se calibró con la moto tumbada (en la pata de cabra), las rectas lo delatan: rodando recto, la moto va
-  // derecha por fuerza. Con unos 5 s de rectas, si la vertical de «Calibrar» se separa más de 5° hacia un lado, se
-  // corrige ese lado (el cero del morro se respeta) y se avisa.
+  // Si se calibró con la moto tumbada (en la pata de cabra), rodar lo delata: de media, la moto va derecha. Con
+  // 1200 muestras rodando suave (20 s a 60 Hz; con la vibración, la media de menos tiembla 2–3°), si la vertical de
+  // «Calibrar» se separa más de 5° hacia un lado de la de rodar, se corrige ese lado (el cero del morro se respeta)
+  // y se avisa.
   function checkManualCalib() {
     const cal = E.calib;
     const L = E.lean;
-    if (!cal.manualU || cal.manualChecked || cal.upSN < 300 || !L.l) return;
+    if (!cal.manualU || cal.manualChecked || cal.upSN < 1200 || !L.l) return;
     cal.manualChecked = true;
     const up = norm3(cal.upS);
     const d = Math.atan2(dot3(up, L.l), dot3(up, L.u));
@@ -1074,7 +1291,7 @@
     ]);
     cal.manualVer++;
     L.setAxes(L.f, cal.manualU);
-    E.leanKey = cal.f ? "gps:" + cal.fVer + ":" + cal.manualVer : "montaje";
+    E.leanKey = cal.f ? gpsKeyOf(cal) : "montaje";
     E.axesVer++;
     E.calUi = {
       state: "note",
@@ -1128,6 +1345,13 @@
     tick();
   }
 
+  // Velocidad ahora fuera del circuito: la del último fijo (que describe dónde estaba la moto hace `lag` s)
+  // adelantada con la aceleración.
+  function rideSpeed(t) {
+    const lagDt = Math.max(0, Math.min(2.5, t - (E.fix.t - lagNow())));
+    return Math.max(0, E.fix.v + (E.calib.f ? E.aEma : 0) * lagDt);
+  }
+
   // ---------- recorrido: trazada, curvas de cualquier carretera, cabeceo y caballitos ----------
   function rideStep(t, dt, gyro, lin, grav, p, vNow) {
     const cal = E.calib;
@@ -1139,25 +1363,39 @@
     const w = [gyro[0] - b[0], gyro[1] - b[1], gyro[2] - b[2]];
     if (E.mountChk) mountCheck(w, vNow, dt);
     const sf = [lin[0] + grav[0], lin[1] + grav[1], lin[2] + grav[2]];
-    const pr = E.hasGyro ? E.pitch.step(dt, w, sf, E.aGps, E.leanDeg) : null;
+    // Velocidad ahora: en el circuito, la del encaje; fuera, la del GPS adelantada con el acelerómetro.
+    const v = !p && E.fix ? rideSpeed(t) : vNow;
+    // Giro alrededor de la vertical (para las curvas), sin la parte de balanceo, en media de 0,3 s: el soporte
+    // vibra con 0,3–0,5 rad/s de ruido por muestra y el módulo de cada muestra suelta nunca bajaba del umbral
+    // de fin de curva (las curvas no se acababan).
+    const kw = 1 - Math.exp(-dt / 0.3);
+    const wl = E.wLp || (E.wLp = w.slice());
+    for (let i = 0; i < 3; i++) wl[i] += (w[i] - wl[i]) * kw;
+    let yaw;
+    if (E.leanAxes && E.lean.u) yaw = Math.hypot(E.lean.wu, E.lean.wl);
+    else if (cal.f) {
+      const wf = dot3(wl, cal.f);
+      yaw = Math.hypot(
+        wl[0] - wf * cal.f[0],
+        wl[1] - wf * cal.f[1],
+        wl[2] - wf * cal.f[2],
+      );
+    } else yaw = Math.hypot(wl[0], wl[1], wl[2]);
+    // Balanceo (rad/s, media de 0,3 s): al cambiar de lado en curvas enlazadas pasa de 1 rad/s.
+    E.roll = E.lean.f ? dot3(wl, E.lean.f) : 0;
+    if (
+      typeof E.leanAxes === "number" &&
+      E.lean.u &&
+      v > 8 &&
+      isFinite(E.leanDeg)
+    )
+      alignStep(t, w, (E.leanDeg * E.leanSign * Math.PI) / 180);
+    // Para el cabeceo cuenta como «girando» tanto la curva como el cambio de lado (un balanceo de 0,25 rad/s pesa
+    // como una curva de 0,12 rad/s).
+    E.turn = Math.max(yaw, Math.abs(E.roll) / 2);
+    const pr = E.hasGyro ? E.pitch.step(dt, w, sf, E.leanDeg, E.turn) : null;
     E.pitchDeg = pr ? pr.pitch : NaN;
     E.aW = pr ? pr.a / G : NaN;
-    // Velocidad ahora: en el circuito, la del encaje; fuera, la del GPS adelantada con el acelerómetro.
-    let v = vNow;
-    if (!p && E.fix) {
-      const lagDt = Math.max(0, Math.min(2.5, t - (E.fix.t - lagNow())));
-      v = Math.max(0, E.fix.v + (cal.f ? E.aEma : 0) * lagDt);
-    }
-    // Giro alrededor de la vertical (para las curvas): sin la parte de balanceo si ya se conoce el eje.
-    let yaw = Math.hypot(w[0], w[1], w[2]);
-    if (cal.f) {
-      const wf = dot3(w, cal.f);
-      yaw = Math.hypot(
-        w[0] - wf * cal.f[0],
-        w[1] - wf * cal.f[1],
-        w[2] - wf * cal.f[2],
-      );
-    }
     // Giro con signo alrededor de la vertical del mundo, para que la trazada siga la curva entre fijos del
     // GPS: ω_z = ω·u·cos φ + ω·l·sen φ (φ, la inclinación en los ejes del estimador). En el plano (y hacia el
     // sur) el rumbo crece al girar a derechas: rumbo' = −ω_z. El recorrido comprueba el signo con el GPS.
@@ -1181,6 +1419,7 @@
       lean: E.leanDeg,
       v,
       yaw: E.hasGyro ? yaw : 0,
+      turn: E.hasGyro ? E.turn : NaN,
       yawRate,
       lag: lagNow(),
       pitch: E.pitchDeg,
@@ -1279,7 +1518,13 @@
     // La frenada de esta curva: la más fuerte de las que empiezan dentro de su tramo.
     let brk = null;
     for (const b of E.route.brakes)
-      if (b.t >= w.t0 && b.t <= t && (!brk || b.peak > brk.peak)) brk = b;
+      if (
+        b.gps !== false &&
+        b.t >= w.t0 &&
+        b.t <= t &&
+        (!brk || b.peak > brk.peak)
+      )
+        brk = b;
     const res = {
       k,
       num: corner.num,
@@ -2238,42 +2483,45 @@
   }
 
   // Retraso del GPS respecto a los sensores: el que mejor hace cuadrar la aceleración que mide el GPS
-  // con la del acelerómetro (lo mismo que hace el análisis completo). Se recalcula en cada vuelta. Con el receptor
-  // externo en la tanda no se calcula: sus fijos mezclados con los del móvil lo falsearían, y el suyo es fijo.
+  // con la del acelerómetro (lo mismo que hace el análisis completo). Se recalcula en cada vuelta (y en ruta libre,
+  // cada minuto), con los últimos 20 minutos. Con la fuerza específica (acc + grav) y con término independiente (la
+  // gravedad): la aceleración «lineal» de Android, con la vibración de la moto, casi nunca llegaba al R² de 0,5 y el
+  // retraso se quedaba en 0. Con el receptor externo en la tanda no se calcula: sus fijos mezclados con los del
+  // móvil lo falsearían, y el suyo es fijo.
   function estimateLag() {
     if (E.extUsed) return;
     const l = E.loc.view();
     const a = E.acc.view();
-    const n = a.t.length;
-    if (n < 600 || l.t.length < 40) return;
+    const g = E.grav.view();
+    const nAll = Math.min(a.t.length, g.t.length);
+    if (nAll < 600 || l.t.length < 40) return;
+    let from = 0;
+    while (from < nAll && a.t[from] < a.t[nAll - 1] - 1200) from++;
+    const n = nAll - from;
     const pre = [
       new Float64Array(n + 1),
       new Float64Array(n + 1),
       new Float64Array(n + 1),
     ];
     for (let i = 0; i < n; i++) {
-      pre[0][i + 1] = pre[0][i] + a.x[i];
-      pre[1][i + 1] = pre[1][i] + a.y[i];
-      pre[2][i + 1] = pre[2][i] + a.z[i];
+      const j = from + i;
+      pre[0][i + 1] = pre[0][i] + a.x[j] + g.x[j];
+      pre[1][i + 1] = pre[1][i] + a.y[j] + g.y[j];
+      pre[2][i + 1] = pre[2][i] + a.z[j] + g.z[j];
     }
+    const at = a.t.subarray(from, nAll);
     const idx = (t) => {
       let lo = 0;
       let hi = n;
       while (lo < hi) {
         const mid = (lo + hi) >> 1;
-        if (a.t[mid] < t) lo = mid + 1;
+        if (at[mid] < t) lo = mid + 1;
         else hi = mid;
       }
       return lo;
     };
     let best = null;
     for (let lag = 0; lag <= 1.2001; lag += 0.1) {
-      const M = [
-        [0, 0, 0],
-        [0, 0, 0],
-        [0, 0, 0],
-      ];
-      const yv = [0, 0, 0];
       const rows = [];
       for (let k = 1; k < l.t.length - 1; k++) {
         const v0 = l.speed[k - 1];
@@ -2283,28 +2531,46 @@
           continue;
         const i0 = idx(l.t[k - 1] - lag);
         const i1 = idx(l.t[k + 1] - lag);
-        if (i1 - i0 < 5 || i1 > n) continue;
+        if (i0 < 1 || i1 - i0 < 5 || i1 > n) continue;
         const c = i1 - i0;
         const X = [
           (pre[0][i1] - pre[0][i0]) / c,
           (pre[1][i1] - pre[1][i0]) / c,
           (pre[2][i1] - pre[2][i0]) / c,
         ];
-        const Y = (v1 - v0) / dt;
-        for (let r = 0; r < 3; r++) {
-          for (let q = 0; q < 3; q++) M[r][q] += X[r] * X[q];
-          yv[r] += X[r] * Y;
-        }
-        rows.push([X, Y]);
+        rows.push([X, (v1 - v0) / dt]);
       }
       if (rows.length < 40) continue;
+      // Regresión con término independiente: se resta la media de X y de Y.
+      const mx = [0, 0, 0];
+      let my = 0;
+      for (const [X, Y] of rows) {
+        for (let r = 0; r < 3; r++) mx[r] += X[r] / rows.length;
+        my += Y / rows.length;
+      }
+      const M = [
+        [0, 0, 0],
+        [0, 0, 0],
+        [0, 0, 0],
+      ];
+      const yv = [0, 0, 0];
+      for (const [X, Y] of rows) {
+        for (let r = 0; r < 3; r++) {
+          for (let q = 0; q < 3; q++)
+            M[r][q] += (X[r] - mx[r]) * (X[q] - mx[q]);
+          yv[r] += (X[r] - mx[r]) * (Y - my);
+        }
+      }
+      const lam = 1e-3 * ((M[0][0] + M[1][1] + M[2][2]) / 3 || 1);
+      for (let r = 0; r < 3; r++) M[r][r] += lam;
       const w = solve3(M, yv);
       if (!w) continue;
       let res = 0;
       let tot = 0;
       for (const [X, Y] of rows) {
-        res += (Y - dot3(w, X)) ** 2;
-        tot += Y * Y;
+        const Xc = [X[0] - mx[0], X[1] - mx[1], X[2] - mx[2]];
+        res += (Y - my - dot3(w, Xc)) ** 2;
+        tot += (Y - my) ** 2;
       }
       const r2 = 1 - res / (tot || 1);
       if (!best || r2 > best.r2) best = { lag, r2 };

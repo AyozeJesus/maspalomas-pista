@@ -387,6 +387,9 @@
   // mundo, y vista desde la moto tumbada ese giro se reparte entre su vertical (cos φ) y su eje lateral (sen φ):
   // tan φ = ω·izquierda / ω·vertical. Con giro suave (curva rápida, recta) esa división es ruido, y se usa
   // sen φ = −v·(ω·vertical)/g, que tampoco ve el cabeceo de la horquilla (gira alrededor del eje lateral).
+  // La división da la inclinación del chasis; la de la velocidad, la del conjunto moto y piloto (en las rutas de
+  // un Vivo Y33s, el chasis 2–10° más, lo que se espera del ancho del neumático). Con buenos ejes las dos cuadran
+  // con la del GPS (r 0,94–0,98); lo que fallaba en esas rutas eran los ejes (ver live.js).
   // La gravedad no sirve en curva (en un giro equilibrado apunta al suelo de la moto), así que solo fija u
   // en recta. Entre medias se integra el balanceo (ω·f). Parado, se aprende el sesgo del giroscopio.
   function LeanEstimator() {
@@ -443,11 +446,12 @@
       this.phi += (meas - this.phi) * kr * (1 - Math.exp(-h / 0.3));
     }
     if (kr < 1 && !still) {
-      // Giro suave: por la velocidad si se sabe; si no, en recta sin giro la moto va derecha.
-      if (v > 5) {
+      // Giro suave: por la velocidad si se sabe (desde 1 m/s: en una curva de paso también vale); sin velocidad,
+      // en recta sin giro la moto va derecha.
+      if (v >= 1) {
         const meas = Math.asin(clamp((-v * this.wu) / G, -0.95, 0.95));
         this.phi += (meas - this.phi) * (1 - kr) * (1 - Math.exp(-h / 0.4));
-      } else if (Math.hypot(this.wu, this.wl) < 0.06 && !(v < 3)) {
+      } else if (!(v >= 0) && Math.hypot(this.wu, this.wl) < 0.06) {
         this.phi -= this.phi * (1 - Math.exp(-h / 1.0));
       }
     }
@@ -455,16 +459,26 @@
     return (this.phi * 180) / Math.PI;
   };
 
-  // ---------- cabeceo (caballitos) ----------
-  // Ángulo de morro de la moto (+ morro arriba, grados). El giroscopio da el cabeceo rápido (giro alrededor del
-  // eje lateral: morro arriba = −ω·izquierda). El acelerómetro con gravedad (fuerza específica) da la referencia
-  // lenta: su ángulo en el plano adelante-vertical es θ + atan(a/g), y la aceleración real a se toma del GPS.
-  // Con θ se corrige además la aceleración: a = sf·f·cos θ − sf·u·sen θ.
+  // ---------- cabeceo (caballitos y hundimiento) ----------
+  // Cuánto sube o baja el morro respecto a como iba la moto (+ morro arriba, grados): lo que cuenta para un
+  // caballito o para el hundimiento al frenar, no la pendiente de la carretera (subiendo una cuesta de un 10 % el
+  // morro va 6° arriba y no es un caballito). El giroscopio da el giro alrededor del eje lateral (morro arriba =
+  // −ω·izquierda) y lo acumulado vuelve a 0 en 3 s (lo que deja fuera la pendiente y el sesgo del giroscopio; un
+  // caballito de 2 s conserva la mitad). Solo se mide con la moto casi sin girar: en curva, el giro de la curva cae
+  // también sobre el eje lateral (ω·l = Ω·sen φ), y unos grados de error en la inclinación dejan varios °/s de
+  // «morro arriba» falso (en 4 rutas de un Vivo Y33s, con la inclinación de la física de la curva, 3–5°/s: el
+  // morro marcaba +21° de media en una ruta de montaña y salían caballitos en las curvas). En curva (o cambiando
+  // de lado) vuelve a 0 en 0,4 s. En recta, el ruido que queda es de ±1° en 0,8 s; una frenada de 0,4 g hunde el
+  // morro 1–2°.
+  // Con θ se corrige además la aceleración: a = sf·f·cos θ − sf·u·sen θ (con la rueda en el aire, el acelerómetro
+  // ve g·sen θ de más).
   function PitchEstimator() {
     this.f = null;
     this.u = null;
     this.l = null;
     this.theta = 0;
+    this.sfF = 0;
+    this.sfU = G;
   }
   PitchEstimator.prototype.setAxes = function (f, u) {
     const uu = norm3(u);
@@ -473,10 +487,10 @@
     this.f = norm3([f[0] - fu * uu[0], f[1] - fu * uu[1], f[2] - fu * uu[2]]);
     this.l = cross3(this.u, this.f);
   };
-  // w: giro (rad/s, ejes del móvil, sin sesgo); sf: fuerza específica (m/s², +arriba); aRef: aceleración de la
-  // moto según el GPS (m/s², NaN si no hay); leanDeg: inclinación (con la moto muy tumbada no se corrige).
+  // w: giro (rad/s, ejes del móvil, sin sesgo); sf: fuerza específica (m/s², +arriba); leanDeg: inclinación; yaw:
+  // giro de la curva (rad/s, módulo, en media de 0,3 s; NaN si no se sabe).
   // Devuelve { pitch (grados), a (m/s², aceleración corregida) } o null sin ejes.
-  PitchEstimator.prototype.step = function (dt, w, sf, aRef, leanDeg) {
+  PitchEstimator.prototype.step = function (dt, w, sf, leanDeg, yaw) {
     if (!this.f) return null;
     const h = clamp(dt, 0, 0.1);
     // Tumbado en curva, el giro de la curva cae en parte sobre el eje lateral de la moto (ω·l = ω·u·tan φ):
@@ -484,29 +498,23 @@
     const phi = leanDeg === leanDeg ? (leanDeg * Math.PI) / 180 : 0;
     const q = dot3(w, this.l) * Math.cos(phi) - dot3(w, this.u) * Math.sin(phi);
     this.theta += -q * h;
-    // La moto pasa casi todo el tiempo con el morro cerca de 0: vuelta lenta a 0 (10 s). Así el sesgo que
-    // quede en el giroscopio no se acumula (en pista casi nunca hay un tramo estable para corregir con la
-    // gravedad), y un caballito de 2 s conserva más del 80 % de su ángulo.
-    this.theta -= this.theta * (1 - Math.exp(-h / 10));
-    const sfF = dot3(sf, this.f);
-    const sfU = dot3(sf, this.u);
-    // La aceleración del GPS llega con ~1 s de retraso: en cambios bruscos (frenar → acelerar) metería errores
-    // de decenas de grados. Solo se corrige rodando a ritmo estable (o parado), cuando la gravedad es limpia.
-    // Y el acelerómetro también tiene que decir «estable» (al empezar a frenar o acelerar el GPS aún no lo sabe;
-    // con la rueda arriba sf·f ≈ g·sen θ, así que tampoco se corrige en pleno caballito).
-    if (
-      aRef === aRef &&
-      Math.abs(aRef) < 1.0 &&
-      Math.abs(sfF) < 1.5 &&
-      !(Math.abs(leanDeg) > 20)
-    ) {
-      const meas = Math.atan2(sfF, sfU) - Math.atan2(aRef, G);
-      this.theta += (meas - this.theta) * (1 - Math.exp(-h / 2));
-    }
+    // Vuelta a 0: en 3 s casi sin girar (< 0,06 rad/s), en 0,4 s girando claro (> 0,12) y a medias entre los dos. Con
+    // el morro ya arriba más de 4° (en recta el ruido no pasa de 3–4°), en 10 s: un caballito conserva su ángulo.
+    const turn = yaw === yaw ? clamp((yaw - 0.06) / 0.06, 0, 1) : 0;
+    const slow = this.theta > (4 * Math.PI) / 180 ? 10 : 3;
+    const rate = (1 - turn) / slow + turn / 0.4;
+    this.theta -= this.theta * (1 - Math.exp(-h * rate));
     this.theta = clamp(this.theta, -0.6, 1.2);
+    // Media de 0,25 s: con la vibración, una muestra suelta lleva ±1 g de ruido.
+    const k = 1 - Math.exp(-h / 0.25);
+    this.sfF += (dot3(sf, this.f) - this.sfF) * k;
+    this.sfU += (dot3(sf, this.u) - this.sfU) * k;
     const c = Math.cos(this.theta);
     const s = Math.sin(this.theta);
-    return { pitch: (this.theta * 180) / Math.PI, a: sfF * c - sfU * s };
+    return {
+      pitch: (this.theta * 180) / Math.PI,
+      a: this.sfF * c - this.sfU * s,
+    };
   };
 
   // ---------- ejes del giroscopio ----------
