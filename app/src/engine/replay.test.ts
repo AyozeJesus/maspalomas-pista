@@ -1,8 +1,13 @@
 // El motor repasa una grabación y su resumen (ruta, curvas, frenadas, vueltas, calibración, canales) no cambia sin
 // querer. La paridad con la app de antes se comprueba en el navegador (scripts/parity/engine.mjs: mismos números,
 // carácter a carácter, que live.js en Chromium; en Node no se puede porque su V8 redondea distinto exp, sin, atan2…).
-// Aquí, en Node, una instantánea de la tanda de ejemplo (sintética) que avisa de cualquier cambio.
+// Aquí, en Node, una instantánea de la tanda de ejemplo (sintética) que avisa de cualquier cambio: exacta en todo menos
+// en el último bit de los números, que cambia de una plataforma a otra (test/close.ts). Para rehacerla tras un cambio
+// buscado: UPDATE_GOLDEN=1 npx vitest run src/engine/replay.test.ts
+import { readFileSync, writeFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
+import { firstDifference } from "../../test/close";
 import { digestOf } from "../../test/engine-digest";
 import { SERIES, type MergedSeriesSet } from "../core/formato";
 import { demoSession } from "../core/maspalomas";
@@ -65,9 +70,10 @@ describe("motor: repasar la tanda de ejemplo", () => {
       if (tipo === "pista") expect(d.laps.filter((l) => l.valid).length).toBe(5);
       expect(d.curves.length).toBeGreaterThan(30);
       expect(d.trail.n).toBeGreaterThan(4000);
-      await expect(JSON.stringify(d, null, 1)).toMatchFileSnapshot(
-        "../../test/golden/node/demo-" + tipo + ".json",
-      );
+      const file = resolve(import.meta.dirname, "../../test/golden/node/demo-" + tipo + ".json");
+      if (process.env.UPDATE_GOLDEN) writeFileSync(file, JSON.stringify(d, null, 1));
+      const golden: unknown = JSON.parse(readFileSync(file, "utf8"));
+      expect(firstDifference(JSON.parse(JSON.stringify(d)), golden)).toBeNull();
     });
   }
 
