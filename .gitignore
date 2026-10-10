@@ -1,0 +1,6 @@
+app/node_modules/
+app/dist/
+app/dev-dist/
+app/coverage/
+app/.vitest/
+.DS_Store
