@@ -91,6 +91,39 @@
   .card:empty { display: none; }
   .muted { color: var(--muted); font-size: 14px; }
   .start { display: grid; gap: 8px; }
+  /* Las dos formas de salir, grandes y cada una con una línea que dice qué es. */
+  button.big { min-height: 60px; font-size: 20px; font-weight: 700; }
+  .start-note { color: var(--muted); font-size: 14px; margin: 0 2px 8px; }
+
+  /* ---------- pestañas de la portada (Rodar · Mis rutas · Ajustes) ---------- */
+  .tab-panel { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; align-content: start; min-width: 0; }
+  .page.has-tabs { padding-bottom: calc(96px + env(safe-area-inset-bottom)); }
+  .tabbar {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 30; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
+    background: var(--bg); border-top: 1px solid var(--line); box-shadow: 0 -8px 16px rgba(0, 0, 0, 0.45);
+    padding: 0 max(8px, env(safe-area-inset-right)) env(safe-area-inset-bottom) max(8px, env(safe-area-inset-left));
+  }
+  .tabbar button { flex-direction: column; gap: 4px; min-height: 64px; padding: 8px 4px; background: transparent; border: 0; border-radius: 0; font-size: 13px; font-weight: 700; color: var(--muted); }
+  .tabbar button svg { width: 24px; height: 24px; }
+  .tabbar button[aria-selected="true"] { color: var(--ink); box-shadow: inset 0 3px 0 var(--accent); }
+  .tabbar button[aria-selected="true"] svg { color: var(--accent); }
+  @media (hover: hover) { .tabbar button:hover { background: var(--surface-2); } }
+  /* Con la barra de pestañas a la vista, los avisos salen por encima de ella. */
+  body:has(#home:not([hidden])) .toast { bottom: calc(80px + env(safe-area-inset-bottom)); }
+
+  /* Plegables («Antes de salir», «Más datos», «Cortar en dos»): se abren tocando su título. */
+  details.card { display: block; }
+  details.fold > summary { list-style: none; cursor: pointer; display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 44px; font-weight: 700; color: var(--ink-2); }
+  details.fold > summary::-webkit-details-marker { display: none; }
+  details.fold > summary::after { content: ""; flex: none; width: 9px; height: 9px; margin-right: 6px; border-right: 2px solid currentColor; border-bottom: 2px solid currentColor; transform: rotate(45deg); transition: transform 0.15s; }
+  details.fold[open] > summary::after { transform: rotate(-135deg); }
+  details.fold > summary:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; border-radius: var(--r-sm); }
+  details.fold > :not(summary) { margin-top: 12px; }
+  details.fold.more > summary { font-size: 15px; }
+  /* Tablas largas del resumen: las primeras filas y «Ver las N». */
+  .cmp-table tr.extra { display: none; }
+  .cmp-wrap.all .cmp-table tr.extra { display: table-row; }
+  button.more-rows { justify-self: start; min-height: 44px; color: var(--accent); }
   .install p { margin: 0; }
   /* Tus rutas y tandas: una fila por grabación, con «Ver» y «Borrar». */
   .hist-list { display: grid; gap: 4px; }
@@ -203,9 +236,11 @@
 
   /* Prueba de sensores: lecturas grandes y un nivel que gira con el móvil. */
   .readouts { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px; }
-  .readouts > div { background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--r-md); padding: 10px 12px; display: grid; gap: 2px; }
+  .readouts > div { background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--r-md); padding: 10px 12px; display: grid; gap: 2px; min-width: 0; }
   .readouts small { font-size: 12px; font-weight: 600; color: var(--muted); }
-  .readouts b { font-size: 26px; font-weight: 800; line-height: 1.1; white-space: nowrap; }
+  /* Una cifra larga («2,8° ≈57 mm») baja de línea en vez de salirse de la casilla en un móvil estrecho. */
+  .readouts b { font-size: 26px; font-weight: 800; line-height: 1.1; overflow-wrap: anywhere; }
+  @media (max-width: 380px) { .readouts b { font-size: 22px; } }
   .level { position: relative; height: 96px; border-radius: var(--r-md); background: var(--field); border: 1px solid var(--line); overflow: hidden; display: grid; place-items: center; }
   .level::before { content: ""; position: absolute; left: 50%; top: 10px; bottom: 10px; width: 1px; background: var(--line-strong); }
   .level-bar { width: 70%; height: 6px; border-radius: 3px; background: var(--accent); transition: transform 0.08s linear; }
@@ -396,11 +431,23 @@
 </head>
 <body>
   <!-- Inicio -->
-  <main class="page" id="home">
+  <main class="page has-tabs" id="home">
+    <!-- Pestaña «Rodar»: lo justo para salir. -->
+    <div class="tab-panel" id="tab-rodar" role="tabpanel" aria-labelledby="tb-rodar">
     <header class="masthead">
       <h1 class="brand"><span class="brand-kicker"><span class="kerb" aria-hidden="true"></span>Modo pista</span> <span class="brand-name">Maspalomas</span></h1>
-      <p class="lede">Delta en directo frente a tu mejor vuelta, inclinación y frenada medidas con el móvil, el resumen de cada curva, tiempo por vuelta y sectores. Al parar en boxes, el análisis de la tanda.</p>
+      <p class="lede">Telemetría con el móvil, en el circuito de Maspalomas o por cualquier carretera.</p>
     </header>
+    <div class="start">
+      <button class="primary" id="go">Salir a pista</button>
+      <p class="start-note">En el circuito de Maspalomas: vueltas, sectores y la diferencia con tu mejor vuelta en directo. Al parar, boxes con el análisis de la tanda.</p>
+      <button class="big" id="free">Ruta libre</button>
+      <p class="start-note">Por cualquier carretera: tu trazada, cada curva, dónde frenas, aceleras o vas sin gas, y los caballitos.</p>
+      <div class="actions">
+        <button id="sensors">Probar los sensores</button>
+        <button id="sim">Vuelta de ejemplo</button>
+      </div>
+    </div>
     <div class="card status" id="status">
       <div><span class="dot" id="st-gps"></span><span id="st-gps-t">GPS: se activará al salir</span></div>
       <div><span class="dot" id="st-imu"></span><span id="st-imu-t">Pantalla y sensores: se activarán al salir</span></div>
@@ -412,17 +459,25 @@
       <button class="primary" id="install-btn" hidden>Instalar la app</button>
       <p class="muted" id="install-how">Menú ⋮ de Chrome → «Añadir a pantalla de inicio» (o «Instalar aplicación»), con internet. Después, ábrela siempre desde su icono.</p>
     </div>
-    <div class="start">
-      <button class="primary" id="go">Salir a pista</button>
-      <button id="free">Ruta libre (cualquier carretera)</button>
-      <div class="actions">
-        <button id="sensors">Probar los sensores</button>
-        <button id="sim">Ver una vuelta de ejemplo</button>
-      </div>
-      <p class="muted">«Ruta libre» va dibujando tu trazada por cualquier carretera: dónde frenas, aceleras o dejas tiempo muerto, la inclinación de cada curva y los caballitos. «Probar los sensores» comprueba el GPS y los sensores de este móvil. La vuelta de ejemplo es una tanda grabada: no usa tu móvil.</p>
+    <details class="card fold" id="tips">
+      <summary><h2 id="tips-h">Antes de salir</h2></summary>
+      <ul class="checklist">
+        <li>Móvil en un soporte con amortiguador de vibraciones, bien a la vista sin bajar la cabeza.</li>
+        <li>Brillo al máximo. La pantalla se mantiene encendida mientras esta página esté abierta.</li>
+        <li>No leas en frenada ni en curva: el panel está hecho para verse con el rabillo del ojo (verde ganas, rojo pierdes). Lee en las rectas o en boxes.</li>
+        <li>Monta el móvil antes de salir y no lo muevas en el soporte: de pie o plano, en vertical u horizontal, con la parte de arriba de la pantalla hacia delante. Si no queda recto, no pasa nada: con la moto parada y derecha (sentado en ella, no en la pata de cabra) pulsa «Calibrar» arriba a la izquierda y ese es el 0. Si no, la inclinación sale desde la primera recta y se afina sola en la vuelta de salida. Si lo coges en boxes, vuelve a calibrar.</li>
+        <li>Al sol y sobre el depósito el móvil se calienta. Si se apaga, lo grabado hasta unos segundos antes queda guardado.</li>
+      </ul>
+    </details>
     </div>
-    <section class="card" aria-labelledby="hist-h" id="hist-card" hidden>
-      <h2 id="hist-h">Tus rutas y tandas</h2>
+
+    <!-- Pestaña «Mis rutas»: lo grabado y los tramos. -->
+    <div class="tab-panel" id="tab-rutas" role="tabpanel" aria-labelledby="tb-rutas" hidden>
+    <header class="page-head"><h1 class="title">Mis rutas</h1></header>
+    <div class="actions"><button id="garage-day" hidden>Tiempos del día (todos los pilotos)</button></div>
+    <section class="card" aria-labelledby="hist-h" id="hist-card">
+      <h2 id="hist-h">Rutas y tandas</h2>
+      <p class="muted" id="hist-empty">Aún no hay nada grabado en este móvil. Lo que grabes al salir a pista o en una ruta libre sale aquí.</p>
       <div class="hist-list" id="hist-list"></div>
       <p class="muted">Guardadas en este móvil: se ven también sin internet. «Ver» repasa la grabación y enseña lo mismo que al terminar (la ruta con su mapa, o el análisis de boxes de una tanda): la lista, el resumen y la imagen para compartir dicen siempre los mismos números. «Borrar» solo la quita del móvil.</p>
     </section>
@@ -430,6 +485,44 @@
       <h2 id="trs-h">Tus tramos</h2>
       <div class="hist-list" id="trs-list"></div>
       <p class="muted">Se reconocen solos al pasar por ellos (en el mismo sentido), en la ruta libre y al repasar una grabación. «Buscar» los busca en todas las rutas guardadas en el móvil.</p>
+    </section>
+    </div>
+
+    <!-- Pestaña «Ajustes»: piloto, pantalla, avisos, receptor, el Mac y los circuitos. -->
+    <div class="tab-panel" id="tab-ajustes" role="tabpanel" aria-labelledby="tb-ajustes" hidden>
+    <header class="page-head"><h1 class="title">Ajustes</h1></header>
+    <section class="card" aria-labelledby="set-h">
+      <h2 id="set-h">Piloto</h2>
+      <div class="pilot">
+        <label for="piloto">Nombre</label><input id="piloto" type="text" maxlength="30" autocomplete="nickname" placeholder="Tu nombre">
+        <label for="objetivo">Objetivo</label><input id="objetivo" class="num" type="text" inputmode="decimal" autocomplete="off" spellcheck="false" placeholder="1:05,0">
+      </div>
+      <p class="muted">Cada piloto tiene su mejor vuelta y su objetivo por vuelta. Si compartís móvil, cambiad el nombre antes de salir.</p>
+    </section>
+    <section class="card" aria-labelledby="orient-h">
+      <h2 id="orient-h">Pantalla en pista</h2>
+      <div class="choice" role="radiogroup" aria-labelledby="orient-h">
+        <button type="button" role="radio" data-orient="auto">Como el móvil</button>
+        <button type="button" role="radio" data-orient="portrait-primary">Vertical</button>
+        <button type="button" role="radio" data-orient="landscape-primary">Horizontal</button>
+        <button type="button" role="radio" data-orient="landscape-secondary">Horizontal girada</button>
+      </div>
+      <p class="muted">Con el giro automático del móvil apagado, el panel sale como esté la pantalla aunque el móvil vaya de lado. Elige cómo lo llevas montado: se fija al salir a pista o a la ruta libre. Si sale al revés, la otra horizontal.</p>
+    </section>
+    <section class="card" aria-labelledby="avisos-h">
+      <h2 id="avisos-h">Panel y avisos</h2>
+      <label class="switch" for="mapopt"><span class="switch-text"><span class="switch-title">Mapa del circuito en el panel</span><span class="muted">Tu trazada de la vuelta, los sectores y dónde frenaste en tu mejor vuelta.</span></span><input type="checkbox" id="mapopt" role="switch"></label>
+      <label class="switch" for="cue"><span class="switch-text"><span class="switch-title">Aviso de frenada (prueba)</span><span class="muted">Destello blanco antes de donde frenaste en tu mejor vuelta.</span></span><input type="checkbox" id="cue" role="switch"></label>
+      <div id="cue-opts" hidden>
+        <label for="lead" class="range-label">Avisar <b id="lead-v">20</b> m antes</label>
+        <input type="range" id="lead" min="0" max="80" step="5" value="20">
+        <p class="warnbox">El GPS del móvil llega con retraso y el aviso puede ir hasta ~50 m tarde. Úsalo como referencia, nunca como tu punto de frenada. Tu referencia sigue siendo la pista.</p>
+      </div>
+      <div class="group">
+        <label class="switch" for="caidaopt"><span class="switch-text"><span class="switch-title">Aviso de caída en la ruta libre</span><span class="muted">Golpe o frenazo y después la moto parada y tumbada: cuenta atrás de 30 s con pitidos y, si no tocas «Estoy bien», sirena, tu posición en grande y el 112 a mano para quien te encuentre. No llama a nadie solo (una página no puede).</span></span><input type="checkbox" id="caidaopt" role="switch"></label>
+        <div class="pilot"><label for="emergencia">Teléfono</label><input id="emergencia" type="tel" inputmode="tel" autocomplete="off" maxlength="20" placeholder="De emergencia (opcional)"></div>
+        <p class="muted">Sin SIM solo se puede llamar al 112 (en la UE, desde cualquier red), y sin SIM al 112 no le llega tu ubicación sola: la pantalla la enseña en grande para dictarla.</p>
+      </div>
     </section>
     <section class="card" aria-labelledby="ext-h">
       <h2 id="ext-h">Receptor GPS externo</h2>
@@ -442,72 +535,37 @@
       <p class="muted">RaceBox, BonoGPS o cualquier receptor NMEA por Bluetooth, o uno por cable USB-C (u-blox M9/M10): de 10 a 25 posiciones por segundo y casi sin retraso. Mientras llegan sus posiciones, sustituyen a las del móvil; si se pierde, vuelve solo el GPS del móvil. Conéctalo antes de salir.</p>
     </section>
     <section class="card" aria-labelledby="mac-h">
-      <h2 id="mac-h">Tus tandas y el Mac</h2>
+      <h2 id="mac-h">El Mac (garaje)</h2>
       <div class="status">
         <div><span class="dot" id="st-cola"></span><span id="st-cola-t">Tandas guardadas en el móvil: ninguna</span></div>
         <div><span class="dot" id="st-mac"></span><span id="st-mac-t">Mac sin conectar.</span></div>
       </div>
       <div class="actions">
-        <button id="home-export" hidden>Exportar la última tanda (.zip)</button>
-        <button id="garage-day" hidden>Tiempos del día</button>
         <button id="garage-sync" hidden>Subir ahora</button>
+        <button id="home-export" hidden>Exportar la última tanda (.zip)</button>
         <button class="danger" id="garage-forget" hidden>Desconectar el Mac</button>
       </div>
     </section>
-    <section class="card" aria-labelledby="set-h">
-      <h2 id="set-h">Ajustes</h2>
-      <div class="pilot">
-        <label for="piloto">Piloto</label><input id="piloto" type="text" maxlength="30" autocomplete="nickname" placeholder="Tu nombre">
-        <label for="objetivo">Objetivo</label><input id="objetivo" class="num" type="text" inputmode="decimal" autocomplete="off" spellcheck="false" placeholder="1:05,0">
-      </div>
-      <p class="muted">Cada piloto tiene su mejor vuelta y su objetivo por vuelta. Si compartís móvil, cambiad el nombre antes de salir.</p>
-      <div class="group">
-        <label class="switch" for="mapopt"><span class="switch-text"><span class="switch-title">Mapa del circuito en el panel</span><span class="muted">Tu trazada de la vuelta, los sectores y dónde frenaste en tu mejor vuelta.</span></span><input type="checkbox" id="mapopt" role="switch"></label>
-        <label class="switch" for="cue"><span class="switch-text"><span class="switch-title">Aviso de frenada (prueba)</span><span class="muted">Destello blanco antes de donde frenaste en tu mejor vuelta.</span></span><input type="checkbox" id="cue" role="switch"></label>
-        <div id="cue-opts" hidden>
-          <label for="lead" class="range-label">Avisar <b id="lead-v">20</b> m antes</label>
-          <input type="range" id="lead" min="0" max="80" step="5" value="20">
-          <p class="warnbox">El GPS del móvil llega con retraso y el aviso puede ir hasta ~50 m tarde. Úsalo como referencia, nunca como tu punto de frenada. Tu referencia sigue siendo la pista.</p>
-        </div>
-      </div>
-      <div class="group">
-        <h3 class="group-title" id="orient-h">Pantalla en pista</h3>
-        <div class="choice" role="radiogroup" aria-labelledby="orient-h">
-          <button type="button" role="radio" data-orient="auto">Como el móvil</button>
-          <button type="button" role="radio" data-orient="portrait-primary">Vertical</button>
-          <button type="button" role="radio" data-orient="landscape-primary">Horizontal</button>
-          <button type="button" role="radio" data-orient="landscape-secondary">Horizontal girada</button>
-        </div>
-        <p class="muted">Con el giro automático del móvil apagado, el panel sale como esté la pantalla aunque el móvil vaya de lado. Elige cómo lo llevas montado: se fija al salir a pista o a la ruta libre. Si sale al revés, la otra horizontal.</p>
-      </div>
-      <div class="group">
-        <label class="switch" for="caidaopt"><span class="switch-text"><span class="switch-title">Aviso de caída en la ruta libre</span><span class="muted">Golpe o frenazo y después la moto parada y tumbada: cuenta atrás de 30 s con pitidos y, si no tocas «Estoy bien», sirena, tu posición en grande y el 112 a mano para quien te encuentre. No llama a nadie solo (una página no puede).</span></span><input type="checkbox" id="caidaopt" role="switch"></label>
-        <div class="pilot"><label for="emergencia">Teléfono</label><input id="emergencia" type="tel" inputmode="tel" autocomplete="off" maxlength="20" placeholder="De emergencia (opcional)"></div>
-        <p class="muted">Sin SIM solo se puede llamar al 112 (en la UE, desde cualquier red), y sin SIM al 112 no le llega tu ubicación sola: la pantalla la enseña en grande para dictarla.</p>
-      </div>
+    <section class="card meta-map" aria-labelledby="circ-h">
+      <h2 id="circ-h">Circuitos</h2>
+      <h3 class="group-title">Línea de meta en Maspalomas</h3>
+      <p class="muted">Toca la pista para ponerla donde la tenga el cronometraje del circuito o RaceChrono.</p>
+      <svg id="meta-svg" role="img" aria-label="Mapa del circuito para elegir la línea de meta"></svg>
+      <div class="actions"><button id="meta-reset">Meta por defecto</button><button class="danger" id="best-reset">Borrar mejor vuelta guardada</button></div>
       <div class="group" id="circ-group" hidden>
         <h3 class="group-title">Otros circuitos guardados</h3>
         <div class="circ-list" id="circ-list"></div>
         <p class="muted">En la ruta libre se reconocen solos al rodar por ellos, y el cronómetro cuenta desde la primera vuelta.</p>
       </div>
-      <div class="group meta-map">
-        <h3 class="group-title">Línea de meta</h3>
-        <p class="muted">Toca la pista para ponerla donde la tenga el cronometraje del circuito o RaceChrono.</p>
-        <svg id="meta-svg" role="img" aria-label="Mapa del circuito para elegir la línea de meta"></svg>
-        <div class="actions"><button id="meta-reset">Meta por defecto</button><button class="danger" id="best-reset">Borrar mejor vuelta guardada</button></div>
-      </div>
-    </section>
-    <section class="card" aria-labelledby="tips-h">
-      <h2 id="tips-h">Antes de salir</h2>
-      <ul class="checklist">
-        <li>Móvil en un soporte con amortiguador de vibraciones, bien a la vista sin bajar la cabeza.</li>
-        <li>Brillo al máximo. La pantalla se mantiene encendida mientras esta página esté abierta.</li>
-        <li>No leas en frenada ni en curva: el panel está hecho para verse con el rabillo del ojo (verde ganas, rojo pierdes). Lee en las rectas o en boxes.</li>
-        <li>Monta el móvil antes de salir y no lo muevas en el soporte: de pie o plano, en vertical u horizontal, con la parte de arriba de la pantalla hacia delante. Si no queda recto, no pasa nada: con la moto parada y derecha (sentado en ella, no en la pata de cabra) pulsa «Calibrar» arriba a la izquierda y ese es el 0. Si no, la inclinación sale desde la primera recta y se afina sola en la vuelta de salida. Si lo coges en boxes, vuelve a calibrar.</li>
-        <li>Al sol y sobre el depósito el móvil se calienta. Si se apaga, lo grabado hasta unos segundos antes queda guardado.</li>
-      </ul>
     </section>
     <p class="muted num" id="home-build"></p>
+    </div>
+
+    <nav class="tabbar" role="tablist" aria-label="Secciones">
+      <button role="tab" id="tb-rodar" data-tab="rodar" aria-selected="true" aria-controls="tab-rodar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 16a8 8 0 1 1 16 0"/><path d="M12 16l4.5-5"/><path d="M12 16h0.01"/></svg>Rodar</button>
+      <button role="tab" id="tb-rutas" data-tab="rutas" aria-selected="false" aria-controls="tab-rutas"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="6" cy="18" r="2"/><circle cx="18" cy="6" r="2"/><path d="M8 18h5a3 3 0 0 0 0-6h-2a3 3 0 0 1 0-6h5"/></svg>Mis rutas</button>
+      <button role="tab" id="tb-ajustes" data-tab="ajustes" aria-selected="false" aria-controls="tab-ajustes"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="18" r="2"/></svg>Ajustes</button>
+    </nav>
   </main>
 
   <!-- En pista -->
@@ -595,11 +653,14 @@
       <button id="ruf-share"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15V3M7 8l5-5 5 5M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6"/></svg>Compartir</button>
     </div>
     <header class="page-head">
-      <h1 class="title">Tu ruta</h1>
+      <h1 class="title" id="ruf-title">Tu ruta</h1>
       <p class="muted" id="ruf-sub"></p>
-      <div class="pilot" id="ruf-nombre-box" hidden><label for="ruf-nombre">Nombre</label><input id="ruf-nombre" type="text" maxlength="40" autocomplete="off" placeholder="Ponle nombre (opcional)"></div>
     </header>
-    <section class="card">
+    <section class="card" aria-labelledby="ruf-sum-h"><h2 id="ruf-sum-h">Resumen</h2><div class="readouts" id="ruf-stats"></div>
+      <details class="fold more" id="ruf-more"><summary>Más datos</summary><div class="readouts" id="ruf-stats2"></div></details>
+    </section>
+    <section class="card" aria-labelledby="ruf-map-h">
+      <h2 id="ruf-map-h">Mapa</h2>
       <canvas class="route-map" id="ruf-map" aria-label="Mapa de toda la ruta: arrastra el dedo por la línea para ver cada punto"></canvas>
       <div class="scrub" id="ruf-scrub" hidden>
         <p class="scrub-at num" id="ruf-at"></p>
@@ -626,14 +687,6 @@
         <div class="actions"><button id="ruf-tr-go">Guardar como tramo</button><button id="ruf-tr-two" hidden>Guardar ida y vuelta (dos tramos)</button></div>
       </div>
     </section>
-    <section class="card" aria-labelledby="ruf-cut-h" id="ruf-cut" hidden>
-      <h2 id="ruf-cut-h">Cortar en dos</h2>
-      <p class="muted" id="ruf-cut-note"></p>
-      <label for="ruf-cut-t" class="range-label">Cortar <b id="ruf-cut-at">—</b></label>
-      <input type="range" id="ruf-cut-t" min="0" max="100" step="1" value="50">
-      <div class="actions"><button id="ruf-cut-go">Cortar aquí</button></div>
-    </section>
-    <section class="card" aria-labelledby="ruf-sum-h"><h2 id="ruf-sum-h">Resumen</h2><div class="readouts" id="ruf-stats"></div></section>
     <section class="card" aria-labelledby="ruf-l-h" id="ruf-l" hidden><h2 id="ruf-l-h">Vueltas</h2><p class="muted" id="ruf-l-note"></p>
       <div class="cmp-wrap"><table class="cmp-table"><thead><tr><th>Vuelta</th><th class="num">Tiempo</th><th class="num">Frente a la mejor</th></tr></thead><tbody id="ruf-laps"></tbody></table></div>
       <div class="pilot" id="ruf-save-box" hidden><label for="ruf-name">Nombre</label><input id="ruf-name" type="text" maxlength="40" autocomplete="off" placeholder="Nombre del circuito"></div>
@@ -641,18 +694,34 @@
     </section>
     <section class="card" aria-labelledby="ruf-c-h"><h2 id="ruf-c-h">Curvas</h2><p class="muted" id="ruf-c-note"></p>
       <div class="cmp-wrap"><table class="cmp-table"><thead><tr><th>Curva</th><th class="num">Tumb.</th><th class="num">Entra→mín</th><th class="num">Freno</th><th class="num">Sin gas</th></tr></thead><tbody id="ruf-curves"></tbody></table></div>
+      <button class="quiet more-rows" id="ruf-c-more" hidden>Ver todas</button>
     </section>
     <section class="card" aria-labelledby="ruf-b-h" id="ruf-b"><h2 id="ruf-b-h">Frenadas</h2><p class="muted" id="ruf-b-note"></p>
       <div class="cmp-wrap"><table class="cmp-table"><thead><tr><th>#</th><th class="num">Pico</th><th class="num">Llega</th><th class="num">Entra→sale</th><th class="num">Hunde</th><th class="num">Tumbado</th></tr></thead><tbody id="ruf-brk"></tbody></table></div>
+      <button class="quiet more-rows" id="ruf-b-more" hidden>Ver todas</button>
     </section>
     <section class="card" aria-labelledby="ruf-w-h" id="ruf-w"><h2 id="ruf-w-h">Caballitos</h2>
       <div class="cmp-wrap"><table class="cmp-table"><thead><tr><th>#</th><th class="num">Duración</th><th class="num">Metros</th><th class="num">Morro</th><th class="num">Desde</th><th class="num">≈ Perdido</th></tr></thead><tbody id="ruf-wh"></tbody></table></div>
+      <button class="quiet more-rows" id="ruf-w-more" hidden>Ver todos</button>
+    </section>
+    <section class="card" aria-labelledby="ruf-opt-h">
+      <h2 id="ruf-opt-h">Opciones</h2>
+      <div class="pilot" id="ruf-nombre-box" hidden><label for="ruf-nombre">Nombre</label><input id="ruf-nombre" type="text" maxlength="40" autocomplete="off" placeholder="Ponle nombre (opcional)"></div>
+      <div class="actions">
+        <button id="ruf-share2">Compartir (imagen)</button>
+        <button id="ruf-export">Exportar la ruta (.zip)</button>
+      </div>
+      <details class="fold" id="ruf-cut" hidden>
+        <summary>Cortar en dos</summary>
+        <p class="muted" id="ruf-cut-note"></p>
+        <label for="ruf-cut-t" class="range-label">Cortar <b id="ruf-cut-at">—</b></label>
+        <input type="range" id="ruf-cut-t" min="0" max="100" step="1" value="50">
+        <div class="actions"><button id="ruf-cut-go">Cortar aquí</button></div>
+      </details>
     </section>
     <p class="muted">En carretera respeta las normas y los límites: el mapa y estos datos son para revisarlos parado.</p>
     <div class="actions">
-      <button class="primary" id="ruf-home">Volver al inicio</button>
-      <button id="ruf-share2">Compartir (imagen)</button>
-      <button id="ruf-export">Exportar la ruta (.zip)</button>
+      <button class="primary" id="ruf-home">Volver</button>
     </div>
   </main>
 
@@ -662,17 +731,15 @@
       <button class="quiet back" id="p-back"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg>Volver</button>
     </div>
     <header class="page-head">
-      <h1 class="title">Boxes</h1>
+      <h1 class="title" id="p-title">Boxes</h1>
       <p class="muted" id="p-sub"></p>
       <p class="muted" id="p-store"></p>
-      <div class="pilot" id="p-nombre-box" hidden><label for="p-nombre">Nombre</label><input id="p-nombre" type="text" maxlength="40" autocomplete="off" placeholder="Ponle nombre (opcional)"></div>
     </header>
-    <section class="card" aria-labelledby="p-cut-h" id="p-cut" hidden>
-      <h2 id="p-cut-h">Cortar en dos</h2>
-      <p class="muted">Para separar dos tandas que se grabaron seguidas: quedan dos grabaciones nuevas y esta entera se borra del móvil.</p>
-      <div class="pilot"><label for="p-cut-lap">Cortar</label><select id="p-cut-lap"></select></div>
-      <div class="actions"><button id="p-cut-go">Cortar aquí</button></div>
-    </section>
+    <!-- Lo que se hace en boxes, arriba: seguir o acabar. -->
+    <div class="actions" id="p-main">
+      <button class="primary" id="resume">Volver a pista</button>
+      <button class="danger" id="finish">Terminar</button>
+    </div>
     <section class="card" aria-labelledby="laps-h">
       <h2 id="laps-h">Vueltas</h2>
       <div class="table-wrap">
@@ -685,16 +752,24 @@
       <p class="muted" id="p-brk-note"></p>
     </section>
     <section class="card" aria-labelledby="next-h"><h2 id="next-h">Plan para la próxima tanda</h2><ol class="tips" id="p-tips"></ol></section>
-    <div class="actions">
-      <button class="primary" id="resume">Volver a pista</button>
-      <button id="p-calib">Calibrar inclinación</button>
-      <button id="pits-day" hidden>Tiempos del día</button>
-      <button id="p-share">Compartir (imagen)</button>
-      <button id="export">Exportar tanda (.zip)</button>
-      <button class="danger" id="finish">Terminar</button>
-    </div>
-    <p class="muted" id="p-calib-note" aria-live="polite"></p>
-    <p class="muted">Mientras no termines, la grabación sigue: al arrancar, la pantalla vuelve sola al panel. Con el garaje del Mac conectado, la tanda completa se analiza allí; el .zip sirve para «Telemetría Maspalomas».</p>
+    <section class="card" aria-labelledby="p-opt-h">
+      <h2 id="p-opt-h">Opciones</h2>
+      <div class="pilot" id="p-nombre-box" hidden><label for="p-nombre">Nombre</label><input id="p-nombre" type="text" maxlength="40" autocomplete="off" placeholder="Ponle nombre (opcional)"></div>
+      <div class="actions">
+        <button id="p-share">Compartir (imagen)</button>
+        <button id="export">Exportar tanda (.zip)</button>
+        <button id="pits-day" hidden>Tiempos del día</button>
+        <button id="p-calib">Calibrar inclinación</button>
+      </div>
+      <p class="muted" id="p-calib-note" aria-live="polite"></p>
+      <details class="fold" id="p-cut" hidden>
+        <summary>Cortar en dos</summary>
+        <p class="muted">Para separar dos tandas que se grabaron seguidas: quedan dos grabaciones nuevas y esta entera se borra del móvil.</p>
+        <div class="pilot"><label for="p-cut-lap">Cortar</label><select id="p-cut-lap"></select></div>
+        <div class="actions"><button id="p-cut-go">Cortar aquí</button></div>
+      </details>
+    </section>
+    <p class="muted" id="p-keep">Mientras no termines, la grabación sigue: al arrancar, la pantalla vuelve sola al panel. Con el garaje del Mac conectado, la tanda completa se analiza allí; el .zip sirve para «Telemetría Maspalomas».</p>
   </main>
 
   <!-- Tiempos del día de todos los pilotos que suben al garaje -->

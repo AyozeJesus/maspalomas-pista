@@ -6,6 +6,24 @@ el móvil, el resumen de cada curva al salir de ella, tiempo por vuelta y sector
 análisis de la tanda con tus puntos de mejora por curva. Cada tanda se guarda en el móvil y, con el garaje
 abierto, se sube sola a tu Mac.
 
+## Cómo está ordenada
+
+La portada tiene tres pestañas abajo:
+
+- **Rodar**: «Salir a pista» (el circuito de Maspalomas) y «Ruta libre» (cualquier carretera), cada uno con una
+  línea que dice qué hace; «Probar los sensores» y la vuelta de ejemplo; si el GPS y los sensores están listos y tu
+  mejor vuelta guardada; «Antes de salir», plegado.
+- **Mis rutas**: lo grabado en el móvil (con «Ver» y «Borrar»), tus tramos y, con el Mac conectado, los tiempos del
+  día de todos los pilotos.
+- **Ajustes**: piloto y objetivo, pantalla en pista, panel y avisos (mapa, aviso de frenada, aviso de caída),
+  receptor GPS externo, el Mac (garaje) y los circuitos (línea de meta, otros guardados).
+
+El resumen de una ruta va de lo general a lo detallado: los números (los mismos de la imagen para compartir; el
+resto en «Más datos»), el mapa con el punto que se mueve, la gráfica de frenada / gas / tiempo muerto, los tramos,
+las curvas, las frenadas y los caballitos (las tablas largas, las 5 primeras y «Ver las N»), y al final
+«Opciones»: nombre, compartir, exportar y «Cortar en dos» (plegado). En boxes, «Volver a pista» y «Terminar» van
+arriba del todo; después las vueltas, las frenadas por curva, el plan para la próxima tanda y las opciones.
+
 ## Uso en pista
 
 1. Abre la página en Chrome del móvil, con internet, y en el menú «Añadir a pantalla de inicio» (la portada lo
@@ -32,7 +50,7 @@ abierto, se sube sola a tu Mac.
 3. «Salir a pista» y acepta el permiso de ubicación. La pantalla se queda encendida mientras la página esté abierta.
 4. Al parar en boxes la pantalla cambia sola al análisis.
 
-«Ver una vuelta de ejemplo» reproduce una tanda generada con el modelo, sin salir de casa (no se guarda), con el
+«Vuelta de ejemplo» (en «Rodar») reproduce una tanda generada con el modelo, sin salir de casa (no se guarda), con el
 circuito en 3D (`vista3d.js` sobre three.js r128): desde el casco, desde detrás de la moto o desde arriba, a ×1, ×2
 o ×4, con los carteles de frenada de la mejor vuelta y el mismo panel de métricas que en pista. Si el móvil no puede
 dibujar en 3D, lo dice y el panel sigue igual.
@@ -77,7 +95,7 @@ dibujar en 3D, lo dice y el panel sigue igual.
 
 El GPS del móvil da una posición por segundo y con 0,5–1 s de retraso. Un receptor externo da de 10 a 25 por
 segundo y casi sin retraso: tiempos por vuelta, delta, trazada y la vuelta ideal fina (minisectores de 50 m)
-mucho más exactos. Se conecta en la portada, antes de salir:
+mucho más exactos. Se conecta en «Ajustes», antes de salir:
 
 - **Bluetooth** («Conectar por Bluetooth» y elegirlo en la lista): RaceBox Mini/Micro, BonoGPS (perfil de
   ubicación estándar con frases NMEA) o cualquier receptor que mande NMEA por el puerto serie Bluetooth de Nordic.
@@ -96,7 +114,7 @@ documentación y el resto, de la norma NMEA y del código del BonoGPS.
 
 ## Tus rutas y tandas en el móvil
 
-En la portada, justo debajo de los botones de salir, «Tus rutas y tandas» lista lo grabado en este móvil (nombre o
+La pestaña «Mis rutas» lista lo grabado en este móvil (nombre o
 fecha, ruta o circuito, km, vueltas, mejor vuelta de esa tanda, duración), también sin internet. «Ver» repasa la
 grabación con el mismo motor del directo, deprisa y sin grabar, subir ni avisar de nada, y enseña lo de siempre al
 terminar: la ruta con su mapa, curvas, frenadas, caballitos y vueltas, o el análisis de boxes de una tanda de
@@ -175,7 +193,7 @@ por la misma carretera, «Guardar ida y vuelta», que guarda un tramo por sentid
 por él en el mismo sentido se reconoce solo por la posición (salida y meta 10 m dentro del trazado; parar en medio
 vale y cuenta en el tiempo; salirse de la carretera o perder el GPS más de 12 s, no): en la ruta libre el panel
 lleva el tramo con su tiempo y la diferencia con tu mejor pasada en ese mismo punto, y al acabar avisa del tiempo.
-Al repasar una grabación también se apunta, y en la portada («Tus tramos») «Buscar» lo busca en todas las rutas
+Al repasar una grabación también se apunta, y en «Mis rutas» («Tus tramos») «Buscar» lo busca en todas las rutas
 guardadas: así las pasadas de distintos días quedan juntas. Cada pasada guarda su tiempo cada 20 m, y el resumen la
 compara con la mejor (o con la anterior mejor, si esta la bate): velocidad de las dos a lo largo del tramo, dónde
 empieza cada frenada, la diferencia de tiempo punto a punto, dónde más ganas y pierdes, y si frenas antes o más
@@ -192,8 +210,9 @@ frenada máxima, curvas, frenadas, caballitos). Se manda con lo que ofrezca el m
 red, WhatsApp la deja en cola. Si el navegador no sabe compartir archivos, se descarga.
 
 **Atrás**: el atrás del móvil ya no cierra la app. Desde el resumen de la ruta, la prueba de sensores o los tiempos
-del día vuelve a la portada (y el resumen tiene «Volver» arriba); repasando una grabación, la cierra; rodando no
-para nada (avisa de que para acabar está «Terminar»); en la portada avisa y el segundo atrás sale.
+del día vuelve a la portada, a la pestaña de donde saliste (y el resumen tiene «Volver» arriba); repasando una
+grabación, la cierra; rodando no para nada (avisa de que para acabar está «Terminar»); en «Mis rutas» o «Ajustes»
+vuelve a «Rodar»; en «Rodar» avisa y el segundo atrás sale.
 
 La trazada mezcla el giroscopio (entre posiciones del GPS) y el GPS (que la corrige poco a poco): sale suave y,
 en las pruebas, a ~2,5 m de la posición real frente a ~5 m usando solo el GPS. En carretera, respeta las normas:

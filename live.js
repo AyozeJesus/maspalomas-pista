@@ -8,7 +8,7 @@
   const ST = window.PistaStore;
   const APP_VERSION = 2;
   // Versión publicada (la misma que la copia de sw.js, «pista-vN»): se ve en la portada.
-  const BUILD = 27;
+  const BUILD = 28;
   const G = 9.80665;
   const REC_EVERY = 10; // segundos entre trozos guardados en el móvil
   const $ = (id) => document.getElementById(id);
@@ -1616,6 +1616,11 @@
     $("resume").hidden = viewing;
     $("p-calib").hidden = viewing;
     $("p-toolbar").hidden = !viewing;
+    // Mirando una tanda guardada: sin «Volver a pista» / «Terminar» (se cierra con «Volver») ni la nota de que la
+    // grabación sigue; con su nombre de título.
+    $("p-main").hidden = viewing;
+    $("p-keep").hidden = viewing;
+    setText("p-title", (viewing && engName(E)) || "Boxes");
     // Repasando una tanda guardada: ponerle nombre y cortarla entre dos vueltas.
     if (viewing) setupNombre(E, "p-nombre", "p-nombre-box");
     else $("p-nombre-box").hidden = true;
@@ -2027,6 +2032,45 @@
       $(id).hidden = id !== which;
   }
 
+  // ---------- pestañas de la portada ----------
+  // «Rodar» (salir), «Mis rutas» (lo grabado y los tramos) y «Ajustes». Volver de un resumen o de boxes deja la
+  // pestaña de donde se salió; atrás desde otra pestaña vuelve a «Rodar».
+  const TABS = ["rodar", "rutas", "ajustes"];
+  let homeTab = "rodar";
+  function setTab(tab) {
+    if (!TABS.includes(tab)) return;
+    const changed = tab !== homeTab;
+    homeTab = tab;
+    for (const t of TABS) {
+      $("tab-" + t).hidden = t !== tab;
+      const b = $("tb-" + t);
+      b.setAttribute("aria-selected", String(t === tab));
+      b.tabIndex = t === tab ? 0 : -1;
+    }
+    if (changed) window.scrollTo(0, 0);
+  }
+  function wireTabs() {
+    for (const t of TABS) {
+      const b = $("tb-" + t);
+      b.addEventListener("click", () => setTab(t));
+      // Con teclado: flechas entre pestañas.
+      b.addEventListener("keydown", (ev) => {
+        const k = TABS.indexOf(t);
+        const to =
+          ev.key === "ArrowRight"
+            ? TABS[(k + 1) % TABS.length]
+            : ev.key === "ArrowLeft"
+              ? TABS[(k + TABS.length - 1) % TABS.length]
+              : null;
+        if (!to) return;
+        ev.preventDefault();
+        setTab(to);
+        $("tb-" + to).focus();
+      });
+    }
+    setTab(homeTab);
+  }
+
   // ---------- atrás (el botón o el gesto del móvil) ----------
   // Instalada, la app se cerraba con el atrás del móvil desde cualquier pantalla. Ahora lleva una entrada propia en
   // el historial y atrás vuelve dentro de la app: el resumen de la ruta y la prueba de sensores, a la portada;
@@ -2080,6 +2124,11 @@
     }
     if (!$("dia").hidden) {
       leaveDay();
+      return backArm();
+    }
+    // En otra pestaña de la portada: a «Rodar».
+    if (homeTab !== "rodar") {
+      setTab("rodar");
       return backArm();
     }
     // En la portada: sin entrada propia, el siguiente atrás ya sale (de eso se encarga el móvil).
@@ -3466,6 +3515,7 @@
           trailCell(b),
         ]),
       );
+    foldTable(tb, "ruf-b-more");
   }
 
   // Resumen al terminar la ruta: mapa entero, totales, las curvas más tumbadas y los caballitos.
@@ -4422,13 +4472,18 @@
       await lastE.rec.queue.catch(() => {});
     return ST.patchSession(sid, { nombre: nombre || undefined });
   }
+  // El nombre de una ruta o tanda («Los Loros»): el que se le acaba de poner (vacío: quitado) o el guardado.
+  function engName(eng) {
+    if (typeof eng.nombre === "string") return eng.nombre;
+    return (eng.viewing && eng.viewing.nombre) || "";
+  }
   function setupNombre(eng, inputId, boxId) {
     const sid = cutSessionId(eng);
     const ok = !!(ST && sid && (eng.viewing || !eng.sim));
     $(boxId).hidden = !ok;
     if (!ok) return;
     const input = $(inputId);
-    input.value = eng.nombre || (eng.viewing && eng.viewing.nombre) || "";
+    input.value = engName(eng);
     input.dataset.sid = sid;
   }
   function wireNombre(inputId) {
@@ -4441,6 +4496,9 @@
       try {
         if (await renameSession(sid, nombre)) {
           if (eng) eng.nombre = nombre;
+          // El título de la pantalla lo lleva también.
+          if (!$("ruta-fin").hidden) setText("ruf-title", nombre || "Tu ruta");
+          if (!$("pits").hidden) setText("p-title", nombre || "Boxes");
           toast(nombre ? "Nombre guardado" : "Nombre quitado");
         }
       } catch (e) {
@@ -4455,6 +4513,7 @@
     const laps = eng.laps.filter((l) => Number.isFinite(l.end));
     const ok = !!(ST && sid && eng.viewing && laps.length >= 2);
     $("p-cut").hidden = !ok;
+    $("p-cut").open = false;
     if (!ok) return;
     const sel = $("p-cut-lap");
     sel.textContent = "";
@@ -4495,7 +4554,9 @@
       follow: false,
       colorBy: summaryColor,
       marks: curveMarks(topCurves(eng.route.curves, 12)),
-      dots: cutUi && cutUi.eng === eng ? summaryMapDots() : [],
+      // El punto del corte, solo con «Cortar en dos» abierto.
+      dots:
+        cutUi && cutUi.eng === eng && $("ruf-cut").open ? summaryMapDots() : [],
     });
     scrub.map = view ? { eng, view, base: canvasCopy(cv) } : null;
     if (scrub.eng === eng) drawScrubMap();
@@ -4928,8 +4989,10 @@
       t1 - t0 > 60
     );
     $("ruf-cut").hidden = !ok;
-    // Repintando el mismo resumen (al cambiar el color del mapa), la barra se queda donde estaba.
+    // Repintando el mismo resumen (al cambiar el color del mapa), la barra se queda donde estaba; otra ruta
+    // empieza con «Cortar en dos» cerrado.
     const prevT = cutUi && cutUi.eng === eng ? cutUi.t : null;
+    if (prevT === null) $("ruf-cut").open = false;
     cutUi = null;
     if (!ok) return;
     let sug = null;
@@ -5047,6 +5110,7 @@
     renderRouteLaps(eng);
     const r = eng.route;
     const s = r.summary();
+    setText("ruf-title", engName(eng) || "Tu ruta");
     const d = new Date(eng.rec ? eng.rec.epoch : eng.viewEpoch || Date.now());
     setText(
       "ruf-sub",
@@ -5071,9 +5135,12 @@
       "ruf-color",
       "Color: " + (summaryColor === "fase" ? "fases" : "inclinación"),
     );
+    // Arriba, lo mismo que lleva la imagen para compartir; el resto, en «Más datos».
     const box = $("ruf-stats");
+    const box2 = $("ruf-stats2");
     box.textContent = "";
-    const add = (label, value) => {
+    box2.textContent = "";
+    const add = (label, value, more) => {
       const div = document.createElement("div");
       const sm = document.createElement("small");
       sm.textContent = label;
@@ -5081,7 +5148,7 @@
       b.className = "num";
       b.textContent = value;
       div.append(sm, b);
-      box.appendChild(div);
+      (more ? box2 : box).appendChild(div);
     };
     add("Distancia", fmt(s.distancia / 1000, 1) + " km");
     add("Tiempo", fmtClock(s.duracion));
@@ -5092,28 +5159,43 @@
       s.inclIzquierda ? fmt(s.inclIzquierda, 0) + "°" : "—",
     );
     add("Frenada máx.", s.frenadaMax ? fmt(s.frenadaMax, 2) + " g" : "—");
+    add("Curvas", String(s.curvas));
     add("Frenadas", String(s.frenadas || 0));
+    add(
+      "Caballitos",
+      s.caballitos
+        ? s.caballitos +
+            " · " +
+            s.caballitosMetros +
+            " m · ≈" +
+            fmt(s.caballitosPerdido, 2) +
+            " s"
+        : "ninguno",
+    );
     add(
       "Mejor mordida",
       s.mordidaMejor !== null && s.mordidaMejor !== undefined
         ? fmt(s.mordidaMejor, 2) + " s"
         : "—",
+      true,
     );
     add(
       "Hundimiento máx.",
       s.hundimientoMax !== null && s.hundimientoMax !== undefined
         ? fmt(s.hundimientoMax, 1) + "° ≈" + s.hundimientoMaxMm + " mm"
         : "—",
+      true,
     );
     add(
       "Frenando tumbado",
       s.frenadaTumbadoMax ? s.frenadaTumbadoMax + " m (máx.)" : "—",
+      true,
     );
     add(
       "Aceleración máx.",
       s.aceleracionMax ? fmt(s.aceleracionMax, 2) + " g" : "—",
+      true,
     );
-    add("Curvas", String(s.curvas));
     if (eng.crashLog.length)
       add(
         "Avisos de caída",
@@ -5131,21 +5213,12 @@
                   : ""),
           )
           .join("; "),
+        true,
       );
     add(
       "Sin gas en curva (media)",
       s.tiempoMuertoMedio !== null ? fmt(s.tiempoMuertoMedio, 1) + " s" : "—",
-    );
-    add(
-      "Caballitos",
-      s.caballitos
-        ? s.caballitos +
-            " · " +
-            s.caballitosMetros +
-            " m · ≈" +
-            fmt(s.caballitosPerdido, 2) +
-            " s"
-        : "ninguno",
+      true,
     );
     const top = r.curves
       .filter((c) => c.leanMax)
@@ -5177,6 +5250,7 @@
           fmt(c.dead, 1) + " s",
         ]),
       );
+    foldTable(tb, "ruf-c-more");
     routeBrakes(s);
     const wb = $("ruf-wh");
     wb.textContent = "";
@@ -5192,6 +5266,26 @@
           "≈" + fmt(w.lost, 2) + " s",
         ]),
       );
+    foldTable(wb, "ruf-w-more");
+  }
+
+  // Tablas largas del resumen (curvas, frenadas, caballitos): las 5 primeras a la vista y «Ver las N» para el resto
+  // (con las 40 frenadas, el resumen ocupaba siete pantallas).
+  const FOLD_ROWS = 5;
+  function foldTable(tbody, btnId) {
+    const n = tbody.rows.length;
+    const btn = $(btnId);
+    const wrap = tbody.closest(".cmp-wrap");
+    wrap.classList.remove("all");
+    Array.from(tbody.rows).forEach((tr, i) =>
+      tr.classList.toggle("extra", i >= FOLD_ROWS),
+    );
+    btn.hidden = n <= FOLD_ROWS;
+    btn.textContent = "Ver las " + n;
+    btn.onclick = () => {
+      const all = wrap.classList.toggle("all");
+      btn.textContent = all ? "Ver menos" : "Ver las " + n;
+    };
   }
 
   function loop() {
@@ -6290,7 +6384,8 @@
     } catch (e) {
       list = [];
     }
-    $("hist-card").hidden = !list.length;
+    // Sin nada grabado, la pestaña lo dice (en vez de quedarse en blanco).
+    $("hist-empty").hidden = list.length > 0;
     const box = $("hist-list");
     box.textContent = "";
     for (const s of list) {
@@ -6753,6 +6848,8 @@
     const cfg = ST.parsePairing(location.hash);
     if (!location.hash.startsWith("#garaje=")) return false;
     history.replaceState(null, "", location.pathname + location.search);
+    // Se abre en «Ajustes», donde se ve si el Mac ha quedado conectado.
+    setTab("ajustes");
     if (!cfg) {
       setStatus(
         "st-mac",
@@ -6824,6 +6921,7 @@
     wireExt();
     wireInstall();
     wireScrub();
+    wireTabs();
     for (const b of document.querySelectorAll(".choice [data-orient]"))
       b.addEventListener("click", () => {
         settings.pantalla = b.dataset.orient;
@@ -6988,6 +7086,10 @@
       cutUi.armed = false;
       renderCut();
       drawSummaryMap(cutUi.eng);
+    });
+    // Abrir o cerrar «Cortar en dos» pone o quita su punto del mapa.
+    $("ruf-cut").addEventListener("toggle", () => {
+      if (cutUi && !$("ruta-fin").hidden) drawSummaryMap(cutUi.eng);
     });
     $("ruf-cut-go").addEventListener("click", async () => {
       const ui = cutUi;
