@@ -25,6 +25,34 @@ export function loadLegacy(...files: string[]): Record<string, unknown> {
   return sandbox;
 }
 
+// Funciones sueltas del live.js de antes (no se publicaban en `window`): se copia su texto, desde «  function nombre(»
+// hasta su «  }», y se ejecutan en un contexto aparte. consts: las constantes que usan («NF»…), copiadas igual hasta
+// su «;». globals: lo que esperan encontrar en `window` (localStorage, MaspaTramos…).
+export function liveFunctions<T>(
+  names: string[],
+  opts: { consts?: string[]; globals?: Record<string, unknown> } = {},
+): T {
+  const src = readFileSync(legacyFile("live.js"), "utf8");
+  const pieces: string[] = [];
+  for (const c of opts.consts || []) {
+    const start = src.indexOf("\n  const " + c + " =");
+    if (start < 0) throw new Error("live.js no define la constante " + c);
+    pieces.push(src.slice(start, src.indexOf(";\n", start) + 1));
+  }
+  for (const n of names) {
+    const start = src.indexOf("\n  function " + n + "(");
+    if (start < 0) throw new Error("live.js no define la función " + n);
+    pieces.push(src.slice(start, src.indexOf("\n  }\n", start) + 4));
+  }
+  const sandbox: Record<string, unknown> = { ...opts.globals };
+  sandbox.window = sandbox;
+  vm.createContext(sandbox);
+  vm.runInContext(pieces.join("\n") + "\nwindow.__fns = { " + names.join(", ") + " };", sandbox, {
+    filename: "live.js",
+  });
+  return sandbox.__fns as T;
+}
+
 // Un módulo concreto de esa `window`, con el tipo que le da quien lo pide.
 export function legacy<T>(global: string, ...files: string[]): T {
   const w = loadLegacy(...files);
