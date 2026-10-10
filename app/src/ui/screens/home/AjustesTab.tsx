@@ -1,5 +1,12 @@
-// Pestaña «Ajustes»: piloto, pantalla, avisos, receptor, el Mac y los circuitos. (Provisional: la rellena la fase de
-// pantallas.)
+// Pestaña «Ajustes»: piloto, pantalla, avisos, receptor, el Mac y los circuitos, y la versión de la app.
+import { BUILD } from "../../../app/version";
+import { AlertsCard } from "./ajustes/AlertsCard";
+import { CircuitsCard } from "./ajustes/CircuitsCard";
+import { ExtCard } from "./ajustes/ExtCard";
+import { GarageCard } from "./ajustes/GarageCard";
+import { OrientCard } from "./ajustes/OrientCard";
+import { PilotCard } from "./ajustes/PilotCard";
+
 export function AjustesTab({ hidden }: { hidden: boolean }) {
   return (
     <div
@@ -8,6 +15,19 @@ export function AjustesTab({ hidden }: { hidden: boolean }) {
       role="tabpanel"
       aria-labelledby="tb-ajustes"
       hidden={hidden}
-    ></div>
+    >
+      <header className="page-head">
+        <h1 className="title">Ajustes</h1>
+      </header>
+      <PilotCard />
+      <OrientCard />
+      <AlertsCard />
+      <ExtCard />
+      <GarageCard />
+      <CircuitsCard />
+      <p className="muted num" id="home-build">
+        {"Versión " + BUILD}
+      </p>
+    </div>
   );
 }
