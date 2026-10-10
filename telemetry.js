@@ -594,37 +594,285 @@
     return [s * w[p[0]], s * w[p[1]], s * w[p[2]]];
   };
 
-  // Vertical de la moto derecha en ejes del móvil: media de la gravedad en recta lanzada sin giro (en caballete
-  // lateral la moto está tumbada, así que parado solo vale si no hay rectas).
-  function uprightAxis(gx, gy, gz, wx, wy, wz, v, hz) {
-    const sums = { straight: [0, 0, 0, 0], still: [0, 0, 0, 0] };
-    for (let k = 0; k < gx.length; k++) {
-      const key =
-        v[k] > 15 && Math.hypot(wx[k], wy[k], wz[k]) < 0.06
-          ? "straight"
-          : v[k] < 0.5
-            ? "still"
-            : null;
-      if (!key) continue;
-      const s = sums[key];
-      s[0] += gx[k];
-      s[1] += gy[k];
-      s[2] += gz[k];
-      s[3]++;
+  // ---------- ejes del móvil en la moto, con la vibración de un soporte de verdad ----------
+  // Medido con 4 rutas de un Vivo Y33s sobre una ZX-10R (9-oct; README, «Con la vibración de la moto»): el soporte
+  // vibra ±1 g y 0,3–0,5 rad/s por muestra, la aceleración «lineal» y la gravedad que separa Android salen de una
+  // fusión que eso estropea (su gravedad, hasta 11° mal) y casi ninguna muestra parece «recta sin giro». Así que:
+  // la vertical es la media de la fuerza específica (acc + grav) rodando (en un giro equilibrado apunta igual al
+  // suelo de la moto), el eje adelante es la dirección perpendicular en la que esa fuerza mejor explica la
+  // aceleración del GPS (con término independiente) y luego se afina con el balanceo (alignRoot).
+
+  // Eje adelante afinado con el balanceo: el balanceo (giro alrededor de adelante) y el cabeceo de verdad no tienen
+  // nada que ver, así que el eje bueno deja Σ cabeceo·balanceo en 0. Con medias de 0,1 s del giro en una base fija
+  // (e1, e2) perpendicular a la vertical, f = cos α·e1 + sen α·e2 y l = u × f, esa suma es
+  // sen α·cos α·(A22 − A11) + (cos²α − sen²α)·A12 − cos α·B1 − sen α·B2 (A: productos del giro en el plano por cos φ;
+  // B: del giro vertical por sen φ, con φ la inclinación). Devuelve la raíz más cercana a a0 (±60°) o null.
+  function alignRoot(a, a0) {
+    const g = (al) => {
+      const s = Math.sin(al);
+      const c = Math.cos(al);
+      return (
+        s * c * (a.A22 - a.A11) + (c * c - s * s) * a.A12 - c * a.B1 - s * a.B2
+      );
+    };
+    let best = null;
+    const STEP = Math.PI / 360;
+    for (let x = a0 - Math.PI / 3; x < a0 + Math.PI / 3; x += STEP) {
+      const g0 = g(x);
+      const g1 = g(x + STEP);
+      if (g0 === 0 || g0 * g1 < 0) {
+        const r = x + (STEP * g0) / (g0 - g1);
+        if (best === null || Math.abs(r - a0) < Math.abs(best - a0)) best = r;
+      }
     }
-    for (const key of ["straight", "still"]) {
-      const s = sums[key];
-      if (s[3] >= hz * 2) return { u: norm3(s), from: key };
+    return best;
+  }
+  // Sumas para alignRoot con una muestra de 0,1 s: medias del giro sobre e1, e2 y u, e inclinación (rad).
+  function alignAdd(a, m1, m2, mu, phi) {
+    const cp = Math.cos(phi);
+    const sp = Math.sin(phi);
+    a.A11 += m1 * m1 * cp;
+    a.A12 += m1 * m2 * cp;
+    a.A22 += m2 * m2 * cp;
+    a.B1 += mu * sp * m1;
+    a.B2 += mu * sp * m2;
+    a.n++;
+  }
+  function alignSums() {
+    return { A11: 0, A12: 0, A22: 0, B1: 0, B2: 0, n: 0 };
+  }
+
+  // Ejes y señales de una grabación entera, en la rejilla tg (hz): vertical u, adelante f, aceleración adelante (m/s²,
+  // media de 0,3 s), giro alrededor de la vertical (rad/s, con su signo sin comprobar) y el giroscopio medio (0,16 s).
+  // fixes: [{t, speed}]; use(k): si el par de fijos k−1, k+1 vale para el eje adelante (en el circuito, en pista).
+  // Lanza un error si no puede orientar el móvil.
+  function imuSolve(session, fixes, tg, hz, use) {
+    const m = tg.length;
+    const warnings = [];
+    const tStart = tg[0];
+    const tEnd = tg[m - 1];
+    const ra = ["x", "y", "z"].map((c) =>
+      resampleTo(tg, session.acc.t, session.acc[c]),
+    );
+    const rg = ["x", "y", "z"].map((c) =>
+      resampleTo(tg, session.grav.t, session.grav[c]),
+    );
+    const rw = ["x", "y", "z"].map((c) =>
+      resampleTo(tg, session.gyro.t, session.gyro[c]),
+    );
+    // Ejes del giroscopio comprobados con la gravedad (cada navegador los da en un orden) y corregidos.
+    const chk = new GyroAxes(0);
+    const w5 = rw.map((a) => movingAvg(a, 5));
+    const g5 = rg.map((a) => movingAvg(a, 5));
+    for (let k = 0; k < m; k++)
+      chk.add(
+        tg[k],
+        [g5[0][k], g5[1][k], g5[2][k]],
+        [w5[0][k], w5[1][k], w5[2][k]],
+      );
+    chk.decide(2);
+    const gyroAxes = {
+      orden: chk.choice,
+      signo: chk.sign,
+      r2: chk.r2,
+      giro: chk.rot,
+    };
+    if (chk.choice !== 0 || chk.sign !== 1) {
+      const p = AXIS_PERMS[chk.choice];
+      const raw = rw.slice();
+      for (let j = 0; j < 3; j++)
+        rw[j] = Float64Array.from(raw[p[j]], (x) => chk.sign * x);
     }
-    let sx = 0;
-    let sy = 0;
-    let sz = 0;
-    for (let k = 0; k < gx.length; k++) {
-      sx += gx[k];
-      sy += gy[k];
-      sz += gz[k];
+    if (chk.checked && chk.r2 < 0.3)
+      warnings.push(
+        "El giroscopio no cuadra con cómo gira la gravedad: la inclinación puede salir mal.",
+      );
+    const wx = movingAvg(rw[0], 8);
+    const wy = movingAvg(rw[1], 8);
+    const wz = movingAvg(rw[2], 8);
+    // Fuerza específica (lo que mide de verdad el acelerómetro) y sus sumas acumuladas para medias rápidas.
+    const sf = [0, 1, 2].map((j) => {
+      const o = new Float64Array(m);
+      for (let k = 0; k < m; k++) o[k] = ra[j][k] + rg[j][k];
+      return o;
+    });
+    const cs = sf.map((a) => {
+      const c = new Float64Array(m + 1);
+      for (let k = 0; k < m; k++) c[k + 1] = c[k] + a[k];
+      return c;
+    });
+    const vg = resampleTo(
+      tg,
+      fixes.map((f) => f.t),
+      fixes.map((f) => f.speed),
+    );
+    // Vertical: media de la fuerza específica rodando (en una tanda que empieza y acaba parada, la aceleración se
+    // anula en la media). Con muy poco rodando, la de toda la grabación.
+    const us = [0, 0, 0];
+    let nU = 0;
+    for (let k = 0; k < m; k++)
+      if (vg[k] > 5) {
+        us[0] += sf[0][k];
+        us[1] += sf[1][k];
+        us[2] += sf[2][k];
+        nU++;
+      }
+    let upFrom = "rodando";
+    if (nU < hz * 5) {
+      for (let k = 0; k < m; k++) for (let j = 0; j < 3; j++) us[j] += sf[j][k];
+      upFrom = "todo";
+      warnings.push(
+        "Muy poco rato en marcha para calibrar: la inclinación puede ir algo desviada.",
+      );
     }
-    return { u: norm3([sx, sy, sz]), from: "all" };
+    const u = norm3(us);
+    // Base del plano perpendicular a u.
+    const ax = [0, 1, 2].sort((p, q) => Math.abs(u[p]) - Math.abs(u[q]))[0];
+    const e = [0, 0, 0];
+    e[ax] = 1;
+    const e1 = norm3([
+      e[0] - u[ax] * u[0],
+      e[1] - u[ax] * u[1],
+      e[2] - u[ax] * u[2],
+    ]);
+    const e2 = cross3(u, e1);
+    // Eje adelante con el retraso del GPS que mejor encaja (regresión con término independiente: la media se quita).
+    const fitAt = (lagS) => {
+      const rows = [];
+      for (let k = 1; k < fixes.length - 1; k++) {
+        const a = fixes[k - 1];
+        const b = fixes[k + 1];
+        if (!use(k) || b.t - a.t > 3 || isNaN(a.speed) || isNaN(b.speed))
+          continue;
+        const ta = a.t - lagS;
+        const tb = b.t - lagS;
+        if (ta < tStart || tb > tEnd) continue;
+        const ka = Math.floor((ta - tStart) * hz);
+        const kb = Math.floor((tb - tStart) * hz);
+        if (kb - ka < 2) continue;
+        const c = kb - ka;
+        const X = [0, 1, 2].map((j) => (cs[j][kb] - cs[j][ka]) / c);
+        rows.push([
+          dot3(X, e1),
+          dot3(X, e2),
+          (b.speed - a.speed) / (b.t - a.t),
+        ]);
+      }
+      if (rows.length < 20) return null;
+      const n = rows.length;
+      const mean = [0, 0, 0];
+      for (const r of rows) for (let j = 0; j < 3; j++) mean[j] += r[j] / n;
+      let s11 = 0;
+      let s12 = 0;
+      let s22 = 0;
+      let y1 = 0;
+      let y2 = 0;
+      let yy = 0;
+      for (const r of rows) {
+        const p1 = r[0] - mean[0];
+        const p2 = r[1] - mean[1];
+        const y = r[2] - mean[2];
+        s11 += p1 * p1;
+        s12 += p1 * p2;
+        s22 += p2 * p2;
+        y1 += p1 * y;
+        y2 += p2 * y;
+        yy += y * y;
+      }
+      const lam = 1e-3 * (s11 + s22 || 1);
+      const det = (s11 + lam) * (s22 + lam) - s12 * s12;
+      if (!(Math.abs(det) > 1e-12)) return null;
+      const w1 = ((s22 + lam) * y1 - s12 * y2) / det;
+      const w2 = ((s11 + lam) * y2 - s12 * y1) / det;
+      let res = 0;
+      for (const r of rows) {
+        const y =
+          r[2] - mean[2] - w1 * (r[0] - mean[0]) - w2 * (r[1] - mean[1]);
+        res += y * y;
+      }
+      return { w1, w2, r2: 1 - res / (yy || 1), used: n };
+    };
+    let best = null;
+    for (let l = -1.0; l <= 1.0001; l += 0.1) {
+      const r = fitAt(l);
+      if (r && (!best || r.r2 > best.r2))
+        best = Object.assign(r, { lag: Math.round(l * 10) / 10 });
+    }
+    if (!best || !(Math.hypot(best.w1, best.w2) > 0))
+      throw new Error(
+        "No he podido orientar el móvil respecto a la moto: ¿iba bien sujeto?",
+      );
+    if (best.r2 < 0.3)
+      warnings.push(
+        "La aceleración del móvil casi no cuadra con la del GPS: ¿iba suelto en la bolsa? Las frenadas pueden salir mal.",
+      );
+    let f = norm3([
+      best.w1 * e1[0] + best.w2 * e2[0],
+      best.w1 * e1[1] + best.w2 * e2[1],
+      best.w1 * e1[2] + best.w2 * e2[2],
+    ]);
+    // Afinado con el balanceo (rodando a más de 8 m/s, medias de 0,1 s), con la inclinación de esos ejes.
+    const l0 = cross3(u, f);
+    const est = new LeanEstimator();
+    est.setAxes(f, u);
+    const sums = alignSums();
+    const blk = Math.max(1, Math.round(hz / 10));
+    let b1 = 0;
+    let b2 = 0;
+    let bu = 0;
+    let bp = 0;
+    let bn = 0;
+    for (let k = 0; k < m; k++) {
+      const w = [wx[k], wy[k], wz[k]];
+      const phi = (est.step(1 / hz, w, vg[k]) * Math.PI) / 180;
+      b1 += dot3(w, f);
+      b2 += dot3(w, l0);
+      bu += dot3(w, u);
+      bp += phi;
+      bn++;
+      if (bn < blk) continue;
+      if (vg[k] > 8) alignAdd(sums, b1 / bn, b2 / bn, bu / bn, bp / bn);
+      b1 = b2 = bu = bp = bn = 0;
+    }
+    let alineado = 0;
+    if (sums.n > 300 && (sums.A11 + sums.A22) / sums.n > 0.002) {
+      const al = alignRoot(sums, 0);
+      if (al !== null) {
+        alineado = (al * 180) / Math.PI;
+        f = norm3([
+          Math.cos(al) * f[0] + Math.sin(al) * l0[0],
+          Math.cos(al) * f[1] + Math.sin(al) * l0[1],
+          Math.cos(al) * f[2] + Math.sin(al) * l0[2],
+        ]);
+      }
+    }
+    // Aceleración adelante (media de 0,3 s) y giro alrededor de la vertical (+ a izquierdas; el signo lo comprueba
+    // analyze con el rumbo del GPS).
+    const sx = movingAvg(sf[0], 15);
+    const sy = movingAvg(sf[1], 15);
+    const sz = movingAvg(sf[2], 15);
+    const aLong = new Float64Array(m);
+    const yaw = new Float64Array(m);
+    for (let k = 0; k < m; k++) {
+      aLong[k] = sx[k] * f[0] + sy[k] * f[1] + sz[k] * f[2];
+      const w = [wx[k], wy[k], wz[k]];
+      const wf = dot3(w, f);
+      const perp = [w[0] - wf * f[0], w[1] - wf * f[1], w[2] - wf * f[2]];
+      yaw[k] = -Math.sign(dot3(w, u)) * Math.hypot(perp[0], perp[1], perp[2]);
+    }
+    return {
+      f,
+      u,
+      upFrom,
+      alineado,
+      lag: best.lag,
+      fit: { r2: best.r2, used: best.used },
+      aLong,
+      yaw,
+      gyroW: [wx, wy, wz],
+      gyroAxes,
+      warnings,
+    };
   }
 
   // ---------- montaje del móvil ----------
@@ -789,138 +1037,17 @@
     let gyroAxes = null;
     let axes = null;
     if (hasImu) {
-      // Remuestreo a 50 Hz y filtrado: la vibración del motor se va con medias de 0,3 s (acelerómetro).
-      const ax = movingAvg(resampleTo(tg, session.acc.t, session.acc.x), 15);
-      const ay = movingAvg(resampleTo(tg, session.acc.t, session.acc.y), 15);
-      const az = movingAvg(resampleTo(tg, session.acc.t, session.acc.z), 15);
-      const rw = ["x", "y", "z"].map((c) =>
-        resampleTo(tg, session.gyro.t, session.gyro[c]),
-      );
-      const rg = ["x", "y", "z"].map((c) =>
-        resampleTo(tg, session.grav.t, session.grav[c]),
-      );
-      // Ejes del giroscopio comprobados con la gravedad (cada navegador los da en un orden) y corregidos.
-      const chk = new GyroAxes(0);
-      const w5 = rw.map((a) => movingAvg(a, 5));
-      const g5 = rg.map((a) => movingAvg(a, 5));
-      for (let k = 0; k < m; k++)
-        chk.add(
-          tg[k],
-          [g5[0][k], g5[1][k], g5[2][k]],
-          [w5[0][k], w5[1][k], w5[2][k]],
-        );
-      chk.decide(2);
-      gyroAxes = {
-        orden: chk.choice,
-        signo: chk.sign,
-        r2: chk.r2,
-        giro: chk.rot,
-      };
-      if (chk.choice !== 0 || chk.sign !== 1) {
-        const p = AXIS_PERMS[chk.choice];
-        const raw = rw.slice();
-        for (let j = 0; j < 3; j++)
-          rw[j] = Float64Array.from(raw[p[j]], (x) => chk.sign * x);
-      }
-      if (chk.checked && chk.r2 < 0.3)
-        warnings.push(
-          "El giroscopio no cuadra con cómo gira la gravedad: la inclinación puede salir mal.",
-        );
-      const wx = movingAvg(rw[0], 8);
-      const wy = movingAvg(rw[1], 8);
-      const wz = movingAvg(rw[2], 8);
-      const gx = movingAvg(rg[0], 25);
-      const gy = movingAvg(rg[1], 25);
-      const gz = movingAvg(rg[2], 25);
-      // Vertical de la moto recta: media de la gravedad en recta (sin giro) o, si no hay, parado.
-      const vg = resampleTo(tg, ft, fv);
-      const upright = uprightAxis(gx, gy, gz, wx, wy, wz, vg, hz);
-      if (upright.from === "all")
-        warnings.push(
-          "No hay tramos parados ni rectos claros para calibrar: la inclinación puede ir algo desviada.",
-        );
-      const u0 = upright.u;
-      gyroW = [wx, wy, wz];
-      // Eje longitudinal: el que mejor explica la aceleración que mide el GPS (con su retardo).
-      const fitAt = (lagS) => {
-        const M = [
-          [0, 0, 0],
-          [0, 0, 0],
-          [0, 0, 0],
-        ];
-        const yv = [0, 0, 0];
-        let yy = 0;
-        let used = 0;
-        const samples = [];
-        for (let k = 1; k < fixes.length - 1; k++) {
-          const a = fixes[k - 1];
-          const b = fixes[k + 1];
-          if (!fixes[k].on || b.t - a.t > 3 || isNaN(a.speed) || isNaN(b.speed))
-            continue;
-          const ta = a.t - lagS;
-          const tb = b.t - lagS;
-          if (ta < tStart || tb > tEnd) continue;
-          const ka = Math.floor((ta - tStart) * hz);
-          const kb = Math.floor((tb - tStart) * hz);
-          if (kb - ka < 2) continue;
-          let mx = 0;
-          let my = 0;
-          let mz = 0;
-          for (let q = ka; q < kb; q++) {
-            mx += ax[q];
-            my += ay[q];
-            mz += az[q];
-          }
-          const c = kb - ka;
-          const X = [mx / c, my / c, mz / c];
-          const Y = (b.speed - a.speed) / (b.t - a.t);
-          for (let r = 0; r < 3; r++) {
-            for (let cc = 0; cc < 3; cc++) M[r][cc] += X[r] * X[cc];
-            yv[r] += X[r] * Y;
-          }
-          yy += Y * Y;
-          used++;
-          samples.push([X, Y]);
-        }
-        const w = used > 20 ? solve3(M, yv) : null;
-        if (!w) return null;
-        let res = 0;
-        for (const [X, Y] of samples) res += (Y - dot3(w, X)) ** 2;
-        return { w, r2: 1 - res / (yy || 1), used };
-      };
-      let best = null;
-      for (let l = -1.0; l <= 1.0001; l += 0.1) {
-        const r = fitAt(l);
-        if (r && (!best || r.r2 > best.r2)) best = Object.assign(r, { lag: l });
-      }
-      if (!best)
-        throw new Error(
-          "No he podido orientar el móvil respecto a la moto: ¿iba bien sujeto?",
-        );
-      lag = best.lag;
-      fit = best;
-      if (best.r2 < 0.5)
-        warnings.push(
-          "La aceleración del móvil casi no cuadra con la del GPS: ¿iba suelto en la bolsa? Las frenadas pueden salir mal.",
-        );
-      const wv = best.w;
-      const f = norm3([
-        wv[0] - dot3(wv, u0) * u0[0],
-        wv[1] - dot3(wv, u0) * u0[1],
-        wv[2] - dot3(wv, u0) * u0[2],
-      ]);
-      axes = { f, u: u0, upFrom: upright.from };
-      aLong = new Float64Array(m);
-      yaw = new Float64Array(m);
-      for (let k = 0; k < m; k++) {
-        aLong[k] = ax[k] * f[0] + ay[k] * f[1] + az[k] * f[2];
-        const w = [wx[k], wy[k], wz[k]];
-        const wf = dot3(w, f);
-        const perp = [w[0] - wf * f[0], w[1] - wf * f[1], w[2] - wf * f[2]];
-        // Giro alrededor de la vertical del mundo: + a izquierdas (regla de la mano derecha con la vertical arriba).
-        yaw[k] =
-          -Math.sign(dot3(w, u0)) * Math.hypot(perp[0], perp[1], perp[2]);
-      }
+      // Ejes del móvil, aceleración adelante y giro con la vibración de un soporte de verdad (imuSolve). Para el eje
+      // adelante valen los pares de fijos en pista.
+      const r = imuSolve(session, fixes, tg, hz, (k) => fixes[k].on);
+      for (const w of r.warnings) warnings.push(w);
+      lag = r.lag;
+      fit = r.fit;
+      gyroW = r.gyroW;
+      gyroAxes = r.gyroAxes;
+      axes = { f: r.f, u: r.u, upFrom: r.upFrom, alineado: r.alineado };
+      aLong = r.aLong;
+      yaw = r.yaw;
       // Comprobación del signo con el rumbo GPS: + debe ser giro a derechas.
       let corr = 0;
       for (let k = 1; k < fixes.length - 1; k++) {
@@ -2256,6 +2383,10 @@
     LeanEstimator,
     PitchEstimator,
     GyroAxes,
+    imuSolve,
+    alignRoot,
+    alignAdd,
+    alignSums,
     displayUp,
     mountAxes,
     mountLean,

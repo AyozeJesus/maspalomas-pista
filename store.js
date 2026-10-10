@@ -59,6 +59,24 @@
       t.objectStore("sesiones").put(rec);
     });
   }
+  // Cambia unos campos de una tanda guardada (undefined: se quita) leyendo y escribiendo en la misma transacción, para
+  // no pisar otro cambio hecho a la vez (el nombre mientras se recalcula el resumen). false si ya no está.
+  function patchSession(id, patch) {
+    return tx(["sesiones"], "readwrite", (t) => {
+      const st = t.objectStore("sesiones");
+      const res = { ok: false };
+      const r = st.get(id);
+      r.onsuccess = () => {
+        if (!r.result) return;
+        const rec = Object.assign({}, r.result, patch, { pend: 1 });
+        for (const k of Object.keys(patch))
+          if (patch[k] === undefined) delete rec[k];
+        st.put(rec);
+        res.ok = true;
+      };
+      return res;
+    }).then((res) => res.ok);
+  }
   function putChunk(chunk) {
     const rec = Object.assign({}, chunk, { pend: 1 });
     return tx(["trozos"], "readwrite", (t) => {
@@ -347,6 +365,7 @@
   window.PistaStore = {
     open,
     putSession,
+    patchSession,
     putChunk,
     sessions,
     chunksOf,

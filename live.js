@@ -8,7 +8,7 @@
   const ST = window.PistaStore;
   const APP_VERSION = 2;
   // Versión publicada (la misma que la copia de sw.js, «pista-vN»): se ve en la portada.
-  const BUILD = 26;
+  const BUILD = 27;
   const G = 9.80665;
   const REC_EVERY = 10; // segundos entre trozos guardados en el móvil
   const $ = (id) => document.getElementById(id);
@@ -212,6 +212,13 @@
       if (E && E.route === route) {
         E.wheelieRecap = w;
         E.wheelieT = now();
+      }
+    };
+    // Al soltar el freno, el panel enseña unos segundos cuánto se hundió (si se pudo medir: con la moto casi recta).
+    route.onBrake = (b) => {
+      if (E && E.route === route && b.diveMm !== null) {
+        E.diveRecap = b;
+        E.diveT = now();
       }
     };
     return {
@@ -756,7 +763,8 @@
           }
         : null;
     });
-    const lap = { num: E.lapNum, time, valid, corners };
+    // end: cuándo acabó (reloj de la tanda), para poder cortar la grabación entre dos vueltas.
+    const lap = { num: E.lapNum, time, valid, corners, end: tc };
     E.laps.push(lap);
     if (!valid) {
       saveMeta("grabando");
@@ -853,12 +861,10 @@
   // aceleración apenas lo nota (es casi igual de parecida a la del GPS con 30° de error). El cabeceo sí: con el eje
   // girado un ángulo β, el balanceo (ω·f) se cuela en el cabeceo como β·ω·f, y al cambiar de lado en unas curvas
   // enlazadas (1–2 rad/s de balanceo) el morro «subía» 10–20° (caballitos falsos). El balanceo y el cabeceo de
-  // verdad no tienen nada que ver, así que el eje bueno es el que deja la suma Σ cabeceo·balanceo en 0. Con
-  // medias de 0,1 s rodando a más de 8 m/s, en una base fija (e1, e2) perpendicular a la vertical: con
-  // f = cos α·e1 + sen α·e2 y l = u × f = cos α·e2 − sen α·e1, la suma es
-  // sen α·cos α·(A22 − A11) + (cos²α − sen²α)·A12 − cos α·B1 − sen α·B2 (A, productos del giro en el plano por
-  // cos φ; B, del giro vertical por sen φ). Se toma la raíz más cercana al eje que ya se usa. En esas rutas, a
-  // partir del primer medio minuto ya no se movía más de 1–2°.
+  // verdad no tienen nada que ver, así que el eje bueno es el que deja la suma Σ cabeceo·balanceo en 0 (la cuenta,
+  // en T.alignRoot; el análisis completo hace lo mismo con toda la tanda). Con medias de 0,1 s rodando a más de
+  // 8 m/s, en una base fija perpendicular a la vertical; se toma la raíz más cercana al eje que ya se usa. En esas
+  // rutas, a partir del primer medio minuto ya no se movía más de 1–2°.
   // w: giro sin sesgo (rad/s, ejes del móvil); phi: inclinación en los ejes del estimador (rad).
   function alignStep(t, w, phi) {
     const c = E.calib;
@@ -866,21 +872,15 @@
     let a = c.al;
     // La base se fija con la vertical de ese momento; si la vertical cambia más de 3°, se empieza de nuevo.
     if (!a || dot3(a.u, L.u) < 0.9986) {
-      a = c.al = {
+      a = c.al = Object.assign(T.alignSums(), {
         u: L.u.slice(),
         e1: L.f.slice(),
         e2: L.l.slice(),
-        A11: 0,
-        A12: 0,
-        A22: 0,
-        B1: 0,
-        B2: 0,
-        n: 0,
         m: [0, 0, 0],
         phi: 0,
         k: 0,
         t0: t,
-      };
+      });
     }
     a.m[0] += dot3(w, a.e1);
     a.m[1] += dot3(w, a.e2);
@@ -888,47 +888,16 @@
     a.phi += phi;
     a.k++;
     if (t - a.t0 < 0.1) return;
-    const m1 = a.m[0] / a.k;
-    const m2 = a.m[1] / a.k;
-    const mu = a.m[2] / a.k;
-    const ph = a.phi / a.k;
+    T.alignAdd(a, a.m[0] / a.k, a.m[1] / a.k, a.m[2] / a.k, a.phi / a.k);
     a.m = [0, 0, 0];
     a.phi = 0;
     a.k = 0;
     a.t0 = t;
-    const cp = Math.cos(ph);
-    const sp = Math.sin(ph);
-    a.A11 += m1 * m1 * cp;
-    a.A12 += m1 * m2 * cp;
-    a.A22 += m2 * m2 * cp;
-    a.B1 += mu * sp * m1;
-    a.B2 += mu * sp * m2;
-    a.n++;
     // Con poco giro en el plano (menos de ~0,05 rad/s de media) no hay nada que comparar: la suma sería 0 con
     // cualquier eje.
     if (a.n < 300 || a.n % 100 || (a.A11 + a.A22) / a.n < 0.002) return;
-    const g = (al) => {
-      const s = Math.sin(al);
-      const co = Math.cos(al);
-      return (
-        s * co * (a.A22 - a.A11) +
-        (co * co - s * s) * a.A12 -
-        co * a.B1 -
-        s * a.B2
-      );
-    };
-    // Ángulo del eje en uso dentro de la base, y la raíz más cercana (±60°) buscando cambios de signo.
-    const a0 = Math.atan2(dot3(L.f, a.e2), dot3(L.f, a.e1));
-    let best = null;
-    const STEP = Math.PI / 360;
-    for (let x = a0 - Math.PI / 3; x < a0 + Math.PI / 3; x += STEP) {
-      const g0 = g(x);
-      const g1 = g(x + STEP);
-      if (g0 === 0 || g0 * g1 < 0) {
-        const r = x + (STEP * g0) / (g0 - g1);
-        if (best === null || Math.abs(r - a0) < Math.abs(best - a0)) best = r;
-      }
-    }
+    // La raíz más cercana al eje que ya se usa (su ángulo dentro de la base).
+    const best = T.alignRoot(a, Math.atan2(dot3(L.f, a.e2), dot3(L.f, a.e1)));
     if (best === null) return;
     const f = norm3([
       Math.cos(best) * a.e1[0] + Math.sin(best) * a.e2[0],
@@ -1647,6 +1616,10 @@
     $("resume").hidden = viewing;
     $("p-calib").hidden = viewing;
     $("p-toolbar").hidden = !viewing;
+    // Repasando una tanda guardada: ponerle nombre y cortarla entre dos vueltas.
+    if (viewing) setupNombre(E, "p-nombre", "p-nombre-box");
+    else $("p-nombre-box").hidden = true;
+    setupTandaCut(E);
     setText("finish", viewing ? "Cerrar" : "Terminar");
     show("pits");
     const valid = E.laps.filter((l) => l.valid);
@@ -1677,7 +1650,23 @@
     recFlush(true);
     saveMeta("grabando");
     renderStoreLine();
-    const laps = analysis ? analysis.laps.filter((l) => l.valid) : valid;
+    // El tiempo de cada vuelta es el del cronómetro: el que se vio al pasar por meta, el de la lista, el de la imagen
+    // y el de tu mejor vuelta guardada (el análisis lo afinaba unas milésimas y boxes decía 1:07,21 donde todo lo
+    // demás decía 1:07,20). Del análisis, lo que el cronómetro no mide: inclinación y punta de cada vuelta.
+    const timerOf = (al) =>
+      E.laps.find(
+        (l) =>
+          l.valid &&
+          Number.isFinite(l.end) &&
+          Math.abs(l.end - l.time - al.t0) < 2 &&
+          Math.abs(l.time - al.time) < 1,
+      );
+    const laps = (analysis ? analysis.laps.filter((l) => l.valid) : valid).map(
+      (l) => {
+        const m = analysis ? timerOf(l) : null;
+        return m ? Object.assign({}, l, { time: m.time }) : l;
+      },
+    );
     const bestT = laps.length ? Math.min(...laps.map((l) => l.time)) : null;
     // Máximos de la tanda (inclinación y punta), marcados como la mejor vuelta.
     const maxOf = (key) => {
@@ -1917,6 +1906,14 @@
       );
   }
 
+  // La mejor vuelta válida de esta tanda (s, al milésimo) o null.
+  function sessionBest(eng) {
+    const v = eng.laps.filter((l) => l.valid && Number.isFinite(l.time));
+    return v.length
+      ? Math.round(Math.min(...v.map((l) => l.time)) * 1000) / 1000
+      : null;
+  }
+
   function saveMeta(estado) {
     const eng = E;
     if (!eng || !eng.rec) return;
@@ -1937,7 +1934,9 @@
       objetivo: target(),
       sentido: eng.dir,
       meta: settings.finish,
-      mejor: eng.best ? eng.best.time : null,
+      // La mejor vuelta de esta tanda (eng.best es la de siempre del piloto: un día sin batirla, la lista enseñaba la
+      // de otro día).
+      mejor: sessionBest(eng),
       retrasoGps: eng.lagR2 !== null ? eng.lag : null,
       // Receptor GPS externo usado en la tanda ({fuente, nombre, hz}); null: solo el GPS del móvil.
       gps: eng.extInfo ? Object.assign({}, eng.extInfo) : null,
@@ -1957,8 +1956,18 @@
               time: Math.round(l.time * 1000) / 1000,
               valid: l.valid,
             })),
+            // El trazado y el sentido, para que al repasarla salgan las mismas vueltas aunque el circuito no se
+            // guardara (o se borre después).
+            trazado: window.MaspaCircuito
+              ? window.MaspaCircuito.compact(eng.circTrack)
+              : null,
+            sentido: eng.circReverse ? "inverso" : "normal",
           }
         : null,
+      // «Nuevo tramo»: el número de esta parte de la ruta (la primera, 1).
+      segmento: eng.segment || 1,
+      // Giro de la pantalla al empezar (sin postura detectada, el repaso lo necesita igual).
+      anguloPantalla: Number.isFinite(eng.screenAngle) ? eng.screenAngle : 0,
       calibrado: !!eng.calib.f,
       // Postura del móvil al empezar (de pie / plano, pantalla vertical / horizontal) y orientación de la pantalla.
       montaje: eng.mount
@@ -3249,6 +3258,7 @@
         );
     E.circ = timer;
     E.circTrack = track;
+    E.circReverse = !!reverse;
     E.circSaved = saved;
     saveMeta("grabando");
   }
@@ -3318,8 +3328,9 @@
       );
     }
     renderCalib("ru-calib", "ru-title", "ru-lean-l");
-    // «Nuevo tramo» va con «Calibrar»: solo con la moto parada (y grabando).
-    $("ru-seg").hidden = $("ru-calib").hidden || !E.rec;
+    // «Nuevo tramo», siempre que se esté grabando (dos toques): en Los Loros se dio la vuelta arriba sin llegar a
+    // parar, y con el botón solo parado no habría salido.
+    $("ru-seg").hidden = !E.rec || E.sim;
     if (E.calib.f && moving) {
       const g = E.aEma / G;
       setText("ru-g", fmtSigned(g, 2));
@@ -3328,15 +3339,29 @@
       setText("ru-g", "—");
       setText("ru-g-l", E.calib.f ? "g" : "calibrando…");
     }
-    setText(
-      "ru-pitch",
-      // También parada (tras «Calibrar», 0; sin «+0» ni «−0»).
-      !isFinite(E.pitchDeg)
-        ? "—"
-        : Math.abs(E.pitchDeg) < 0.5
-          ? "0°"
-          : fmtSigned(E.pitchDeg, 0) + "°",
-    );
+    // Morro: frenando (con la moto casi recta, donde el cabeceo vale), cuánto se hunde la horquilla en mm; al soltar,
+    // 4 s con lo que se hundió; si no, el cabeceo en grados (también parada: tras «Calibrar», 0; sin «+0» ni «−0»).
+    const dr = E.diveRecap && t - E.diveT < 4 ? E.diveRecap : null;
+    if (E.route.bk && E.pitchDeg < -0.5 && !(E.turn > 0.08)) {
+      setText("ru-pitch-l", "hunde");
+      setText(
+        "ru-pitch",
+        "≈" + window.MaspaRecorrido.diveMm(-E.pitchDeg) + " mm",
+      );
+    } else if (dr) {
+      setText("ru-pitch-l", "hundió");
+      setText("ru-pitch", dr.diveMm + " mm");
+    } else {
+      setText("ru-pitch-l", "morro");
+      setText(
+        "ru-pitch",
+        !isFinite(E.pitchDeg)
+          ? "—"
+          : Math.abs(E.pitchDeg) < 0.5
+            ? "0°"
+            : fmtSigned(E.pitchDeg, 0) + "°",
+      );
+    }
     const c = E.curveRecap;
     $("ru-recap").hidden = !c;
     if (c) {
@@ -3377,7 +3402,8 @@
       follow: mapView.follow && !!pos,
       span: mapView.span,
       colorBy: mapView.colorBy,
-      marks: curveMarks(E.route.curves),
+      // La más reciente primero: si dos marcas se pisan, queda la de la curva que acabas de pasar.
+      marks: curveMarks(E.route.curves).reverse(),
     });
     if (mapView.legendBy !== mapView.colorBy) {
       window.MaspaMapa.legend($("ru-legend"), mapView.colorBy);
@@ -3526,6 +3552,18 @@
     eng.circTrack = saved;
     eng.circSaved = true;
     renderRouteLaps(eng);
+    // Guardado desde una ruta ya grabada: que la grabación lo sepa (al repasarla otra vez no lo vuelve a ofrecer).
+    const sid = cutSessionId(eng);
+    const mc = eng.viewing && eng.viewing.circuito;
+    if (ST && sid && mc) {
+      const circuito = Object.assign({}, mc, {
+        nombre: name,
+        guardado: true,
+        trazado: saved,
+      });
+      eng.viewing.circuito = circuito;
+      ST.patchSession(sid, { circuito }).catch(() => {});
+    }
   }
 
   // ---------- tramos de carretera (tramos.js) ----------
@@ -3568,7 +3606,21 @@
     const dup = tr.pasadas.find(
       (q) => Math.abs(new Date(q.fecha).getTime() - ms) < 20000,
     );
-    if (dup) return dup;
+    if (dup) {
+      // Encontrada antes buscando (solo GPS) y ahora repasada con el motor: se le añaden sus frenadas. Las de la misma
+      // grabación repasada otra vez se cambian por las del repaso (lo que vale es el repaso, no el directo).
+      if (
+        p.frenos &&
+        (!dup.frenos ||
+          (sesion &&
+            dup.sesion === sesion &&
+            JSON.stringify(dup.frenos) !== JSON.stringify(p.frenos)))
+      ) {
+        dup.frenos = p.frenos;
+        saveTramos(list);
+      }
+      return dup;
+    }
     const pasada = {
       sesion: sesion || null,
       fecha: new Date(ms).toISOString(),
@@ -3576,6 +3628,7 @@
       vMax: p.vMax,
       tiempos: p.tiempos,
     };
+    if (p.frenos) pasada.frenos = p.frenos;
     tr.pasadas.push(pasada);
     // Para no llenar el móvil: las 40 más rápidas y las 20 más recientes.
     if (tr.pasadas.length > 60) {
@@ -3594,6 +3647,29 @@
     saveTramos(list);
     return pasada;
   }
+  // Dónde empieza cada frenada de una pasada, en metros desde la salida del tramo: las del acelerómetro de esta
+  // grabación (su principio es exacto en el tiempo) llevadas al tramo con las marcas de la pasada (que vienen del
+  // GPS: el fijo de t + retraso dice dónde estaba la moto en t). Con el GPS solo (1 Hz) el principio de la frenada
+  // sale con ±20–30 m; así, con unos pocos metros. [[m, g del pico], …]
+  function passBrakes(eng, p, lag) {
+    const out = [];
+    for (const b of eng.route.brakes) {
+      if (b.gps === false) continue;
+      const s = window.MaspaTramos.sAtTime(p.tiempos, b.t + lag - p.t0);
+      if (s !== null) out.push([Math.round(s), b.peak]);
+    }
+    return out;
+  }
+  // Principios de frenada de dos pasadas, medidos igual en las dos: con el acelerómetro si las dos lo tienen
+  // (pasadas en directo o repasadas), si no con la velocidad del GPS.
+  function brakesPair(a, b) {
+    const acc = !!(a.frenos && b.frenos);
+    const of = (p) =>
+      acc
+        ? p.frenos.map((x) => x[0])
+        : window.MaspaTramos.brakePoints(p.tiempos);
+    return { acc, a: of(a), b: of(b) };
+  }
   // Seguidores de los tramos guardados para un motor (ruta libre, en directo o repasando).
   function tramoTrackers() {
     if (!window.MaspaTramos) return [];
@@ -3610,13 +3686,22 @@
       const r = x.tk.fix(t, lat, lon, v);
       if (!r || r.evento !== "fin") continue;
       const sesion = E.viewing ? E.viewing.id : E.rec ? E.rec.id : null;
+      const lag = lagNow();
+      r.pasada.frenos = passBrakes(E, r.pasada, lag);
       // La vuelta de ejemplo no apunta nada.
       const saved =
         E.sim && !E.viewing
           ? r.pasada
           : recordPass(x.id, sesion, engDate(E).getTime(), r.pasada) ||
             r.pasada;
-      E.tramoPasses.push({ id: x.id, nombre: x.nombre, pasada: saved });
+      E.tramoPasses.push({
+        id: x.id,
+        nombre: x.nombre,
+        pasada: saved,
+        t0: r.pasada.t0,
+        t1: r.pasada.t1,
+        lag,
+      });
       if (!E.viewing) {
         const b = x.best;
         toast(
@@ -3748,8 +3833,16 @@
     saveTramos(list);
     const sesion = cutSessionId(eng);
     for (const p of T2.findPasses(tr, eng.loc.view())) {
+      p.frenos = passBrakes(eng, p, eng.lag);
       const saved = recordPass(tr.id, sesion, engDate(eng).getTime(), p) || p;
-      eng.tramoPasses.push({ id: tr.id, nombre, pasada: saved });
+      eng.tramoPasses.push({
+        id: tr.id,
+        nombre,
+        pasada: saved,
+        t0: p.t0,
+        t1: p.t1,
+        lag: eng.lag,
+      });
     }
     return tr;
   }
@@ -3800,34 +3893,54 @@
           fmtSigned(gain.dd, 1) +
           " s).",
       );
-    const ba = T2.brakePoints(a.tiempos);
-    const bb = T2.brakePoints(b.tiempos);
+    const bp = brakesPair(a, b);
     const diffs = [];
-    for (const s of ba) {
+    for (const s of bp.a) {
       let best = null;
-      for (const q of bb)
+      for (const q of bp.b)
         if (
           Math.abs(q - s) <= 80 &&
           (best === null || Math.abs(q - s) < Math.abs(best - s))
         )
           best = q;
-      if (best !== null) diffs.push(s - best);
+      if (best !== null) diffs.push({ s, d: s - best });
     }
     if (diffs.length >= 3) {
-      const m = diffs.reduce((x, y) => x + y, 0) / diffs.length;
+      const m = diffs.reduce((x, y) => x + y.d, 0) / diffs.length;
+      const how = bp.acc
+        ? "con el acelerómetro"
+        : "con el GPS del móvil, ±20 m";
       out.push(
         Math.abs(m) < 5
           ? "Empiezas a frenar en los mismos sitios (" +
               diffs.length +
-              " frenadas comparadas)."
+              " frenadas comparadas, " +
+              how +
+              ")."
           : "Empiezas a frenar de media " +
               Math.round(Math.abs(m)) +
               " m " +
               (m > 0 ? "más tarde" : "antes") +
               " (" +
               diffs.length +
-              " frenadas comparadas; con el GPS del móvil, ±20 m).",
+              " frenadas comparadas, " +
+              how +
+              ").",
       );
+      // La que más cambia (más de 10 m), con dónde está.
+      const big = diffs.reduce((x, y) =>
+        Math.abs(y.d) > Math.abs(x.d) ? y : x,
+      );
+      if (Math.abs(big.d) >= 10)
+        out.push(
+          "Donde más cambia: en el km " +
+            fmt(big.s / 1000, 2) +
+            " frenas " +
+            Math.round(Math.abs(big.d)) +
+            " m " +
+            (big.d > 0 ? "más tarde" : "antes") +
+            ".",
+        );
     }
     return out.join(" ");
   }
@@ -3913,10 +4026,9 @@
       g.closePath();
       g.fill();
     };
-    for (const s of T2.brakePoints(b.tiempos))
-      if (s < L) tri(s, "#a86ff0", pad);
-    for (const s of T2.brakePoints(a.tiempos))
-      if (s < L) tri(s, "#5aa5f0", pad + 10 * dpr);
+    const bp = brakesPair(a, b);
+    for (const s of bp.b) if (s < L) tri(s, "#a86ff0", pad);
+    for (const s of bp.a) if (s < L) tri(s, "#5aa5f0", pad + 10 * dpr);
     // Diferencia de tiempo.
     const d = T2.delta(a.tiempos, b.tiempos).slice(0, n + 1);
     const y0 = H * 0.6 + 4 * dpr;
@@ -3944,6 +4056,39 @@
         Math.abs(Yd(v) - Yd(0)),
       );
     }
+  }
+  // Mapa de una pasada por un tramo: su trazada (de esta grabación, con las fases) y los principios de frenada de las
+  // dos pasadas puestos sobre el trazado del tramo (azul, esta; morado, la otra).
+  function drawTramoMap(canvas, eng, tp, tr, a, b) {
+    const T2 = window.MaspaTramos;
+    const lag = tp.lag || 0;
+    const trail = Number.isFinite(tp.t0)
+      ? eng.route.trail.filter(
+          (p) => p.t >= tp.t0 - lag - 1 && p.t <= tp.t1 - lag + 1,
+        )
+      : [];
+    const bp = brakesPair(a, b);
+    // La otra pasada en aro (más grande) y esta, punto lleno: si coinciden, se ven las dos.
+    const dot = (s, color, ring) => {
+      const [lat, lon] = T2.pointAt(tr, s);
+      const [x, y] = T.toLocal(lat, lon);
+      return { x, y, color, ring, r: ring ? 6 : 3.5 };
+    };
+    // Sin trazada de esta grabación (no debería pasar), el trazado del tramo para situar los puntos.
+    const base = trail.length
+      ? trail
+      : tr.pts.map((q) => {
+          const [x, y] = T.toLocal(q[0], q[1]);
+          return { x, y, ph: "mantiene" };
+        });
+    window.MaspaMapa.draw(canvas, {
+      trail: base,
+      follow: false,
+      colorBy: "fase",
+      dots: bp.b
+        .map((s) => dot(s, "#a86ff0", true))
+        .concat(bp.a.map((s) => dot(s, "#5aa5f0", false))),
+    });
   }
   function renderTramoCard(eng) {
     const T2 = window.MaspaTramos;
@@ -4005,7 +4150,7 @@
             mine.tiempo <= other.tiempo ? "la anterior mejor" : "tu mejor",
             "#a86ff0",
           ],
-          ["▼ empieza a frenar", ""],
+          ["▼ y ● (mapa): empieza a frenar", ""],
           ["por delante", "#22c35f"],
           ["por detrás", "#ff5b4f"],
         ]) {
@@ -4015,8 +4160,16 @@
           else sp.className = "plain";
           lg.appendChild(sp);
         }
-        item.append(cv, lg, p);
-        charts.push([cv, mine, other]);
+        // El tramo en el mapa: la trazada de esta pasada con sus fases y dónde empieza cada frenada (azul, esta;
+        // morado, la otra), sobre el trazado conocido del tramo.
+        const mp = document.createElement("canvas");
+        mp.className = "tr-map";
+        mp.setAttribute(
+          "aria-label",
+          "Mapa del tramo con dónde empiezas a frenar",
+        );
+        item.append(cv, lg, mp, p);
+        charts.push([cv, mine, other, mp, tp, tr]);
       } else {
         const p = document.createElement("p");
         p.className = "muted";
@@ -4026,7 +4179,10 @@
       }
       box.appendChild(item);
     }
-    for (const [cv, a, b] of charts) drawTramoChart(cv, a, b);
+    for (const [cv, a, b, mp, tp, tr] of charts) {
+      drawTramoChart(cv, a, b);
+      drawTramoMap(mp, eng, tp, tr, a, b);
+    }
     // Guardar esta ruta como tramo (una vez por resumen).
     $("ruf-tr-save").hidden = !canSave || !!eng.tramoSaved;
     if (canSave && !eng.tramoSaved) {
@@ -4058,7 +4214,7 @@
     box.textContent = "";
     for (const tr of list) {
       const row = document.createElement("div");
-      row.className = "hist-row";
+      row.className = "hist-row stack";
       const txt = document.createElement("div");
       txt.className = "hist-txt";
       const b = document.createElement("b");
@@ -4102,6 +4258,22 @@
         }
         renderTramosHome();
       });
+      // Cambiar el nombre (p. ej. «ida» y «vuelta» por «subida» y «bajada»).
+      const ren = document.createElement("button");
+      ren.type = "button";
+      ren.textContent = "Nombre";
+      ren.addEventListener("click", () => {
+        const nuevo = (window.prompt("Nombre del tramo", tr.nombre) || "")
+          .trim()
+          .slice(0, 40);
+        if (!nuevo || nuevo === tr.nombre) return;
+        const list = loadTramos();
+        const x = list.find((q) => q.id === tr.id);
+        if (!x) return;
+        x.nombre = nuevo;
+        saveTramos(list);
+        renderTramosHome();
+      });
       const del = document.createElement("button");
       del.type = "button";
       del.className = "danger";
@@ -4120,10 +4292,181 @@
         saveTramos(loadTramos().filter((x) => x.id !== tr.id));
         renderTramosHome();
       });
-      act.append(find, del);
+      act.append(find, ren, del);
       row.append(txt, act);
       box.appendChild(row);
     }
+  }
+
+  // ---------- gráfica de frenada, gas y tiempo muerto ----------
+  // La velocidad a lo largo de la ruta (km), cada trozo del color de lo que hacías (como la trazada del mapa): rojo
+  // frenando, verde acelerando, ámbar sin gas en curva, azul manteniendo, morado caballito. Y cuánto rato de cada.
+  function renderPhaseChart(eng) {
+    const tr = eng.route.trail;
+    $("ruf-ph").hidden = tr.length < 20;
+    scrub.chart = null;
+    if (tr.length < 20) return;
+    // Distancia por la velocidad (como la del resumen) y tiempo en cada fase.
+    const d = trailDistances(tr);
+    const tm = { freno: 0, gas: 0, muerto: 0, mantiene: 0, caballito: 0 };
+    for (let i = 1; i < tr.length; i++) {
+      const dt = tr[i].t - tr[i - 1].t;
+      if (!tr[i].gap && dt > 0 && dt < 5)
+        tm[tr[i].wh ? "caballito" : tr[i].ph in tm ? tr[i].ph : "mantiene"] +=
+          dt;
+    }
+    const canvas = $("ruf-ph-chart");
+    const dpr = Math.min(3, window.devicePixelRatio || 1);
+    const W = Math.max(1, Math.round(canvas.clientWidth * dpr));
+    const H = Math.max(1, Math.round(canvas.clientHeight * dpr));
+    canvas.width = W;
+    canvas.height = H;
+    const g = canvas.getContext("2d");
+    g.clearRect(0, 0, W, H);
+    const pad = 8 * dpr;
+    const left = 34 * dpr;
+    const bottom = 18 * dpr;
+    const L = Math.max(1, d[d.length - 1]);
+    let vMax = 0;
+    for (const p of tr) vMax = Math.max(vMax, p.v * 3.6);
+    vMax = Math.max(60, Math.ceil(vMax / 20) * 20);
+    const X = (s) => left + ((W - left - pad) * s) / L;
+    const Y = (v) => pad + (H - pad - bottom) * (1 - v / vMax);
+    g.font = 11 * dpr + "px Roboto, system-ui, sans-serif";
+    g.fillStyle = "#949fa7";
+    g.textBaseline = "middle";
+    for (let v = 0; v <= vMax; v += vMax > 120 ? 50 : 20) {
+      g.strokeStyle = "rgba(255,255,255,0.08)";
+      g.beginPath();
+      g.moveTo(left, Y(v));
+      g.lineTo(W - pad, Y(v));
+      g.stroke();
+      g.fillText(String(v), 4 * dpr, Y(v));
+    }
+    // Km abajo (cada 1, 2 o 5 km según lo larga que sea).
+    const stepKm = L > 30000 ? 5 : L > 10000 ? 2 : 1;
+    g.textBaseline = "top";
+    for (let km = stepKm; km * 1000 < L; km += stepKm)
+      g.fillText(km + " km", X(km * 1000) - 12 * dpr, H - bottom + 4 * dpr);
+    // La velocidad, por tramos del mismo color.
+    const P = window.MaspaMapa.PHASE;
+    const color = (p) => (p.wh ? "#d08bff" : P[p.ph] || P.mantiene);
+    g.lineWidth = 2.2 * dpr;
+    g.lineJoin = "round";
+    let cur = null;
+    for (let i = 1; i < tr.length; i++) {
+      if (tr[i].gap) {
+        if (cur) g.stroke();
+        cur = null;
+        continue;
+      }
+      const c = color(tr[i]);
+      if (c !== cur) {
+        if (cur) g.stroke();
+        g.strokeStyle = c;
+        g.beginPath();
+        g.moveTo(X(d[i - 1]), Y(tr[i - 1].v * 3.6));
+        cur = c;
+      }
+      g.lineTo(X(d[i]), Y(tr[i].v * 3.6));
+    }
+    if (cur) g.stroke();
+    // Copia sin el punto (moverlo solo repinta la raya y el punto encima) y la escala, para saber qué se toca.
+    scrub.chart = {
+      eng,
+      base: canvasCopy(canvas),
+      X,
+      Y,
+      L,
+      left,
+      right: W - pad,
+      top: pad,
+      bottom: H - bottom,
+      dpr,
+    };
+    if (scrub.eng === eng) drawScrubChart();
+    window.MaspaMapa.legend($("ruf-ph-legend"), "fase");
+    const tot = Object.values(tm).reduce((a, b) => a + b, 0) || 1;
+    // Espacio que no se parte: «43 %» no se queda con el «%» en la línea de abajo.
+    const pc = (k) => Math.round((100 * tm[k]) / tot) + "\u{a0}%";
+    const deads = eng.route.curves.map((c) => c.dead).filter((x) => x === x);
+    setText(
+      "ruf-ph-note",
+      "Del tiempo en marcha: frenando " +
+        pc("freno") +
+        ", acelerando " +
+        pc("gas") +
+        ", sin gas en curva " +
+        pc("muerto") +
+        ", manteniendo " +
+        pc("mantiene") +
+        (tm.caballito ? ", en caballito " + pc("caballito") : "") +
+        "." +
+        (deads.length
+          ? " Sin gas en curva: " +
+            fmt(deads.reduce((a, b) => a + b, 0) / deads.length, 1) +
+            " s de media en " +
+            deads.length +
+            " curvas (" +
+            deads.filter((x) => x > 2).length +
+            " con más de 2 s)."
+          : ""),
+    );
+  }
+
+  // ---------- nombre de una grabación guardada ----------
+  // «Los Loros», «Tanda 3»…: sale en «Tus rutas y tandas» en vez de la fecha. Se pone al abrirla (resumen de la ruta
+  // o boxes repasando una tanda) o justo al terminar una ruta.
+  async function renameSession(sid, nombre) {
+    if (lastE && lastE.rec && lastE.rec.id === sid)
+      await lastE.rec.queue.catch(() => {});
+    return ST.patchSession(sid, { nombre: nombre || undefined });
+  }
+  function setupNombre(eng, inputId, boxId) {
+    const sid = cutSessionId(eng);
+    const ok = !!(ST && sid && (eng.viewing || !eng.sim));
+    $(boxId).hidden = !ok;
+    if (!ok) return;
+    const input = $(inputId);
+    input.value = eng.nombre || (eng.viewing && eng.viewing.nombre) || "";
+    input.dataset.sid = sid;
+  }
+  function wireNombre(inputId) {
+    $(inputId).addEventListener("change", async () => {
+      const input = $(inputId);
+      const sid = input.dataset.sid;
+      if (!sid) return;
+      const nombre = input.value.trim().slice(0, 40);
+      const eng = [lastE, E].find((e) => e && cutSessionId(e) === sid);
+      try {
+        if (await renameSession(sid, nombre)) {
+          if (eng) eng.nombre = nombre;
+          toast(nombre ? "Nombre guardado" : "Nombre quitado");
+        }
+      } catch (e) {
+        toast("No se ha podido guardar el nombre");
+      }
+    });
+  }
+
+  // ---------- cortar una tanda del circuito entre dos vueltas ----------
+  function setupTandaCut(eng) {
+    const sid = cutSessionId(eng);
+    const laps = eng.laps.filter((l) => Number.isFinite(l.end));
+    const ok = !!(ST && sid && eng.viewing && laps.length >= 2);
+    $("p-cut").hidden = !ok;
+    if (!ok) return;
+    const sel = $("p-cut-lap");
+    sel.textContent = "";
+    for (const l of laps.slice(0, -1)) {
+      const o = document.createElement("option");
+      o.value = String(l.end + 1);
+      o.textContent =
+        "después de la vuelta " + l.num + " (" + fmtLap(l.time) + ")";
+      sel.appendChild(o);
+    }
+    sel.dataset.sid = sid;
+    setText("p-cut-go", "Cortar aquí");
   }
 
   // ---------- cortar una ruta guardada en dos ----------
@@ -4134,7 +4477,8 @@
   function summaryMapDots() {
     if (!cutUi || cutUi.t === null) return [];
     const p = cutPoint(cutUi.eng, cutUi.t);
-    return p ? [{ x: p.x, y: p.y, color: "#ffffff", label: "corte" }] : [];
+    // Rosa: el blanco es el del punto que se mueve por la ruta.
+    return p ? [{ x: p.x, y: p.y, color: "#ff5fd2", label: "corte" }] : [];
   }
   // Las n curvas más tumbadas (en el mapa entero de una carretera de montaña, con las 100 no se ve nada).
   function topCurves(curves, n) {
@@ -4145,32 +4489,426 @@
       .slice(0, n);
   }
   function drawSummaryMap(eng) {
-    window.MaspaMapa.draw($("ruf-map"), {
+    const cv = $("ruf-map");
+    const view = window.MaspaMapa.draw(cv, {
       trail: eng.route.trail,
       follow: false,
       colorBy: summaryColor,
       marks: curveMarks(topCurves(eng.route.curves, 12)),
       dots: cutUi && cutUi.eng === eng ? summaryMapDots() : [],
     });
+    scrub.map = view ? { eng, view, base: canvasCopy(cv) } : null;
+    if (scrub.eng === eng) drawScrubMap();
   }
-  // Punto de la trazada en el instante t (el más cercano), con los metros recorridos hasta ahí (velocidad × tiempo,
-  // como la distancia del resumen: sumar los puntos de la trazada salía un 10 % más).
+  function canvasCopy(cv) {
+    const c = document.createElement("canvas");
+    c.width = cv.width;
+    c.height = cv.height;
+    c.getContext("2d").drawImage(cv, 0, 0);
+    return c;
+  }
+  // Metros recorridos hasta cada punto de la trazada, por la velocidad (como la distancia del resumen: sumar los
+  // puntos de la trazada salía un 10 % más) y sin contar los huecos sin GPS.
+  function trailDistances(tr) {
+    const d = new Float64Array(tr.length);
+    for (let i = 1; i < tr.length; i++) {
+      const dt = tr[i].t - tr[i - 1].t;
+      d[i] =
+        d[i - 1] +
+        (!tr[i].gap && dt > 0 && dt < 5
+          ? ((tr[i].v + tr[i - 1].v) / 2) * dt
+          : 0);
+    }
+    return d;
+  }
+  // Primer punto de la trazada en el instante t o después (el último si no hay).
+  function trailIndexAt(tr, t) {
+    let lo = 0;
+    let hi = tr.length;
+    while (lo < hi) {
+      const m = (lo + hi) >> 1;
+      if (tr[m].t < t) lo = m + 1;
+      else hi = m;
+    }
+    return Math.min(lo, tr.length - 1);
+  }
+  // Punto de la trazada en el instante t (el más cercano), con los metros recorridos hasta ahí.
   function cutPoint(eng, t) {
     const tr = eng.route.trail;
     if (!tr.length) return null;
-    let d = 0;
-    let best = tr[0];
-    let bestD = 0;
-    for (let i = 1; i < tr.length; i++) {
-      const dt = tr[i].t - tr[i - 1].t;
-      if (!tr[i].gap && dt > 0 && dt < 5)
-        d += ((tr[i].v + tr[i - 1].v) / 2) * dt;
-      if (Math.abs(tr[i].t - t) < Math.abs(best.t - t)) {
-        best = tr[i];
-        bestD = d;
+    let i = trailIndexAt(tr, t);
+    if (i > 0 && Math.abs(tr[i - 1].t - t) <= Math.abs(tr[i].t - t)) i--;
+    const p = tr[i];
+    return { x: p.x, y: p.y, v: p.v, t: p.t, d: trailDistances(tr)[i] };
+  }
+
+  // ---------- el punto que se mueve por la ruta ----------
+  // En el resumen, un punto blanco que se lleva con el dedo por la línea del mapa, por la gráfica de velocidad o con
+  // la barra, y dice qué pasaba ahí: velocidad, inclinación, si frenabas, dabas gas o ibas sin gas, la curva en la
+  // que estás (con sus datos) o la frenada. «Curva anterior / siguiente» va de curva en curva (al punto más tumbado
+  // de cada una), y la curva del punto se resalta en el mapa.
+  const scrub = {
+    eng: null,
+    i: 0,
+    d: null,
+    spans: [],
+    map: null,
+    chart: null,
+    frame: 0,
+  };
+  const PHASE_NAME = {
+    freno: "frenando",
+    gas: "acelerando",
+    muerto: "sin gas en curva",
+    mantiene: "manteniendo",
+  };
+  // Cada curva en la trazada: sus puntos (i0…i1) y el más tumbado (top).
+  function curveSpans(eng) {
+    const tr = eng.route.trail;
+    return eng.route.curves.map((c) => {
+      const i0 = trailIndexAt(tr, c.t);
+      let i1 = trailIndexAt(tr, c.endT);
+      if (tr[i1].t > c.endT && i1 > i0) i1--;
+      i1 = Math.max(i0, i1);
+      let top = i0;
+      let best = -1;
+      for (let i = i0; i <= i1; i++) {
+        const l = Math.abs(tr[i].lean);
+        if (l > best) {
+          best = l;
+          top = i;
+        }
+      }
+      if (best < 0) top = (i0 + i1) >> 1;
+      return { c, i0, i1, top };
+    });
+  }
+  function spanAt(i) {
+    const sp = scrub.spans;
+    let lo = 0;
+    let hi = sp.length - 1;
+    let k = -1;
+    while (lo <= hi) {
+      const m = (lo + hi) >> 1;
+      if (sp[m].i0 <= i) {
+        k = m;
+        lo = m + 1;
+      } else hi = m - 1;
+    }
+    return k >= 0 && i <= sp[k].i1 ? sp[k] : null;
+  }
+  function brakeAt(eng, t) {
+    for (const b of eng.route.brakes)
+      if (b.gps !== false && b.t <= t && t <= b.endT) return b;
+    return null;
+  }
+  function setupScrub(eng) {
+    const tr = eng.route.trail;
+    const ok = tr.length >= 2;
+    $("ruf-scrub").hidden = !ok;
+    if (!ok) {
+      scrub.eng = null;
+      return;
+    }
+    if (scrub.eng !== eng) {
+      scrub.eng = eng;
+      scrub.i = 0;
+      scrub.d = trailDistances(tr);
+      scrub.spans = curveSpans(eng);
+    }
+    $("ruf-pos").max = String(tr.length - 1);
+    scrubTo(scrub.i);
+  }
+  // Lleva el punto al de la trazada i; lo pinta en el siguiente fotograma (arrastrando llegan muchos seguidos).
+  function scrubTo(i) {
+    const eng = scrub.eng;
+    if (!eng) return;
+    const n = eng.route.trail.length;
+    scrub.i = Math.max(0, Math.min(n - 1, Math.round(i) || 0));
+    const r = $("ruf-pos");
+    if (+r.value !== scrub.i) r.value = String(scrub.i);
+    if (scrub.frame) return;
+    scrub.frame = requestAnimationFrame(() => {
+      scrub.frame = 0;
+      if (!scrub.eng) return;
+      drawScrubMap();
+      drawScrubChart();
+      scrubInfo();
+    });
+  }
+  function drawScrubMap() {
+    const m = scrub.map;
+    const eng = scrub.eng;
+    const cv = $("ruf-map");
+    if (!m || !eng || m.eng !== eng || cv.width !== m.base.width) return;
+    const g = cv.getContext("2d");
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    g.clearRect(0, 0, cv.width, cv.height);
+    g.drawImage(m.base, 0, 0);
+    const tr = eng.route.trail;
+    const k = m.view.dpr;
+    // La curva del punto: con un halo blanco por debajo de su color.
+    const sp = spanAt(scrub.i);
+    if (sp && sp.i1 > sp.i0) {
+      g.lineCap = "round";
+      g.lineJoin = "round";
+      const path = () => {
+        g.beginPath();
+        for (let i = sp.i0; i <= sp.i1; i++) {
+          const [x, y] = m.view.toPx(tr[i].x, tr[i].y);
+          if (i === sp.i0) g.moveTo(x, y);
+          else g.lineTo(x, y);
+        }
+      };
+      g.strokeStyle = "rgba(255,255,255,0.85)";
+      g.lineWidth = 9 * k;
+      path();
+      g.stroke();
+      g.lineWidth = 3.2 * k;
+      for (let i = sp.i0 + 1; i <= sp.i1; i++) {
+        const [x0, y0] = m.view.toPx(tr[i - 1].x, tr[i - 1].y);
+        const [x1, y1] = m.view.toPx(tr[i].x, tr[i].y);
+        g.strokeStyle = window.MaspaMapa.colorOf(tr[i], summaryColor);
+        g.beginPath();
+        g.moveTo(x0, y0);
+        g.lineTo(x1, y1);
+        g.stroke();
       }
     }
-    return { x: best.x, y: best.y, v: best.v, t: best.t, d: bestD };
+    const [x, y] = m.view.toPx(tr[scrub.i].x, tr[scrub.i].y);
+    g.fillStyle = "#ffffff";
+    g.strokeStyle = "#050607";
+    g.lineWidth = 3 * k;
+    g.beginPath();
+    g.arc(x, y, 8 * k, 0, Math.PI * 2);
+    g.fill();
+    g.stroke();
+  }
+  function drawScrubChart() {
+    const c = scrub.chart;
+    const eng = scrub.eng;
+    const cv = $("ruf-ph-chart");
+    if (!c || !eng || c.eng !== eng || cv.width !== c.base.width) return;
+    const g = cv.getContext("2d");
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    g.clearRect(0, 0, cv.width, cv.height);
+    g.drawImage(c.base, 0, 0);
+    const p = eng.route.trail[scrub.i];
+    const x = c.X(scrub.d[scrub.i]);
+    g.strokeStyle = "rgba(255,255,255,0.75)";
+    g.lineWidth = 1.5 * c.dpr;
+    g.beginPath();
+    g.moveTo(x, c.top);
+    g.lineTo(x, c.bottom);
+    g.stroke();
+    g.fillStyle = "#ffffff";
+    g.strokeStyle = "#050607";
+    g.lineWidth = 2 * c.dpr;
+    g.beginPath();
+    g.arc(x, c.Y(p.v * 3.6), 5 * c.dpr, 0, Math.PI * 2);
+    g.fill();
+    g.stroke();
+  }
+  function fmtMeters(m) {
+    return m < 1000 ? Math.round(m / 10) * 10 + " m" : fmt(m / 1000, 1) + " km";
+  }
+  function scrubInfo() {
+    const eng = scrub.eng;
+    const tr = eng.route.trail;
+    const i = scrub.i;
+    const p = tr[i];
+    const lean = Math.abs(p.lean);
+    const head = [
+      "km " + fmt(scrub.d[i] / 1000, 1),
+      fmtClock(p.t - tr[0].t),
+      fmt(p.v * 3.6, 0) + " km/h",
+    ];
+    if (lean === lean)
+      head.push(
+        lean >= 3
+          ? fmt(lean, 0) + "° " + (p.lean > 0 ? "der." : "izq.")
+          : "recto",
+      );
+    head.push(
+      p.gap
+        ? "sin GPS"
+        : p.wh
+          ? "caballito"
+          : PHASE_NAME[p.ph] || "manteniendo",
+    );
+    setText("ruf-at", head.join(" · "));
+    $("ruf-pos").setAttribute("aria-valuetext", head.join(", "));
+    const parts = [];
+    const sp = spanAt(i);
+    if (sp) {
+      const c = sp.c;
+      parts.push(
+        "Curva " +
+          c.num +
+          " de " +
+          eng.route.curves.length +
+          (c.lean ? (c.lean > 0 ? " (derecha)" : " (izquierda)") : "") +
+          (c.leanMax
+            ? ": tumbado " + fmt(c.leanMax, 0) + "°"
+            : ": inclinación aún sin medir") +
+          ", entra a " +
+          fmt(c.vEntry, 0) +
+          " y baja a " +
+          fmt(c.vMin, 0) +
+          " km/h, " +
+          (c.brakeG ? "frena " + fmt(c.brakeG, 2) + " g" : "sin frenar") +
+          ", " +
+          (c.dead >= 0.05 ? fmt(c.dead, 1) + " s sin gas" : "gas sin esperar"),
+      );
+    }
+    const b = brakeAt(eng, p.t);
+    if (b)
+      parts.push(
+        "Frenada: pico " +
+          fmt(b.peak, 2) +
+          " g, de " +
+          b.vIn +
+          " a " +
+          b.vOut +
+          " km/h en " +
+          b.dist +
+          " m" +
+          (b.diveMm ? ", hunde ≈" + b.diveMm + " mm" : ""),
+      );
+    if (!sp && !b) {
+      const next = scrub.spans.find((s) => s.i0 > i);
+      const gap = next ? scrub.d[next.i0] - scrub.d[i] : null;
+      parts.push(
+        !next
+          ? "Recta"
+          : gap < 10
+            ? "Aquí empieza la curva " + next.c.num
+            : "Recta: la curva " + next.c.num + " está a " + fmtMeters(gap),
+      );
+    }
+    setText("ruf-at-c", parts.join(". ") + ".");
+    $("ruf-prev").disabled = !scrub.spans.some((s) => s.top < i);
+    $("ruf-next").disabled = !scrub.spans.some((s) => s.top > i);
+  }
+  function jumpCurve(dir) {
+    const sp = scrub.spans;
+    const i = scrub.i;
+    let to = null;
+    if (dir > 0) to = sp.find((s) => s.top > i) || null;
+    else
+      for (let k = sp.length - 1; k >= 0; k--)
+        if (sp[k].top < i) {
+          to = sp[k];
+          break;
+        }
+    if (to) scrubTo(to.top);
+  }
+  // El punto de la trazada que se toca en el mapa (x, y en metros; tol: lo que el dedo no distingue, en metros).
+  // El más cerca del dedo; si hay varias pasadas igual de cerca (una ida y vuelta por la misma carretera pasa dos
+  // veces por el mismo sitio), la más cercana en el recorrido al punto de ahora: arrastrando no salta al otro
+  // sentido.
+  function trailPick(tr, x, y, cur, tol) {
+    const ds = new Float64Array(tr.length);
+    let bestD = Infinity;
+    for (let i = 0; i < tr.length; i++) {
+      ds[i] = Math.hypot(tr[i].x - x, tr[i].y - y);
+      if (ds[i] < bestD) bestD = ds[i];
+    }
+    // Las pasadas que caen bajo el dedo (puntos seguidos de la trazada) y, de cada una, el punto más cercano.
+    let pick = -1;
+    let pickK = Infinity;
+    let run = null;
+    const close = () => {
+      if (run && run.k < pickK) {
+        pickK = run.k;
+        pick = run.i;
+      }
+    };
+    for (let i = 0; i < tr.length; i++) {
+      if (ds[i] > bestD + tol) continue;
+      if (!run || i - run.last > 5) {
+        close();
+        run = { last: i, i, d: ds[i], k: Math.abs(i - cur) };
+      } else {
+        run.last = i;
+        run.k = Math.min(run.k, Math.abs(i - cur));
+        if (ds[i] < run.d) {
+          run.d = ds[i];
+          run.i = i;
+        }
+      }
+    }
+    close();
+    return pick;
+  }
+  function wireScrub() {
+    const map = $("ruf-map");
+    const chart = $("ruf-ph-chart");
+    let held = null;
+    const fromMap = (ev) => {
+      const m = scrub.map;
+      const eng = scrub.eng;
+      if (!m || !eng || m.eng !== eng) return;
+      const rect = map.getBoundingClientRect();
+      const k = map.width / Math.max(1, rect.width);
+      const [x, y] = m.view.toWorld(
+        (ev.clientX - rect.left) * k,
+        (ev.clientY - rect.top) * k,
+      );
+      // 14 px de pantalla: lo que el dedo no distingue.
+      const i = trailPick(
+        eng.route.trail,
+        x,
+        y,
+        scrub.i,
+        (14 * k) / m.view.scale,
+      );
+      if (i >= 0) scrubTo(i);
+    };
+    const fromChart = (ev) => {
+      const c = scrub.chart;
+      if (!c || !scrub.eng || c.eng !== scrub.eng) return;
+      const rect = chart.getBoundingClientRect();
+      const px =
+        (ev.clientX - rect.left) * (chart.width / Math.max(1, rect.width));
+      const s =
+        Math.max(0, Math.min(1, (px - c.left) / (c.right - c.left))) * c.L;
+      const d = scrub.d;
+      let lo = 0;
+      let hi = d.length - 1;
+      while (lo < hi) {
+        const mid = (lo + hi) >> 1;
+        if (d[mid] < s) lo = mid + 1;
+        else hi = mid;
+      }
+      if (lo > 0 && s - d[lo - 1] < d[lo] - s) lo--;
+      scrubTo(lo);
+    };
+    const hold = (el, fn) => {
+      el.addEventListener("pointerdown", (ev) => {
+        if (!scrub.eng) return;
+        held = el;
+        try {
+          el.setPointerCapture(ev.pointerId);
+        } catch (e) {
+          /* sin captura: sigue mientras esté encima */
+        }
+        fn(ev, false);
+      });
+      el.addEventListener("pointermove", (ev) => {
+        if (held === el) fn(ev, true);
+      });
+      const end = () => {
+        if (held === el) held = null;
+      };
+      el.addEventListener("pointerup", end);
+      el.addEventListener("pointercancel", end);
+    };
+    hold(map, fromMap);
+    hold(chart, fromChart);
+    $("ruf-pos").addEventListener("input", () => scrubTo(+$("ruf-pos").value));
+    $("ruf-prev").addEventListener("click", () => jumpCurve(-1));
+    $("ruf-next").addEventListener("click", () => jumpCurve(1));
   }
   function cutSessionId(eng) {
     return eng.viewing ? eng.viewing.id : eng.rec ? eng.rec.id : null;
@@ -4219,7 +4957,7 @@
             (sug.parada ? ", donde paraste" : "") +
             ". Mueve la barra para cambiarlo. Quedan dos rutas; esta entera se borra del móvil" +
             (settings.garaje ? " (en el Mac sigue también la entera)." : ".")
-        : "Mueve la barra hasta donde quieras partirla (el punto blanco del mapa). Quedan dos rutas; esta entera se borra del móvil" +
+        : "Mueve la barra hasta donde quieras partirla (el punto rosa «corte» del mapa). Quedan dos rutas; esta entera se borra del móvil" +
             (settings.garaje ? " (en el Mac sigue también la entera)." : "."),
     );
     renderCut();
@@ -4284,6 +5022,7 @@
         corte: { de: meta.id, parte },
       });
       delete m.pend;
+      if (meta.nombre) m.nombre = meta.nombre.slice(0, 36) + " · " + parte;
       return { meta: m, chunks: K.chunksOf(series, id, epoch, F.VERSION) };
     });
     try {
@@ -4321,9 +5060,12 @@
         " km · " +
         fmtClock(s.duracion),
     );
+    setupNombre(eng, "ruf-nombre", "ruf-nombre-box");
     setupCut(eng);
     drawSummaryMap(eng);
     window.MaspaMapa.legend($("ruf-legend"), summaryColor);
+    renderPhaseChart(eng);
+    setupScrub(eng);
     renderTramoCard(eng);
     setText(
       "ruf-color",
@@ -4504,6 +5246,7 @@
   function startSim(speedFactor, opts) {
     E = newEngine(true, opts && opts.free);
     E.t0 = 0;
+    $("toast").hidden = true;
     sim.data =
       opts && opts.session ? opts.session : T.demoSession({ seed: 7 }).session;
     sim.t = 0;
@@ -4980,6 +5723,8 @@
     E = newEngine(false, free === true);
     E.t0 = perfNow();
     E.wall0 = Date.now();
+    // Un aviso de la portada no se queda encima del panel.
+    $("toast").hidden = true;
     E.motionDenied = !motionOk;
     sensorsBlocked().then((b) => {
       if (b && E) E.motionDenied = true;
@@ -5092,20 +5837,51 @@
     recFlush(true);
     saveMeta("terminada");
     const saved = old.rec.queue;
+    // Parado desde el principio del tramo: ese no se guarda (ni cuenta).
+    const empty = emptyRecording(old);
+    if (empty) discardRecording(old);
     const eng = newEngine(false, true);
     for (const k of SEGMENT_CARRY) eng[k] = old[k];
-    eng.segment = (old.segment || 1) + 1;
+    eng.segment = (old.segment || 1) + (empty ? 0 : 1);
     eng.t0 = perfNow();
     eng.wall0 = Date.now();
     // Los sensores pasan ya al tramo nuevo (se guardan en memoria hasta que tenga su grabación).
     E = eng;
-    lastE = old;
+    lastE = empty ? null : old;
     mapView.drawnAt = 0;
-    toast("Tramo " + eng.segment + ": el anterior queda guardado");
+    toast(
+      empty
+        ? "Tramo " + eng.segment + ": empieza de nuevo (parado no se guarda)"
+        : "Tramo " + eng.segment + ": el anterior queda guardado",
+    );
     // La grabación nueva cierra como «cortada» lo que quede a medias: primero, que el anterior quede terminado.
     await saved.catch(() => {});
     if (E === eng) recStart(eng.wall0);
     return true;
+  }
+
+  // Una grabación sin nada (sin moverse: menos de 50 m y ninguna vuelta), como un «Salir a pista» tocado sin querer o
+  // un «Nuevo tramo» dado parado, no se queda en la lista.
+  function emptyRecording(eng) {
+    return !!(
+      eng &&
+      eng.rec &&
+      !eng.sim &&
+      !eng.viewing &&
+      eng.route.stats.dist < 50 &&
+      !eng.laps.some((l) => l.valid) &&
+      !(eng.circ && eng.circ.laps.length)
+    );
+  }
+  function discardRecording(eng) {
+    const id = eng.rec.id;
+    return eng.rec.queue
+      .catch(() => {})
+      .then(() => ST && ST.deleteSession(id))
+      .catch(() => {})
+      .then(() => {
+        if (!$("home").hidden) renderHistory();
+      });
   }
 
   function stopAll() {
@@ -5129,9 +5905,21 @@
     close3D();
     lastE = E;
     E = null;
-    // Al terminar una ruta libre, su resumen con el mapa entero.
-    if (lastE && lastE.free) showRouteSummary(lastE);
-    else {
+    // Los avisos de mientras se rodaba («Sigue grabando…») ya no valen.
+    $("toast").hidden = true;
+    if (emptyRecording(lastE)) {
+      discardRecording(lastE);
+      lastE = null;
+      show("home");
+      renderHome();
+      toast("No se ha guardado: no llegaste a moverte");
+      return;
+    }
+    // Al terminar una ruta libre, su resumen con el mapa entero: el del repaso de lo grabado si es de verdad.
+    if (lastE && lastE.free) {
+      if (lastE.rec && !lastE.sim && ST) finishRide(lastE);
+      else showRouteSummary(lastE);
+    } else {
       show("home");
       renderHome();
     }
@@ -5508,12 +6296,15 @@
     for (const s of list) {
       const row = document.createElement("div");
       row.className = "hist-row";
+      row.dataset.id = s.id;
       const txt = document.createElement("div");
       txt.className = "hist-txt";
+      // Con nombre puesto, el nombre arriba y la fecha en la línea de abajo.
       const b = document.createElement("b");
-      b.textContent = sessionDate(s);
+      b.textContent = s.nombre || sessionDate(s);
       const sp = document.createElement("span");
-      sp.textContent = sessionLine(s);
+      sp.textContent =
+        (s.nombre ? sessionDate(s) + " · " : "") + sessionLine(s);
       txt.append(b, sp);
       const act = document.createElement("div");
       act.className = "hist-act";
@@ -5553,24 +6344,154 @@
     }
   }
 
-  // Ver una tanda guardada: se repasa la grabación con el mismo motor que en directo (deprisa, sin grabar, sin
-  // subir, sin avisos) y se enseña lo de siempre al terminar: la ruta con su mapa o el análisis de boxes.
-  async function viewSaved(id) {
-    if (viewJob || E || !ST) return;
+  // ---------- repasar una grabación ----------
+  // Lo que se cuenta de una ruta o tanda guardada (el resumen al terminar, «Ver», la línea de la lista y la imagen
+  // para compartir) sale siempre de repasar su grabación con el mismo motor que en directo, deprisa, sin grabar, sin
+  // subir y sin avisos: así dicen todos lo mismo. En directo el fijo del GPS llega tarde y el motor lo ve después de
+  // los sensores de ese rato: sus números cambiaban algo (una frenada máxima de 0,75 g al terminar era de 0,59 g al
+  // abrirla luego). Mismo dato, mismo orden: mismo resultado, en cualquier móvil y como sea que esté girado.
+  // E (el motor de todas las funciones) solo es el del repaso mientras repasa un trozo seguido: en cada pausa para
+  // la página vuelve a null, así que nada más lo ve, y si al volver hay otro (se ha echado a rodar) el repaso se para.
+  // stop(): true para pararlo (Cancelar). Devuelve el motor con todo repasado.
+  async function replayRecording(meta, S, stop, onProgress) {
+    const L = S.loc;
+    const eng = newEngine(true, meta.tipo === "ruta");
+    eng.t0 = 0;
+    eng.viewing = meta;
+    eng.viewEpoch = meta.epoch || null;
+    eng.crash = null;
+    eng.circTryAt = Infinity;
+    eng.orientTried = true;
+    eng.segment = meta.segmento > 1 ? meta.segmento : 1;
+    eng.crashLog = Array.isArray(meta.caidas) ? meta.caidas.slice() : [];
+    // El giro de la pantalla de cuando se grabó, nunca el de ahora.
+    eng.screenAngle =
+      meta.montaje && Number.isFinite(meta.montaje.angulo)
+        ? meta.montaje.angulo
+        : Number.isFinite(meta.anguloPantalla)
+          ? meta.anguloPantalla
+          : 0;
+    if (Array.isArray(meta.calibracionManual)) {
+      eng.calib.manualU = norm3(meta.calibracionManual);
+      eng.calib.manualVer++;
+    }
+    const A = S.acc;
+    const G = S.grav;
+    const W = S.gyro;
+    const nA = A && G && W ? Math.min(A.t.length, G.t.length, W.t.length) : 0;
+    // Grabaciones de antes de unificar los relojes: si los sensores empiezan lejos del GPS, se alinean.
+    const shift = nA && Math.abs(A.t[0] - L.t[0]) > 60 ? L.t[0] - A.t[0] : 0;
+    const total = nA + L.t.length;
+    let iL = 0;
+    let i = 0;
+    const feedFixes = (upTo) => {
+      while (iL < L.t.length && L.t[iL] <= upTo) {
+        sim.t = L.t[iL];
+        onFix(
+          L.t[iL],
+          L.lat[iL],
+          L.lon[iL],
+          L.speed[iL] >= 0 ? L.speed[iL] : null,
+          L.hacc[iL],
+        );
+        iL++;
+      }
+    };
+    // Un trozo seguido: hasta 40 ms o 5.000 muestras.
+    const batch = () => {
+      if (E !== null) throw new Error("cancelado");
+      E = eng;
+      try {
+        // Ruta libre por un circuito: el suyo desde el principio (las vueltas salen igual que en directo).
+        const c = meta.circuito;
+        if (i === 0 && iL === 0 && eng.free && c && c.trazado)
+          useCircuit(c.trazado, c.sentido === "inverso", !!c.guardado);
+        const tStart = performance.now();
+        const i0 = i;
+        while (i < nA) {
+          const t = A.t[i] + shift;
+          feedFixes(t);
+          sim.t = t;
+          onMotion(
+            t,
+            [A.x[i], A.y[i], A.z[i]],
+            [G.x[i], G.y[i], G.z[i]],
+            [W.x[i], W.y[i], W.z[i]],
+          );
+          i++;
+          if (
+            i - i0 >= 5000 ||
+            ((i & 255) === 0 && performance.now() - tStart > 40)
+          )
+            break;
+        }
+        if (i >= nA) feedFixes(Infinity);
+      } finally {
+        E = null;
+      }
+    };
+    for (;;) {
+      if (stop()) throw new Error("cancelado");
+      batch();
+      if (onProgress) onProgress((i + iL) / Math.max(1, total));
+      if (i >= nA && iL >= L.t.length) break;
+      await new Promise((r) => setTimeout(r, 0));
+    }
+    return eng;
+  }
+
+  // Lo que ha dado el repaso queda como el resumen de la grabación (con la versión que lo ha calculado): la lista
+  // dice lo mismo que «Ver» y que la imagen. Sin tocar nada más (el nombre puesto a la vez se respeta).
+  function keepResult(meta, eng) {
+    if (!ST || meta.sim) return Promise.resolve(false);
+    const patch = { recorrido: eng.route.summary(), calculo: BUILD };
+    // Una tanda: su mejor vuelta (las guardadas antes apuntaban la de siempre del piloto).
+    if (!eng.free) patch.mejor = sessionBest(eng);
+    // Ya estaba así (otra vez «Ver»): nada que guardar ni que volver a subir al Mac.
+    if (
+      meta.calculo === BUILD &&
+      JSON.stringify(meta.recorrido) === JSON.stringify(patch.recorrido) &&
+      (eng.free || meta.mejor === patch.mejor)
+    )
+      return Promise.resolve(true);
+    return ST.patchSession(meta.id, patch).catch(() => false);
+  }
+
+  // Ver una tanda guardada: se repasa la grabación y se enseña lo de siempre al terminar: la ruta con su mapa o el
+  // análisis de boxes. fallback: al acabar una ruta, el motor del directo, por si no se puede repasar (se enseña su
+  // resumen, como antes).
+  async function viewSaved(id, fallback) {
+    if (viewJob || E || !ST) {
+      // Al terminar una ruta con otra cosa ya en marcha no se enseña nada (queda en la lista), ni se queda la
+      // ventanita de «Guardando la ruta…» encima.
+      if (fallback) {
+        $("replaying").hidden = true;
+        if (!viewJob && !E) showRouteSummary(fallback);
+      }
+      return;
+    }
     const job = { cancelled: false };
     viewJob = job;
     const box = $("replaying");
     const bar = $("replaying-bar");
-    setText("replaying-t", "Abriendo la grabación…");
+    setText(
+      "replaying-t",
+      fallback ? "Guardando la ruta…" : "Abriendo la grabación…",
+    );
     bar.style.width = "0%";
     box.hidden = false;
     const fail = (msg) => {
+      if (fallback) {
+        box.hidden = true;
+        lastE = fallback;
+        showRouteSummary(fallback);
+        return;
+      }
       setText("replaying-t", msg);
       setTimeout(() => {
         if (viewJob === job || viewJob === null) box.hidden = true;
       }, 2500);
     };
-    let eng = null;
     try {
       const meta = (await ST.sessions()).find((s) => s.id === id);
       const chunks = await ST.chunksOf(id);
@@ -5579,84 +6500,135 @@
         return fail("Esta grabación está vacía.");
       }
       const S = F.mergeChunks(chunks).series;
-      const L = S.loc;
-      if (!L || !L.t.length) {
+      if (!S.loc || !S.loc.t.length) {
         viewJob = null;
         return fail("Esta grabación no tiene posiciones del GPS.");
       }
-      eng = newEngine(true, meta.tipo === "ruta");
-      eng.t0 = 0;
-      eng.viewing = meta;
-      eng.viewEpoch = meta.epoch || null;
-      eng.crash = null;
-      eng.circTryAt = Infinity;
-      eng.orientTried = true;
-      eng.crashLog = Array.isArray(meta.caidas) ? meta.caidas.slice() : [];
-      if (meta.montaje && Number.isFinite(meta.montaje.angulo))
-        eng.screenAngle = meta.montaje.angulo;
-      E = eng;
-      if (Array.isArray(meta.calibracionManual)) {
-        eng.calib.manualU = norm3(meta.calibracionManual);
-        eng.calib.manualVer++;
-      }
-      setText("replaying-t", "Repasando la grabación…");
-      const A = S.acc;
-      const G = S.grav;
-      const W = S.gyro;
-      const nA = A && G && W ? Math.min(A.t.length, G.t.length, W.t.length) : 0;
-      // Grabaciones de antes de unificar los relojes: si los sensores empiezan lejos del GPS, se alinean.
-      const shift = nA && Math.abs(A.t[0] - L.t[0]) > 60 ? L.t[0] - A.t[0] : 0;
-      let iL = 0;
-      const feedFixes = (upTo) => {
-        while (iL < L.t.length && L.t[iL] <= upTo) {
-          sim.t = L.t[iL];
-          onFix(
-            L.t[iL],
-            L.lat[iL],
-            L.lon[iL],
-            L.speed[iL] >= 0 ? L.speed[iL] : null,
-            L.hacc[iL],
-          );
-          iL++;
-        }
-      };
-      const total = nA + L.t.length;
-      let lastYield = performance.now();
-      let lastI = 0;
-      for (let i = 0; i < nA; i++) {
-        const t = A.t[i] + shift;
-        feedFixes(t);
-        sim.t = t;
-        onMotion(
-          t,
-          [A.x[i], A.y[i], A.z[i]],
-          [G.x[i], G.y[i], G.z[i]],
-          [W.x[i], W.y[i], W.z[i]],
-        );
-        // Cada 40 ms (o cada 5.000 muestras) se deja respirar a la página: barra de avance y «Cancelar».
-        if (performance.now() - lastYield > 40 || i - lastI >= 5000) {
-          bar.style.width = Math.round(((i + iL) / total) * 100) + "%";
-          await new Promise((r) => setTimeout(r, 0));
-          lastYield = performance.now();
-          lastI = i;
-          if (job.cancelled || E !== eng) throw new Error("cancelado");
-        }
-      }
-      feedFixes(Infinity);
-      bar.style.width = "100%";
-      if (job.cancelled || E !== eng) throw new Error("cancelado");
-      if (eng.free) {
-        E = null;
-        lastE = eng;
-        showRouteSummary(eng);
-      } else enterPits();
+      setText(
+        "replaying-t",
+        fallback ? "Repasando la ruta…" : "Repasando la grabación…",
+      );
+      const eng = await replayRecording(
+        meta,
+        S,
+        () => job.cancelled,
+        (f) => {
+          bar.style.width = Math.round(f * 100) + "%";
+        },
+      );
       viewJob = null;
       box.hidden = true;
+      keepResult(meta, eng);
+      if (eng.free) {
+        lastE = eng;
+        showRouteSummary(eng);
+      } else {
+        E = eng;
+        enterPits();
+      }
     } catch (e) {
-      if (E === eng) E = null;
       viewJob = null;
+      if (fallback && !E) return fail("");
       if (job.cancelled || (e && e.message === "cancelado")) box.hidden = true;
       else fail("No se ha podido abrir esta grabación.");
+    }
+  }
+
+  // Terminar una ruta de verdad: se espera a que lo grabado esté guardado y su resumen sale del repaso (lo mismo que
+  // dirá «Ver» después). Si no se puede (la grabación falló), el del directo.
+  async function finishRide(live) {
+    // Mientras se guarda ya hay «trabajo» en marcha: «Cancelar» (o atrás) lo para aquí también.
+    const job = { cancelled: false };
+    viewJob = job;
+    show("home");
+    renderHome();
+    $("replaying").hidden = false;
+    setText("replaying-t", "Guardando la ruta…");
+    $("replaying-bar").style.width = "0%";
+    try {
+      await live.rec.queue;
+    } catch (e) {
+      /* R.failed lo dice */
+    }
+    if (viewJob === job) viewJob = null;
+    if (job.cancelled || live.rec.failed || !ST) {
+      $("replaying").hidden = true;
+      if (!E && !viewJob) {
+        lastE = live;
+        showRouteSummary(live);
+      }
+      return;
+    }
+    await viewSaved(live.rec.id, live);
+  }
+
+  // ---------- resúmenes al día ----------
+  // Las rutas guardadas con otra versión de la app (o cuyo repaso al terminar no se hizo) se repasan solas, una a
+  // una, mientras se mira la portada, y su línea de la lista se pone al día. Empezar a rodar, «Ver» o salir de la
+  // portada lo para; sigue la próxima vez.
+  let refreshTimer = null;
+  let refreshing = false;
+  function scheduleRefresh() {
+    clearTimeout(refreshTimer);
+    refreshTimer = setTimeout(refreshStored, 1500);
+  }
+  function refreshBlocked() {
+    return !!(E || viewJob || $("home").hidden);
+  }
+  async function refreshStored() {
+    if (refreshing || !ST || refreshBlocked()) return;
+    refreshing = true;
+    let any = false;
+    try {
+      const list = (await ST.sessions()).filter(
+        (s) =>
+          s.tipo === "ruta" &&
+          !s.sim &&
+          s.estado !== "grabando" &&
+          s.calculo !== BUILD,
+      );
+      for (const meta of list) {
+        if (refreshBlocked()) break;
+        const chunks = await ST.chunksOf(meta.id);
+        const S = chunks.length ? F.mergeChunks(chunks).series : null;
+        let eng = null;
+        if (S && S.loc && S.loc.t.length) {
+          try {
+            eng = await replayRecording(meta, S, refreshBlocked);
+          } catch (e) {
+            if (e && e.message === "cancelado") break;
+            // Una que no se puede repasar no se intenta más con esta versión.
+          }
+        }
+        const ok = eng
+          ? await keepResult(meta, eng)
+          : await ST.patchSession(meta.id, { calculo: BUILD }).catch(
+              () => false,
+            );
+        if (ok && eng) {
+          any = true;
+          updateHistoryLine(meta.id);
+        }
+      }
+    } catch (e) {
+      /* la próxima vez */
+    } finally {
+      refreshing = false;
+    }
+    if (any && !$("home").hidden) renderTramosHome();
+  }
+  // La línea de una grabación en la lista, sin rehacerla (un «Borrar» a medio confirmar sigue igual).
+  async function updateHistoryLine(id) {
+    try {
+      const s = (await ST.sessions()).find((x) => x.id === id);
+      const row = document.querySelector(
+        '#hist-list .hist-row[data-id="' + id + '"] .hist-txt span',
+      );
+      if (s && row)
+        row.textContent =
+          (s.nombre ? sessionDate(s) + " · " : "") + sessionLine(s);
+    } catch (e) {
+      /* se verá al volver a la portada */
     }
   }
 
@@ -5668,6 +6640,7 @@
   function renderHome() {
     checkSensorBlock();
     renderHistory();
+    scheduleRefresh();
     renderTramosHome();
     renderInstall();
     renderCircuits();
@@ -5850,6 +6823,7 @@
     $("free").addEventListener("click", () => startReal(true));
     wireExt();
     wireInstall();
+    wireScrub();
     for (const b of document.querySelectorAll(".choice [data-orient]"))
       b.addEventListener("click", () => {
         settings.pantalla = b.dataset.orient;
@@ -5969,6 +6943,44 @@
       eng.tramoSaved = true;
       renderTramoCard(eng);
       toast("Guardados «" + name + " · ida» y «" + name + " · vuelta»", 3500);
+    });
+    wireNombre("ruf-nombre");
+    wireNombre("p-nombre");
+    let tandaCutArmed = false;
+    $("p-cut-go").addEventListener("click", async () => {
+      const sel = $("p-cut-lap");
+      const sid = sel.dataset.sid;
+      if (!sid || !sel.value || $("p-cut-go").disabled) return;
+      if (!tandaCutArmed) {
+        tandaCutArmed = true;
+        setText("p-cut-go", "¿Cortar? Toca otra vez");
+        setTimeout(() => {
+          tandaCutArmed = false;
+          if (!$("p-cut-go").disabled) setText("p-cut-go", "Cortar aquí");
+        }, 4000);
+        return;
+      }
+      tandaCutArmed = false;
+      $("p-cut-go").disabled = true;
+      setText("p-cut-go", "Cortando…");
+      try {
+        await cutSaved(sid, Number(sel.value));
+        // Cerrar el repaso (sin nada que guardar) y a la portada, con las dos tandas nuevas en la lista.
+        if (E && E.viewing) stopAll();
+        show("home");
+        renderHome();
+        toast("Tanda cortada en dos", 3500);
+      } catch (e) {
+        toast(
+          e && e.message === "demasiado corta"
+            ? "Así una de las dos quedaría casi vacía"
+            : "No se ha podido cortar (la tanda sigue entera)",
+          4000,
+        );
+      } finally {
+        $("p-cut-go").disabled = false;
+        setText("p-cut-go", "Cortar aquí");
+      }
     });
     $("ruf-cut-t").addEventListener("input", () => {
       if (!cutUi) return;
@@ -6227,6 +7239,10 @@
     stopAll,
     get engine() {
       return E;
+    },
+    // El último motor acabado (la ruta del resumen).
+    get last() {
+      return lastE;
     },
     sim,
     onMotion: (...a) => onMotion(...a),

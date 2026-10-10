@@ -229,7 +229,9 @@
   // en el plano; NaN si aún no se sabe y entonces se sigue el GPS a secas).
   Recorrido.prototype.advance = function (t, dt, v, yawRate) {
     const e = this.est;
-    this.useEst = !!e && yawRate === yawRate;
+    // Sin giro de verdad (NaN, o sin dato) no se estima: un undefined dejaba la posición en NaN y la trazada sin
+    // puntos nuevos.
+    this.useEst = !!e && Number.isFinite(yawRate);
     if (!this.useEst) return;
     if (v > 1) {
       const dh = this.yawSign * yawRate * dt;
@@ -344,13 +346,15 @@
         vEntry: b ? b.v0 : s.v,
         brakeG: b ? b.g : 0,
         brakeAt: b ? b.pos : null,
-        brakeEnd: b ? b.tEnd : null,
-        braking: !!(b && b.tEnd === null),
+        braking: !!(b && b.tEnd === null) || ph === "freno",
+        // Para el tiempo muerto: cuándo se suelta el freno por primera vez (si se soltó antes de entrar, entonces;
+        // entrando sin frenar, al entrar) y la primera vez que la fase pasa a «acelera» después.
+        relT: b && b.tEnd !== null ? b.tEnd : b ? null : t,
         gasT: null,
-        gasCand: null,
         yawMax: this.yawS,
         dir: 0,
       };
+      if (this.curve.braking) this.curve.relT = null;
       this.quiet = null;
     } else if (c) {
       if (!c.dir && Math.abs(this.ySig) > YAW_IN) c.dir = Math.sign(this.ySig);
@@ -366,20 +370,16 @@
       if (ph === "freno") {
         c.brakeG = Math.max(c.brakeG, -s.a);
         c.braking = true;
-        c.brakeEnd = null;
         if (!c.brakeAt && pos) c.brakeAt = pos;
-        c.gasT = null;
-      } else if (c.braking && c.brakeEnd === null) {
-        c.brakeEnd = t;
+      } else if (c.braking) {
         c.braking = false;
+        if (c.relT === null) c.relT = t;
       }
-      // Gas de verdad: más de 0,1 g sostenido 0,3 s (un repunte al soltar el freno no cuenta).
-      if (c.gasT === null && !c.braking) {
-        if (s.a > 0.1) {
-          if (c.gasCand === null) c.gasCand = t;
-          if (t - c.gasCand >= 0.3) c.gasT = c.gasCand;
-        } else if (!(s.a > GAS)) c.gasCand = null;
-      }
+      // Gas: cuando la fase (la sostenida, la que pinta la trazada en verde) pasa a «acelera», con la misma regla que
+      // la trazada. Volver a frenar después (para la curva siguiente) ya no lo borra: antes, una curva que acababa
+      // frenando para la siguiente se contaba entera como tiempo muerto (2,4 s de media en Los Loros, cuando la
+      // trazada pintaba en ámbar un 5 % del tiempo).
+      if (c.relT !== null && c.gasT === null && ph === "gas") c.gasT = t;
       if (this.yawS < YAW_OUT || !moving) {
         if (this.quiet === null) this.quiet = t;
         if (t - this.quiet > 0.8 || !moving) this.endCurve(t, s);
@@ -426,7 +426,9 @@
     return cur;
   };
 
-  // Cierra la curva: tiempo muerto = de soltar el freno (o de entrar sin frenar) a volver a dar gas.
+  // Cierra la curva: tiempo muerto = el rato sin freno ni gas («mantiene») desde que se suelta el freno (o se entra
+  // sin frenar) hasta volver a dar gas. Se cuenta sobre la trazada, que ese mismo rato se pinta en ámbar: el número
+  // y el color dicen siempre lo mismo.
   Recorrido.prototype.endCurve = function (t, s) {
     const c = this.curve;
     this.curve = null;
@@ -434,13 +436,18 @@
     const dur = t - c.t0;
     const leanOk = c.leanMax > 8 || (!(c.lean === c.lean) && c.yawMax > 0.25);
     if (dur < 1 || !leanOk) return null;
-    const from = c.brakeEnd !== null ? c.brakeEnd : c.t0;
+    const from = c.relT !== null ? c.relT : t;
     const to = c.gasT !== null ? c.gasT : t;
-    const dead = Math.max(0, to - from);
-    // La trazada de ese tramo sin freno ni gas se marca como tiempo muerto.
-    for (let i = c.idx; i < this.trail.length; i++) {
-      const p = this.trail[i];
-      if (p.t >= from && p.t <= to && p.ph === "mantiene") p.ph = "muerto";
+    let dead = 0;
+    const tr = this.trail;
+    let i0 = Math.min(c.idx, tr.length);
+    while (i0 > 0 && tr[i0 - 1].t >= from) i0--;
+    for (let i = Math.max(1, i0); i < tr.length; i++) {
+      const p = tr[i];
+      if (p.t < from || p.t > to || p.ph !== "mantiene" || p.gap) continue;
+      const dt = p.t - tr[i - 1].t;
+      if (dt > 0 && dt < 5) dead += dt;
+      p.ph = "muerto";
     }
     const res = {
       num: c.num,
@@ -547,12 +554,7 @@
       mean: r2(sum / b.g.length),
       bite: r2(t80 - b.t0),
       dive: dive === null ? null : r1(dive),
-      diveMm:
-        dive === null
-          ? null
-          : Math.round(
-              WHEELBASE_MM * Math.tan((dive * Math.PI) / 180) * FORK_SHARE,
-            ),
+      diveMm: dive === null ? null : diveMm(dive),
       trail: Math.round(b.trailDist),
       leanMax: b.leanMax ? r1(b.leanMax) : null,
       gTurn: b.gTurn === null ? null : r2(b.gTurn),
@@ -740,5 +742,12 @@
     };
   }
 
-  root.MaspaRecorrido = { Recorrido, phaseOf, BRAKE, GAS };
+  // Milímetros de horquilla (estimados) para un hundimiento de `deg` grados.
+  function diveMm(deg) {
+    return Math.round(
+      WHEELBASE_MM * Math.tan((deg * Math.PI) / 180) * FORK_SHARE,
+    );
+  }
+
+  root.MaspaRecorrido = { Recorrido, phaseOf, diveMm, BRAKE, GAS };
 })(typeof window !== "undefined" ? window : globalThis);

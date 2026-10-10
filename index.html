@@ -101,6 +101,9 @@
   .hist-txt span { overflow-wrap: anywhere; }
   .hist-act { display: flex; gap: 6px; flex: none; }
   .hist-act button { padding: 10px 12px; }
+  /* Tus tramos: tres botones, debajo del nombre. */
+  .hist-row.stack { flex-direction: column; align-items: stretch; }
+  .hist-row.stack .hist-act { justify-content: flex-start; }
   .replaying { position: fixed; inset: 0; z-index: 40; display: grid; align-content: center; justify-items: center; gap: 16px; padding: 24px; background: var(--bg); text-align: center; }
   .replaying p { margin: 0; font-size: 20px; font-weight: 700; }
   .replaying-bar { width: min(80vw, 420px); height: 10px; border-radius: 999px; background: var(--surface-3); overflow: hidden; }
@@ -113,6 +116,7 @@
   .tr-item .tr-time { font-size: 30px; font-weight: 900; font-variant-numeric: tabular-nums; }
   .tr-item .tr-time small { font-size: 16px; font-weight: 700; margin-left: 8px; }
   .tr-chart { display: block; width: 100%; height: 240px; border-radius: var(--r-md); background: #0a0d10; }
+  .tr-map { display: block; width: 100%; height: 300px; border-radius: var(--r-md); background: #0a0d10; }
   .tr-legend { margin: 0; display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 13px; font-weight: 600; color: var(--ink-2); }
   .tr-legend span::before { content: ""; display: inline-block; width: 12px; height: 4px; border-radius: 2px; margin-right: 5px; vertical-align: middle; background: var(--c); }
   .tr-legend span.plain::before { display: none; }
@@ -135,7 +139,7 @@
   .group-title { margin: 0; font-size: 16px; font-weight: 700; }
   .pilot { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 10px 14px; align-items: center; }
   .pilot label { font-weight: 600; color: var(--ink-2); min-width: 4.5em; }
-  .pilot input {
+  .pilot input, .pilot select {
     font: 600 18px var(--sans); color: var(--ink); background: var(--field); border: 1px solid var(--line-strong);
     border-radius: var(--r-md); min-height: 48px; padding: 10px 12px; width: 100%;
   }
@@ -306,7 +310,7 @@
   .v3d-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
   .v3d-wait { position: absolute; inset: 0; display: grid; place-items: center; margin: 0; color: #15191c; font-weight: 700; }
   .v3d-ctl { position: absolute; right: 8px; bottom: 8px; display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
-  .v3d-ctl button { min-height: 40px; padding: 6px 10px; font-size: 14px; background: rgba(5, 6, 7, 0.72); border-color: rgba(255, 255, 255, 0.3); }
+  .v3d-ctl button { min-height: 40px; min-width: 44px; padding: 6px 10px; font-size: 14px; background: rgba(5, 6, 7, 0.72); border-color: rgba(255, 255, 255, 0.3); }
   .v3d-ctl button[aria-pressed="true"] { background: var(--primary); border-color: var(--primary); }
   .dash.replay, .dash.replay.good, .dash.replay.bad { background: #000; }
   .dash.replay .delta { grid-row: 2; grid-column: 1; align-self: start; z-index: 2; pointer-events: none; padding-top: 10px; font-size: min(17vw, 15vh); text-shadow: 0 2px 10px rgba(0, 0, 0, 0.75); }
@@ -330,6 +334,15 @@
   .laps-strip b { font-size: min(9vw, 6.5vh); font-weight: 900; line-height: 1; }
   .ride-stats { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; font-weight: 800; font-size: min(4.2vw, 3vh); opacity: 0.95; }
   .route-map { display: block; width: 100%; height: min(62vh, 520px); border-radius: var(--r-md); background: #0a0d10; }
+  /* El punto que se mueve por la ruta: arrastrar por el mapa lo mueve (no la página); por la gráfica, solo de lado. */
+  #ruf-map { touch-action: none; }
+  #ruf-ph-chart { touch-action: pan-y; }
+  .scrub { display: grid; gap: 6px; margin-top: 10px; }
+  .scrub p { margin: 0; }
+  .scrub-at { font-size: 18px; font-weight: 800; color: var(--ink); font-variant-numeric: tabular-nums; }
+  .scrub-sub { min-height: 2.6em; font-size: 15px; color: var(--ink-2); }
+  .scrub-nav { display: flex; gap: 8px; }
+  .scrub-nav button { flex: 1; }
   #ruta-fin .legend { position: static; max-width: none; background: none; padding: 0; }
   @media (orientation: landscape) {
     .mini-map { height: 24vh; }
@@ -408,6 +421,16 @@
       </div>
       <p class="muted">«Ruta libre» va dibujando tu trazada por cualquier carretera: dónde frenas, aceleras o dejas tiempo muerto, la inclinación de cada curva y los caballitos. «Probar los sensores» comprueba el GPS y los sensores de este móvil. La vuelta de ejemplo es una tanda grabada: no usa tu móvil.</p>
     </div>
+    <section class="card" aria-labelledby="hist-h" id="hist-card" hidden>
+      <h2 id="hist-h">Tus rutas y tandas</h2>
+      <div class="hist-list" id="hist-list"></div>
+      <p class="muted">Guardadas en este móvil: se ven también sin internet. «Ver» repasa la grabación y enseña lo mismo que al terminar (la ruta con su mapa, o el análisis de boxes de una tanda): la lista, el resumen y la imagen para compartir dicen siempre los mismos números. «Borrar» solo la quita del móvil.</p>
+    </section>
+    <section class="card" aria-labelledby="trs-h" id="trs-card" hidden>
+      <h2 id="trs-h">Tus tramos</h2>
+      <div class="hist-list" id="trs-list"></div>
+      <p class="muted">Se reconocen solos al pasar por ellos (en el mismo sentido), en la ruta libre y al repasar una grabación. «Buscar» los busca en todas las rutas guardadas en el móvil.</p>
+    </section>
     <section class="card" aria-labelledby="ext-h">
       <h2 id="ext-h">Receptor GPS externo</h2>
       <div class="status"><div><span class="dot" id="st-ext"></span><span id="st-ext-t">Sin receptor: se usa el GPS del móvil (1 posición por segundo).</span></div></div>
@@ -417,16 +440,6 @@
         <button class="danger" id="ext-off" hidden>Desconectar el receptor</button>
       </div>
       <p class="muted">RaceBox, BonoGPS o cualquier receptor NMEA por Bluetooth, o uno por cable USB-C (u-blox M9/M10): de 10 a 25 posiciones por segundo y casi sin retraso. Mientras llegan sus posiciones, sustituyen a las del móvil; si se pierde, vuelve solo el GPS del móvil. Conéctalo antes de salir.</p>
-    </section>
-    <section class="card" aria-labelledby="hist-h" id="hist-card" hidden>
-      <h2 id="hist-h">Tus rutas y tandas</h2>
-      <div class="hist-list" id="hist-list"></div>
-      <p class="muted">Guardadas en este móvil: se ven también sin internet. «Ver» repasa la grabación y enseña lo mismo que al terminar (la ruta con su mapa, o el análisis de boxes de una tanda). «Borrar» solo la quita del móvil.</p>
-    </section>
-    <section class="card" aria-labelledby="trs-h" id="trs-card" hidden>
-      <h2 id="trs-h">Tus tramos</h2>
-      <div class="hist-list" id="trs-list"></div>
-      <p class="muted">Se reconocen solos al pasar por ellos (en el mismo sentido), en la ruta libre y al repasar una grabación. «Buscar» los busca en todas las rutas guardadas en el móvil.</p>
     </section>
     <section class="card" aria-labelledby="mac-h">
       <h2 id="mac-h">Tus tandas y el Mac</h2>
@@ -558,7 +571,7 @@
       <div class="live three">
         <div><small id="ru-lean-l">inclinación</small><b class="num" id="ru-lean">—</b></div>
         <div><small id="ru-g-l">g</small><b class="num" id="ru-g">—</b></div>
-        <div><small>morro</small><b class="num" id="ru-pitch">—</b></div>
+        <div><small id="ru-pitch-l">morro</small><b class="num" id="ru-pitch">—</b></div>
       </div>
       <div class="recap" id="ru-recap" hidden>
         <div class="recap-h"><span id="ru-name"></span><b class="num" id="ru-dead"></b></div>
@@ -584,11 +597,25 @@
     <header class="page-head">
       <h1 class="title">Tu ruta</h1>
       <p class="muted" id="ruf-sub"></p>
+      <div class="pilot" id="ruf-nombre-box" hidden><label for="ruf-nombre">Nombre</label><input id="ruf-nombre" type="text" maxlength="40" autocomplete="off" placeholder="Ponle nombre (opcional)"></div>
     </header>
     <section class="card">
-      <canvas class="route-map" id="ruf-map" aria-label="Mapa de toda la ruta"></canvas>
+      <canvas class="route-map" id="ruf-map" aria-label="Mapa de toda la ruta: arrastra el dedo por la línea para ver cada punto"></canvas>
+      <div class="scrub" id="ruf-scrub" hidden>
+        <p class="scrub-at num" id="ruf-at"></p>
+        <p class="scrub-sub" id="ruf-at-c"></p>
+        <input type="range" id="ruf-pos" min="0" max="1" step="1" value="0" aria-label="Punto de la ruta">
+        <div class="scrub-nav"><button id="ruf-prev">‹ Curva anterior</button><button id="ruf-next">Curva siguiente ›</button></div>
+        <p class="muted">Arrastra el dedo por la línea del mapa, por la gráfica de velocidad o por la barra: el punto blanco dice qué pasaba ahí.</p>
+      </div>
       <div class="actions"><button id="ruf-color">Color: fases</button></div>
       <p class="legend" id="ruf-legend"></p>
+    </section>
+    <section class="card" aria-labelledby="ruf-ph-h" id="ruf-ph" hidden>
+      <h2 id="ruf-ph-h">Frenada, gas y tiempo muerto</h2>
+      <canvas class="tr-chart" id="ruf-ph-chart" aria-label="Velocidad a lo largo de la ruta, en color según frenas, aceleras o vas sin gas"></canvas>
+      <p class="tr-legend" id="ruf-ph-legend"></p>
+      <p class="muted" id="ruf-ph-note"></p>
     </section>
     <section class="card" aria-labelledby="ruf-tr-h" id="ruf-tr" hidden>
       <h2 id="ruf-tr-h">Tramos</h2>
@@ -638,7 +665,14 @@
       <h1 class="title">Boxes</h1>
       <p class="muted" id="p-sub"></p>
       <p class="muted" id="p-store"></p>
+      <div class="pilot" id="p-nombre-box" hidden><label for="p-nombre">Nombre</label><input id="p-nombre" type="text" maxlength="40" autocomplete="off" placeholder="Ponle nombre (opcional)"></div>
     </header>
+    <section class="card" aria-labelledby="p-cut-h" id="p-cut" hidden>
+      <h2 id="p-cut-h">Cortar en dos</h2>
+      <p class="muted">Para separar dos tandas que se grabaron seguidas: quedan dos grabaciones nuevas y esta entera se borra del móvil.</p>
+      <div class="pilot"><label for="p-cut-lap">Cortar</label><select id="p-cut-lap"></select></div>
+      <div class="actions"><button id="p-cut-go">Cortar aquí</button></div>
+    </section>
     <section class="card" aria-labelledby="laps-h">
       <h2 id="laps-h">Vueltas</h2>
       <div class="table-wrap">

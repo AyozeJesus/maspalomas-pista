@@ -96,15 +96,39 @@ documentación y el resto, de la norma NMEA y del código del BonoGPS.
 
 ## Tus rutas y tandas en el móvil
 
-En la portada, «Tus rutas y tandas» lista lo grabado en este móvil (fecha, ruta o circuito, km, vueltas, mejor
-vuelta, duración), también sin internet. «Ver» repasa la grabación con el mismo motor del directo, deprisa y sin
-grabar, subir ni avisar de nada, y enseña lo de siempre al terminar: la ruta con su mapa, curvas, frenadas,
-caballitos y vueltas, o el análisis de boxes de una tanda de circuito (solo para mirar, con «Cerrar»). Usa la
-calibración y la postura del móvil que se guardaron, y alinea los sensores de grabaciones antiguas con los relojes
-desfasados. En el Vivo Y33s, una ruta de 33 min y 61 km (200.000 muestras de sensores) se abre en 3 s.
-«Borrar» (dos toques) la quita solo del móvil.
+En la portada, justo debajo de los botones de salir, «Tus rutas y tandas» lista lo grabado en este móvil (nombre o
+fecha, ruta o circuito, km, vueltas, mejor vuelta de esa tanda, duración), también sin internet. «Ver» repasa la
+grabación con el mismo motor del directo, deprisa y sin grabar, subir ni avisar de nada, y enseña lo de siempre al
+terminar: la ruta con su mapa, curvas, frenadas, caballitos y vueltas, o el análisis de boxes de una tanda de
+circuito (solo para mirar, con «Cerrar»). Usa la calibración, la postura del móvil y el giro de la pantalla que se
+guardaron (nunca los de ahora), y alinea los sensores de grabaciones antiguas con los relojes desfasados. En el
+Vivo Y33s, una ruta de 33 min y 61 km (200.000 muestras de sensores) se abre en 3 s. «Borrar» (dos toques) la quita
+solo del móvil.
 
-**Cortar en dos** (en el resumen de una ruta guardada): una barra elige dónde y el mapa lo marca con un punto blanco;
+**Una ruta, unos números.** Lo que se cuenta de una grabación (el resumen al terminar, «Ver», la línea de la lista
+y la imagen para compartir) sale siempre de repasarla así, y dice lo mismo en todos los sitios. Antes no: en directo
+el fijo del GPS llega 0,5–1 s tarde y el motor lo veía después de los sensores de ese rato, así que el resumen del
+final cambiaba al abrir la ruta luego (en la primera ruta del 9 de octubre, frenada máxima 0,75 g al verla y 0,59 g
+con el GPS llegando 0,4 s tarde; 108 curvas o 104), y la lista seguía con lo calculado entonces (12,3 km donde la
+ruta decía 12,5). Ahora «Terminar» espera a que lo grabado esté guardado, lo repasa («Repasando la ruta…», un par de
+segundos) y ese es su resumen; si no se puede, el del directo. Las rutas guardadas con otra versión de la app se
+repasan solas, una a una, mientras miras la portada, y su línea se pone al día (empezar a rodar o «Ver» lo para).
+Abrir la misma ruta varias veces (también con el procesador frenado ×6, como en un móvil lento) da exactamente lo
+mismo (`tsame.js`). En una tanda, los tiempos de vuelta son siempre los del cronómetro (los que viste al pasar por
+meta): boxes los afinaba con el análisis completo y decía 1:07,21 donde la lista y la imagen decían 1:07,20; y la
+«mejor» de la lista es la de esa tanda (antes era tu mejor de siempre: un día sin batirla enseñaba la de otro día).
+
+**Nombre**: en el resumen de una ruta (o en boxes, viendo una tanda guardada) se le pone nombre («Los Loros»), y sale
+en la lista en vez de la fecha. Al cortarla, cada parte lleva el nombre con «· 1» y «· 2».
+
+Una grabación en la que no te llegaste a mover (menos de 50 m y ninguna vuelta: un «Salir a pista» tocado sin querer,
+un «Nuevo tramo» dado parado) no se queda en la lista.
+
+**Cortar una tanda** (en boxes, viendo una tanda guardada): «Cortar en dos» elige después de qué vuelta, para separar
+dos tandas que se grabaron seguidas; quedan dos grabaciones con sus vueltas y la entera se borra del móvil.
+
+**Cortar en dos** (en el resumen de una ruta guardada): una barra elige dónde y el mapa lo marca con un punto rosa
+(«corte»);
 «Cortar aquí» (dos toques) deja dos rutas nuevas con todos sus datos (cada una con su hora de principio) y borra la
 entera del móvil (en el Mac, si ya se subió, sigue también la entera; las partes se suben como rutas nuevas). Si la
 ruta es de ida y vuelta por la misma carretera (como subir y bajar Los Loros), el corte sale ya puesto en la vuelta
@@ -119,12 +143,32 @@ cambia cuando se sostiene un cuarto de segundo (una frenada fuerte, al momento).
 el giroscopio (una izquierda seguida de una derecha son dos); de cada una, la tumbada máxima, la frenada, la
 velocidad de entrada y la mínima, y el tiempo sin gas. Los caballitos se miden por el cabeceo de la moto respecto a
 como iba (morro arriba más de 6°, con la moto derecha, sin girar y sin frenar): duración, metros, ángulo y tiempo
-perdido aproximado. Al terminar, el mapa entero con las curvas más tumbadas.
+perdido aproximado. Al terminar, el mapa entero con las curvas más tumbadas (si dos marcas se pisarían, queda la de
+la curva más tumbada; en el directo, la de la que acabas de pasar).
 
-**Nuevo tramo**: con la moto parada, junto a «Calibrar» sale «Nuevo tramo» (dos toques). Guarda lo grabado hasta
-ahí como una ruta terminada y sigue grabando otra al momento, con la calibración, los ejes, el sesgo del giroscopio
-y el retraso del GPS que ya había aprendido: para hacer un tramo subiendo y otro bajando sin terminar y volver a
-salir (que obligaba a aprenderlo todo otra vez).
+**Tiempo sin gas** (ámbar): en cada curva, desde que sueltas el freno (o desde que entras, si entras sin frenar)
+hasta la primera vez que la fase pasa a «acelera». Se cuenta sobre la propia trazada, que ese rato se pinta en ámbar:
+el número y el color dicen siempre lo mismo (antes, una curva que acababa frenando para la siguiente contaba entera
+como tiempo muerto: 2,4 s de media en Los Loros cuando el mapa pintaba un 5 %). En Los Loros: 0,3 s de media en 102
+curvas, 3 con más de 2 s.
+
+**Frenada, gas y tiempo muerto** (en el resumen): la velocidad a lo largo de la ruta pintada por fases, y cuánto del
+tiempo en marcha vas frenando, acelerando, sin gas en curva y manteniendo.
+
+**El punto que se mueve** (en el resumen, bajo el mapa): un punto blanco que llevas con el dedo por la línea del mapa,
+por la gráfica de velocidad o con la barra. Dice el km, el tiempo, la velocidad, la inclinación y la fase de ese
+sitio, y si estás en una curva, sus datos (tumbada, velocidad de entrada y mínima, frenada, tiempo sin gas), con la
+curva resaltada en el mapa; si estás en una frenada, la suya (pico, de qué a qué velocidad, metros, hundimiento); en
+recta, a cuántos metros está la siguiente curva. «Curva anterior / siguiente» va de curva en curva, al punto más
+tumbado de cada una. En una ida y vuelta por la misma carretera, arrastrando no salta al otro sentido.
+
+**Hunde** (en directo): frenando con la moto derecha, la casilla del morro dice «hunde ≈ N mm» (la horquilla, por el
+cabeceo); al soltar, «hundió N mm» durante 4 s.
+
+**Nuevo tramo**: mientras grabas, junto a «Terminar» está «Nuevo tramo» (dos toques). Guarda lo grabado hasta ahí
+como una ruta terminada y sigue grabando otra al momento, con la calibración, los ejes, el sesgo del giroscopio y el
+retraso del GPS que ya había aprendido: para hacer un tramo subiendo y otro bajando sin terminar y volver a salir
+(que obligaba a aprenderlo todo otra vez). Si el tramo que se cierra no llegó a moverse, no se guarda.
 
 **Tramos** (`tramos.js`): en el resumen de una ruta, «Guardar como tramo» con un nombre (o, si es de ida y vuelta
 por la misma carretera, «Guardar ida y vuelta», que guarda un tramo por sentido). Desde entonces, cada vez que pases
@@ -134,9 +178,12 @@ lleva el tramo con su tiempo y la diferencia con tu mejor pasada en ese mismo pu
 Al repasar una grabación también se apunta, y en la portada («Tus tramos») «Buscar» lo busca en todas las rutas
 guardadas: así las pasadas de distintos días quedan juntas. Cada pasada guarda su tiempo cada 20 m, y el resumen la
 compara con la mejor (o con la anterior mejor, si esta la bate): velocidad de las dos a lo largo del tramo, dónde
-empieza cada frenada (máximo de velocidad seguido de una bajada de 15 km/h; con el GPS del móvil, ±20 m, pero
-igual en todas las pasadas), la diferencia de tiempo punto a punto, dónde más ganas y pierdes, y si frenas antes o
-más tarde. Con la ruta de Los Loros del 9 de octubre: subida en 5:06,9 y bajada en 4:57,2.
+empieza cada frenada, la diferencia de tiempo punto a punto, dónde más ganas y pierdes, y si frenas antes o más
+tarde (y dónde cambia más). Las frenadas salen del acelerómetro (su principio es exacto en el tiempo, y las marcas
+del GPS de la pasada lo llevan al metro del tramo) si las dos pasadas se repasaron con el motor; si no, del GPS
+(máximo de velocidad seguido de una bajada de 15 km/h: ±20 m, pero igual en todas las pasadas). Un mapa del tramo
+marca dónde empieza a frenar cada pasada (▼ en la gráfica, ● en el mapa). Con la ruta de Los Loros del 9 de
+octubre: subida en 5:06,9 y bajada en 4:57,2.
 
 **Compartir**: en el resumen de la ruta («Compartir», arriba, o «Compartir (imagen)», abajo) y en boxes, se hace al
 momento una imagen de 1080 × 1350 (`compartir.js`): la ruta con la trazada en color (o la tanda con la mejor
@@ -180,7 +227,9 @@ cuanto hay 2 vueltas iguales, aparece arriba el cronómetro (`circuito.js`): vue
 mejor por distancia recorrida y la mejor, con el aviso de vuelta terminada como en Maspalomas. Las vueltas ya dadas
 cuentan. La meta la pone el constructor (mitad de la recta más larga, mejor si pasa por boxes). Al terminar, el
 resumen trae la tabla de vueltas y «Guardar el circuito»: la próxima vez se reconoce a los pocos segundos de rodar
-por él, también en sentido contrario, y cuenta desde la primera vuelta. Con la tanda de ejemplo tratada como un
+por él, también en sentido contrario, y cuenta desde la primera vuelta. La grabación lleva el trazado del circuito,
+así que al repasarla salen las mismas vueltas aunque no se guardara (o se borre después), y también se puede
+guardar desde «Ver». Con la tanda de ejemplo tratada como un
 circuito desconocido: detectado a los 192 s, vueltas a ≤ 21 ms de la verdad en su línea. No trae el modelo, el
 entrenador ni el análisis de Maspalomas (que dependen de su trazado y su trazada óptima).
 
@@ -291,6 +340,9 @@ atan(v·giro del rumbo/g)), con `rutas-analisis.js` (repasa cada ruta con el mot
   un caballito); en curva vuelve a 0.
 - **Las curvas** sumaban el ruido del giroscopio (el módulo de cada muestra nunca bajaba del umbral de salida): ahora
   el giro va en media de 0,3 s, y una izquierda seguida de una derecha son dos curvas.
+- **El análisis completo** (boxes y el garaje) saca los ejes igual: vertical con la media del acelerómetro rodando y
+  adelante afinado con el balanceo (`imuSolve` en `telemetry.js`). Contra el GPS, la aceleración pasa de r 0,37–0,86
+  y 0,23–0,36 g de error a r 0,76–0,92 y 0,08–0,14 g, y la inclinación de 8–11° a 6–8° de error.
 
 | Contra el GPS                              | Antes                    | Ahora                    |
 | ------------------------------------------ | ------------------------ | ------------------------ |

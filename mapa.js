@@ -71,6 +71,8 @@
   // o: { trail:[{x,y,ph,lean}], outline:[[x,y]], sectors:[{pts:[[x,y]], state}], brakes:[[x,y]],
   //      pos:{x,y,heading}, follow:bool, span:m, colorBy:'fase'|'incl', marks:[{x,y,text}], width:m (ancho de pista),
   //      size:{w,h,dpr} (fuera de pantalla), dots:[{x,y,color,label}] (puntos señalados: el corte, el principio…) }
+  // Devuelve la vista: toPx(x, y) → [px, py] en el canvas y toWorld(px, py) → [x, y] (para saber qué se toca), y la
+  // escala (píxeles por metro) y densidad; nada si no había qué pintar.
   function draw(canvas, o) {
     const { g, w, h, dpr } = prepare(canvas, o.size);
     const pad = 14 * dpr;
@@ -96,7 +98,27 @@
       cy = (b.y0 + b.y1) / 2;
     }
     g.setTransform(1, 0, 0, 1, 0, 0);
-    g.translate(w / 2, o.follow && o.pos ? h * 0.62 : h / 2);
+    const oy = o.follow && o.pos ? h * 0.62 : h / 2;
+    const cr = Math.cos(rot);
+    const sr = Math.sin(rot);
+    const view = {
+      scale,
+      dpr,
+      toPx: (x, y) => {
+        const dx = (x - cx) * scale;
+        const dy = (y - cy) * scale;
+        return [dx * cr - dy * sr + w / 2, dx * sr + dy * cr + oy];
+      },
+      toWorld: (px, py) => {
+        const rx = px - w / 2;
+        const ry = py - oy;
+        return [
+          (rx * cr + ry * sr) / scale + cx,
+          (-rx * sr + ry * cr) / scale + cy,
+        ];
+      },
+    };
+    g.translate(w / 2, oy);
     g.rotate(rot);
     g.scale(scale, scale);
     g.translate(-cx, -cy);
@@ -163,10 +185,23 @@
     }
     if (open) g.stroke();
 
-    // Marcas (inclinación máxima de cada curva…).
+    // Marcas (inclinación máxima de cada curva…), por orden de importancia: una que caería encima de otra ya
+    // pintada no se pinta (en curvas seguidas salían «4452°»).
     g.font = "bold " + 12 * px * dpr + "px Roboto, system-ui, sans-serif";
+    const placed = [];
     for (const m of o.marks || []) {
       if (!near(m.x, m.y)) continue;
+      const [sx, sy] = view.toPx(m.x, m.y);
+      const bw = g.measureText(m.text).width / px + 10 * dpr;
+      const box = [sx - bw / 2, sy - 19 * dpr, sx + bw / 2, sy - 2 * dpr];
+      if (
+        placed.some(
+          (q) =>
+            box[0] < q[2] && box[2] > q[0] && box[1] < q[3] && box[3] > q[1],
+        )
+      )
+        continue;
+      placed.push(box);
       g.save();
       g.translate(m.x, m.y);
       g.rotate(-rot);
@@ -180,18 +215,19 @@
       g.restore();
     }
 
-    // Puntos señalados (el corte de una ruta, el principio y el final…): círculo con borde y su letra al lado.
+    // Puntos señalados (el corte de una ruta, dónde se empieza a frenar…): círculo con borde y su letra al lado. r:
+    // radio en píxeles (7); ring: solo el aro, del color (para que se vea otro punto debajo).
     for (const d of o.dots || []) {
       g.save();
       g.translate(d.x, d.y);
       g.rotate(-rot);
-      const r = 7 * px * dpr;
+      const r = (d.r || 7) * px * dpr;
       g.fillStyle = d.color || "#ffffff";
-      g.strokeStyle = "#050607";
-      g.lineWidth = 2.5 * px * dpr;
+      g.strokeStyle = d.ring ? d.color || "#ffffff" : "#050607";
+      g.lineWidth = (d.ring ? 2 : 2.5) * px * dpr;
       g.beginPath();
       g.arc(0, 0, r, 0, Math.PI * 2);
-      g.fill();
+      if (!d.ring) g.fill();
       g.stroke();
       if (d.label) {
         g.font = "bold " + 13 * px * dpr + "px Roboto, system-ui, sans-serif";
@@ -223,6 +259,7 @@
       g.stroke();
       g.restore();
     }
+    return view;
   }
 
   // Los colores de la leyenda ([texto, color]) para el modo de color elegido.
@@ -255,5 +292,5 @@
     }
   }
 
-  root.MaspaMapa = { draw, legend, legendItems, PHASE, leanColor };
+  root.MaspaMapa = { draw, legend, legendItems, PHASE, leanColor, colorOf };
 })(typeof window !== "undefined" ? window : globalThis);

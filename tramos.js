@@ -278,6 +278,39 @@
     return out;
   }
 
+  // Metros desde la salida (como las marcas) al instante tRel s de la pasada (desde su salida).
+  function sAtTime(tiempos, tRel) {
+    if (!(tRel >= 0)) return null;
+    for (let k = 0; k < tiempos.length - 1; k++)
+      if (tiempos[k + 1] >= tRel) {
+        const dt = tiempos[k + 1] - tiempos[k];
+        return (k + (dt > 0 ? (tRel - tiempos[k]) / dt : 0)) * MARK;
+      }
+    return null;
+  }
+
+  // [lat, lon] del punto del tramo a s m de su salida (para pintar en el mapa dónde se frena). La geometría se
+  // guarda aparte (no en el tramo, que va entero al almacén del móvil).
+  const geoCache = new WeakMap();
+  function pointAt(tramo, s) {
+    let geo = geoCache.get(tramo);
+    if (!geo) {
+      geo = geometry(tramo);
+      geoCache.set(tramo, geo);
+    }
+    const S = geo.S;
+    const sa = Math.min(GATE, geo.L * 0.05) + s;
+    let j = 0;
+    while (j < S.length - 2 && S[j + 1] < sa) j++;
+    const f =
+      S[j + 1] > S[j]
+        ? Math.max(0, Math.min(1, (sa - S[j]) / (S[j + 1] - S[j])))
+        : 0;
+    const a = tramo.pts[j];
+    const b = tramo.pts[j + 1] || a;
+    return [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f];
+  }
+
   // Diferencia de tiempo (s) a cada marca entre dos pasadas (a − b): negativo, a va por delante.
   function delta(a, b) {
     const n = Math.min(a.length, b.length);
@@ -296,6 +329,8 @@
     findPasses,
     speeds,
     brakePoints,
+    sAtTime,
+    pointAt,
     delta,
   };
   if (typeof module === "object" && module.exports) module.exports = api;
