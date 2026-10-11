@@ -93,6 +93,8 @@ export interface SessionHooks {
 // podría cambiar el panel de vertical a horizontal a mitad de curva. No al pulsar «Salir»: el móvil aún puede ir en la
 // mano y luego colocarse plano y en horizontal. Con «Pantalla en pista» elegida en Ajustes, se fija esa.
 const ORIENTS = ["auto", "portrait-primary", "landscape-primary", "landscape-secondary"];
+// Desde qué velocidad (m/s) se cuenta como echado a rodar: los ochos lentos van por debajo de 4 m/s.
+const orientSpeed = (E: Engine) => (E.ocho ? 2 : 4);
 
 // «Nuevo tramo»: lo que no depende del reloj de la grabación pasa al tramo nuevo.
 const SEGMENT_CARRY = [
@@ -388,7 +390,7 @@ export function createSession(deps: SessionDeps) {
         const c = pos.coords;
         onFix(cur, tf, c.latitude, c.longitude, c.speed, c.accuracy);
         const v = c.speed !== null && c.speed >= 0 ? c.speed : cur.fix ? cur.fix.v : 0;
-        if (rt.E && !rt.E.orientTried && v > 4) lockOrientation();
+        if (rt.E && !rt.E.orientTried && v > orientSpeed(rt.E)) lockOrientation();
       },
       (err) => {
         const msg =
@@ -433,7 +435,8 @@ export function createSession(deps: SessionDeps) {
       f.speed,
       f.hacc,
     );
-    if (rt.E && !rt.E.orientTried && f.speed !== null && f.speed > 4) lockOrientation();
+    if (rt.E && !rt.E.orientTried && f.speed !== null && f.speed > orientSpeed(rt.E))
+      lockOrientation();
   }
 
   // ---------- «Nuevo tramo» (ruta libre) ----------
@@ -473,16 +476,18 @@ export function createSession(deps: SessionDeps) {
   }
 
   // Una grabación sin nada (sin moverse: menos de 50 m y ninguna vuelta), como un «Salir a pista» tocado sin querer o
-  // un «Nuevo tramo» dado parado, no se queda en la lista.
+  // un «Nuevo tramo» dado parado, no se queda en la lista. En el entrenamiento en 8 cuenta lo rodado desde que se
+  // cuentan los ochos (los lentos no llegan a los 3 m/s desde los que suma el recorrido), y basta con un 8.
   function emptyRecording(eng: Engine | null): boolean {
     return !!(
       eng &&
       eng.rec &&
       !eng.sim &&
       !eng.viewing &&
-      eng.route.stats.dist < 50 &&
+      Math.max(eng.route.stats.dist, eng.ocho ? eng.ocho.dist : 0) < 50 &&
       !eng.laps.some((l) => l.valid) &&
-      !(eng.circ && eng.circ.laps.length)
+      !(eng.circ && eng.circ.laps.length) &&
+      !(eng.ocho && eng.ocho.ochos.length)
     );
   }
 

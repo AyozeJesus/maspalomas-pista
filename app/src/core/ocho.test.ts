@@ -203,6 +203,22 @@ describe("ochos con el giroscopio", () => {
     expect(still.tr.lobes.length).toBe(0);
   });
 
+  it("suma lo rodado desde 1,2 m/s (también sin giroscopio); parado no", () => {
+    const slow = 2;
+    const { tr, t } = run([
+      L(300, { v: slow }),
+      { dir: 0, s: 0.6, v: slow },
+      R(300, { v: slow }),
+      { dir: 0, s: 3, v: 0.8 },
+    ]);
+    // Rodando todo menos los 3 s del final (la primera muestra no tiene intervalo).
+    expect(Math.abs(tr.dist - slow * (t - 3))).toBeLessThan(0.1);
+    const d = tr.dist;
+    for (let i = 1; i <= 60; i++) tr.step(t + i / 60, NaN, NaN, slow);
+    expect(tr.dist).toBeCloseTo(d + slow, 9);
+    expect(new OchoTracker().dist).toBe(0);
+  });
+
   it("sin ochos, el resumen va vacío", () => {
     expect(new OchoTracker().summary()).toEqual({
       n: 0,

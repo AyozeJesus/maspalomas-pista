@@ -94,6 +94,8 @@ const minN = (a: number | null, b: number | null) =>
 export class OchoTracker {
   readonly lobes: Lobe[] = [];
   readonly ochos: Ocho[] = [];
+  // Lo rodado (m) desde MOVING: los ochos lentos no llegan a los 3 m/s desde los que suma el recorrido.
+  dist = 0;
   private lastT: number | null = null;
   private ySig = 0;
   private lobe: OpenLobe | null = null;
@@ -105,6 +107,7 @@ export class OchoTracker {
   step(t: number, yawRate: number, lean: number, v: number): Ocho | null {
     const dt = this.lastT === null ? 0 : Math.min(0.2, Math.max(0, t - this.lastT));
     this.lastT = t;
+    if (v > MOVING) this.dist += v * dt;
     if (!Number.isFinite(yawRate)) return null;
     this.ySig += (yawRate - this.ySig) * (1 - Math.exp(-dt / 0.3));
     const moving = v > MOVING;
