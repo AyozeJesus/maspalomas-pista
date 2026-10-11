@@ -40,6 +40,9 @@ export function runAnalysis(): void {
         !n,
       );
     } catch (e) {
+      // Sin análisis de la tanda cargada: lo que quede en pantalla es de antes y no se puede guardar con su nombre.
+      state.result = null;
+      renderSaveState();
       showError(e);
     }
   }, 30);

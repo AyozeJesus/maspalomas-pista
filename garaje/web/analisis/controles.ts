@@ -22,8 +22,9 @@ function pickedButton(ev: Event): HTMLButtonElement | null {
 
 export function wire(): void {
   const file = $<HTMLInputElement>("file");
+  // Al cargar otra tanda, la «Guardada» y las referencias de otras tandas se olvidan en carga.ts, y solo si entra de
+  // verdad: si no se puede leer, sigue la de antes tal cual.
   file.addEventListener("change", () => {
-    state.saved = false;
     loadFiles(file.files);
     file.value = "";
   });
@@ -36,13 +37,9 @@ export function wire(): void {
   drop.addEventListener("drop", (ev) => {
     ev.preventDefault();
     drop.classList.remove("over");
-    state.saved = false;
     loadFiles(ev.dataTransfer && ev.dataTransfer.files);
   });
-  $("demo-btn").addEventListener("click", () => {
-    state.saved = false;
-    loadDemo();
-  });
+  $("demo-btn").addEventListener("click", () => loadDemo());
   $("target").addEventListener("change", () => {
     const t = parseLap($<HTMLInputElement>("target").value);
     if (!(t > 50 && t < 100)) {

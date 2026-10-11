@@ -7,7 +7,7 @@ import { runAnalysis } from "./analizar";
 import { setStatus, showError, userError } from "./avisos";
 import { state } from "./estado";
 import { fmtLap } from "./formato";
-import { loadDayRefs } from "./otras-tandas";
+import { forgetDayRefs, loadDayRefs } from "./otras-tandas";
 
 // Number.isFinite, que además le dice a TypeScript que es un número.
 const isNum = (x: unknown): x is number => Number.isFinite(x);
@@ -38,6 +38,7 @@ export async function loadFiles(list: FileList | null | undefined): Promise<void
         "No hay archivos CSV en lo que has subido. Exporta la grabación como «Zipped CSV».",
       );
     state.session = sessionFromCsv(texts);
+    forgetDayRefs();
     state.epoch = null;
     if (state.videoCtl) state.videoCtl.resetSync();
     state.source = "file";
@@ -72,6 +73,7 @@ export async function loadFromGarage(id: string): Promise<void> {
       $<HTMLInputElement>("target").value = fmtLap(obj, 1);
     }
     state.session = sessionFromCsv(data.files);
+    forgetDayRefs();
     state.source = "file";
     state.tandaId = id;
     // Inicio de la grabación (ms): con él se sincroniza un vídeo de GoPro por su hora.
@@ -95,6 +97,7 @@ export async function loadFromGarage(id: string): Promise<void> {
 
 export function loadDemo(): void {
   state.session = demoSession({ seed: 7 }).session;
+  forgetDayRefs();
   state.source = "demo";
   state.tandaId = null;
   state.fileName = "Ejemplo";

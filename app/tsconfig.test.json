@@ -2,8 +2,11 @@
   "extends": "./tsconfig.app.json",
   "compilerOptions": {
     "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.test.tsbuildinfo",
-    "types": ["vite/client", "node"]
+    "types": ["vite/client", "node"],
+    // Las pruebas de test/garaje cargan páginas del garaje, que esperan sus globales (window.JSZip…) y los tipos de
+    // JSZip desde ../garaje/web.
+    "paths": { "jszip": ["./node_modules/jszip"] }
   },
-  "include": ["src", "test", "scripts"],
+  "include": ["src", "test", "scripts", "../garaje/web/globals.d.ts"],
   "exclude": []
 }

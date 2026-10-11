@@ -173,6 +173,12 @@ async function removeDoc(id: string): Promise<void> {
   }
 }
 
+// Un tiempo guardado (s). Sin él (null: no se pudo calcular), NaN: sale «—» y no cuenta en la gráfica, en vez de
+// 0:00,00 y una escala deformada.
+function timeOf(x: number | null | undefined): number {
+  return x === null || x === undefined ? NaN : Number(x);
+}
+
 function renderHistory(): void {
   const list = $("hist-list");
   list.textContent = "";
@@ -206,13 +212,12 @@ function renderHistory(): void {
       info,
     );
     const sub = el("div", "caption", null, info);
-    // Number(): como con el isFinite de siempre, un tiempo guardado como null sale 0:00,00.
     sub.textContent =
       (d.laps ? d.laps.length : 0) +
       " vueltas · ideal " +
-      fmtLap(Number(d.ideal)) +
+      fmtLap(timeOf(d.ideal)) +
       (d.dir === "rev" ? " · horario" : "");
-    el("b", "", fmtLap(Number(d.best)), li);
+    el("b", "", fmtLap(timeOf(d.best)), li);
     const actions = el("div", "", null, li);
     const del = el("button", "", "Borrar", actions);
     del.type = "button";
@@ -232,8 +237,8 @@ function renderHistory(): void {
 function renderHistoryChart(docs: SavedDoc[]): void {
   const root = $("hist-svg");
   root.textContent = "";
-  // Number(): como con el isFinite de siempre, una mejor vuelta guardada como null cuenta como 0.
-  const best = (d: SavedDoc) => Number(d.best);
+  // Sin mejor vuelta (guardada como null), la tanda no entra en la gráfica.
+  const best = (d: SavedDoc) => timeOf(d.best);
   const pts = docs.filter((d) => isFinite(best(d)));
   const vals = pts.map(best).concat([state.target]);
   const lo = Math.min(...vals) - 0.5;

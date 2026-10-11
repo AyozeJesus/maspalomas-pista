@@ -44,6 +44,15 @@ function renderRefButtons(): void {
   }
 }
 
+// Otra tanda en pantalla: las otras tandas del día y sus mejores vueltas eran de la anterior (otro día, otra meta u
+// otro sentido), así que se quitan y se vuelve a comparar con el objetivo; y la nueva aún no está en «Tus tandas».
+export function forgetDayRefs(): void {
+  state.dayList = [];
+  renderRefButtons();
+  resetExtRefs();
+  state.saved = false;
+}
+
 // Con otra línea de meta, las vueltas de las otras tandas ya analizadas no sirven: se vuelve al objetivo.
 export function resetExtRefs(): void {
   state.extRefs = {};

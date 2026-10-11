@@ -4,6 +4,7 @@ import type { GoproSession, GpmfData, ImuSeries } from "../../../app/src/core/gp
 import { mount } from "../video";
 import { runAnalysis } from "./analizar";
 import { state } from "./estado";
+import { forgetDayRefs } from "./otras-tandas";
 
 export function mountVideo(): void {
   const box = document.getElementById("vid");
@@ -17,7 +18,7 @@ export function mountVideo(): void {
       state.source = "gopro";
       state.tandaId = null;
       state.epoch = session.startUtc || null;
-      state.extRefs = {};
+      forgetDayRefs();
       state.fileName =
         "Vídeo de " +
         ((info && info.camera) || "GoPro") +
