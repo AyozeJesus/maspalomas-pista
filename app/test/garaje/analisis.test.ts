@@ -194,3 +194,41 @@ describe("garaje, análisis: «Tus tandas»", () => {
     expect(marks).toHaveLength(docs.length - 1);
   });
 });
+
+describe("garaje, análisis: el objetivo escrito a mano", () => {
+  const target = () => $("target") as HTMLInputElement;
+  const write = (text: string) => {
+    target().value = text;
+    target().dispatchEvent(new Event("change"));
+  };
+
+  it("vale lo mismo que en el móvil (de 40 s a 3:20), redondeado a la décima", async () => {
+    write("1:45,0");
+    await analysed();
+    expect(videoHooks.state.target).toBe(105);
+    expect(target().value).toBe("1:45,0");
+    write("1:05,25");
+    await analysed();
+    expect(videoHooks.state.target).toBe(65.3);
+    expect(target().value).toBe("1:05,3");
+  });
+
+  it("si no vale, lo dice y el campo vuelve al que vale", async () => {
+    write("0:30");
+    await until(() => /objetivo/.test(status()));
+    expect(status()).toMatch(/entre 0:40 y 3:20/);
+    expect(videoHooks.state.target).toBe(65.3);
+    expect(target().value).toBe("1:05,3");
+  });
+});
+
+describe("garaje, análisis: una tanda del garaje sin hora de inicio", () => {
+  it("no sale del 1 de enero de 1970", async () => {
+    const D = "20261011-130000-dddd";
+    DATA[D] = { ...archivos(7, "Ayoze"), epoch: null };
+    await carga.loadFromGarage(D);
+    await analysed();
+    expect($("source-badge").textContent).toBe("Tanda guardada · Ayoze");
+    expect(videoHooks.state.epoch).toBeNull();
+  });
+});

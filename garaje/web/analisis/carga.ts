@@ -6,7 +6,7 @@ import { $ } from "../dom";
 import { runAnalysis } from "./analizar";
 import { setStatus, showError, userError } from "./avisos";
 import { state } from "./estado";
-import { fmtLap } from "./formato";
+import { fmtLap, objetivoValido } from "./formato";
 import { forgetDayRefs, loadDayRefs } from "./otras-tandas";
 
 // Number.isFinite, que además le dice a TypeScript que es un número.
@@ -68,7 +68,7 @@ export async function loadFromGarage(id: string): Promise<void> {
     if (fin && isNum(fin.osm) && isNum(fin.rev)) state.finish = { osm: fin.osm, rev: fin.rev };
     // El objetivo de quien rodó (cada piloto pone el suyo en el móvil).
     const obj = data.meta && data.meta.objetivo;
-    if (isNum(obj) && obj >= 40 && obj <= 200) {
+    if (isNum(obj) && objetivoValido(obj)) {
       state.target = obj;
       $<HTMLInputElement>("target").value = fmtLap(obj, 1);
     }
@@ -80,15 +80,17 @@ export async function loadFromGarage(id: string): Promise<void> {
     state.epoch = isNum(data.epoch) ? data.epoch : null;
     if (state.videoCtl) state.videoCtl.resetSync();
     loadDayRefs(id);
+    // Sin hora de inicio (el garaje siempre la manda, pero por si acaso): sin fecha, no la de 1970.
     state.fileName =
-      "Tanda del " +
-      new Date(Number(data.epoch)).toLocaleString("es-ES", {
-        day: "numeric",
-        month: "long",
-        hour: "2-digit",
-        minute: "2-digit",
-      }) +
-      (data.meta && data.meta.piloto ? " · " + data.meta.piloto : "");
+      (isNum(data.epoch)
+        ? "Tanda del " +
+          new Date(data.epoch).toLocaleString("es-ES", {
+            day: "numeric",
+            month: "long",
+            hour: "2-digit",
+            minute: "2-digit",
+          })
+        : "Tanda guardada") + (data.meta && data.meta.piloto ? " · " + data.meta.piloto : "");
     runAnalysis();
   } catch (e) {
     showError(e);

@@ -12,7 +12,7 @@ import { state } from "./estado";
 import { fmtSigned } from "./formato";
 
 // Lo dibujado que se vuelve a tocar: el punto del cursor (y el mapa).
-export const mapEls: { dot?: SVGCircleElement; root?: HTMLElement } = {};
+export const mapEls: { dot?: SVGCircleElement } = {};
 
 // El punto del trazado a s metros de meta.
 export function pointAt(tr: Track, s: number): XY {
@@ -129,5 +129,4 @@ export function renderMap(r: AnalyzeResult, lap: TelemetryLap): void {
     root,
   ).textContent = "Meta";
   mapEls.dot = svg("circle", { r: 7, class: "m-dot" }, root);
-  mapEls.root = root;
 }

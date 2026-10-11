@@ -6,7 +6,7 @@ import { setStatus, showError } from "./avisos";
 import { loadDemo, loadFiles } from "./carga";
 import { renderDetail } from "./detalle";
 import { state, validLaps, writeFinish } from "./estado";
-import { parseLap } from "./formato";
+import { fmtLap, objetivoValido, parseLap } from "./formato";
 import { wireCursor } from "./graficas";
 import { saveCurrent } from "./historial";
 import { askIa, saveIaKey } from "./informe-ia";
@@ -40,13 +40,21 @@ export function wire(): void {
     loadFiles(ev.dataTransfer && ev.dataTransfer.files);
   });
   $("demo-btn").addEventListener("click", () => loadDemo());
+  // El objetivo vale como en Ajustes del móvil (de 40 s a 3:20, a la décima); si no, se queda el de antes y el campo
+  // vuelve a decirlo.
   $("target").addEventListener("change", () => {
-    const t = parseLap($<HTMLInputElement>("target").value);
-    if (!(t > 50 && t < 100)) {
-      setStatus("Escribe el objetivo como 1:05,0 (minutos:segundos,décimas).", true);
+    const field = $<HTMLInputElement>("target");
+    const t = parseLap(field.value);
+    if (!objetivoValido(t)) {
+      field.value = fmtLap(state.target, 1);
+      setStatus(
+        "Escribe el objetivo como 1:05,0 (minutos:segundos,décimas), entre 0:40 y 3:20.",
+        true,
+      );
       return;
     }
-    state.target = t;
+    state.target = Math.round(t * 10) / 10;
+    field.value = fmtLap(state.target, 1);
     if (state.session) runAnalysis();
   });
   const seg = $("ref-mode");

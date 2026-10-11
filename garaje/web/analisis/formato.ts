@@ -42,6 +42,11 @@ export function parseLap(text: string): number {
   return NaN;
 }
 
+// Una vuelta objetivo posible, como en Ajustes del móvil (engine/settings.ts): de 40 s a 3:20.
+export function objetivoValido(t: number): boolean {
+  return t >= 40 && t <= 200;
+}
+
 // Trazo SVG por los puntos (xs[i], ys[i]), saltando los que no tienen un valor finito.
 export function pathOf(xs: readonly number[], ys: readonly number[]): string {
   let d = "";
