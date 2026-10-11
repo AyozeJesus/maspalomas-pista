@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { TrailPoint } from "../../core/recorrido";
 import type { Engine, Lap } from "../../engine";
+import { fmt } from "../../lib/format";
+import { trailDistances } from "../screens/ruta-fin/phases";
 import { lapChoices, lapSource, routeSource } from "./sources";
 
 // Una ruta: 600 m al este (un punto cada 3 m a 20 m/s), frenando al final y un caballito en medio.
@@ -58,6 +60,19 @@ describe("lo que se ve de una ruta en 3D (routeSource)", () => {
     if (!src) throw new Error("sin repaso");
     expect(src.indexAt(50 + 0.15 * 33)).toBe(33);
     expect(src.timeOf(33)).toBeCloseTo(50 + 0.15 * 33, 9);
+  });
+
+  it("el km del marcador es el del punto del mapa: por la velocidad, sin los saltos del GPS", () => {
+    const eng = routeEngine();
+    // Un salto de 800 m en la posición entre dos puntos seguidos (0,15 s): el GPS que se corrige de golpe.
+    for (const p of eng.route.trail.slice(60)) p.x += 800;
+    const src = routeSource(eng);
+    if (!src) throw new Error("sin repaso");
+    const tr = eng.route.trail;
+    const i = 100;
+    const f = src.frame(tr[i].t);
+    expect(f.hud.sub.startsWith("km " + fmt(trailDistances(tr)[i] / 1000, 1) + " ·")).toBe(true);
+    expect(f.hud.sub.startsWith("km 0,3 ·")).toBe(true);
   });
 
   it("una trazada sin recorrido (parado, o menos de 30 m): sin 3D", () => {

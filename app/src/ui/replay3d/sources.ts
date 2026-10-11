@@ -4,6 +4,7 @@
 import type { TrailPoint } from "../../core/recorrido";
 import type { Engine } from "../../engine";
 import { fmt, fmtClock, fmtLap, fmtSigned } from "../../lib/format";
+import { trailDistances } from "../screens/ruta-fin/phases";
 import type { Vista3DGhostPose, Vista3DOptions, Vista3DPose, Vista3DTrack } from "../three/vista3d";
 import { lapPlayback, type LapPlayback } from "./lap-timeline";
 import { routePath } from "./route-path";
@@ -66,14 +67,6 @@ function leanText(lean: number): string {
   return a < 3 ? "recto" : fmt(a, 0) + "° " + (lean > 0 ? "der." : "izq.");
 }
 
-// Los metros de la trazada hasta cada punto (como el km que dice el punto del mapa).
-function trailMeters(trail: readonly Pick<TrailPoint, "x" | "y">[]): Float64Array {
-  const d = new Float64Array(trail.length);
-  for (let i = 1; i < trail.length; i++)
-    d[i] = d[i - 1] + Math.hypot(trail[i].x - trail[i - 1].x, trail[i].y - trail[i - 1].y);
-  return d;
-}
-
 // Una ruta (o cualquier grabación con trazada): null si no hay por dónde ir.
 export function routeSource(eng: { route: { trail: readonly TrailPoint[] } }): RouteSource | null {
   const trail = eng.route.trail;
@@ -81,7 +74,9 @@ export function routeSource(eng: { route: { trail: readonly TrailPoint[] } }): R
   if (!path || !(path.track.L >= MIN_ROUTE)) return null;
   const tl = routeTimeline(trail, path.at);
   if (!tl) return null;
-  const meters = trailMeters(trail);
+  // El km del marcador es el que dice el punto del mapa: por la velocidad, sin los saltos del GPS (sumar las
+  // posiciones de la trazada daba 2,1 km donde el mapa decía 1,3 en Los Loros, en el Vivo).
+  const meters = trailDistances(trail);
   return {
     track: path.track,
     options: { style: "carretera", extras: true },
