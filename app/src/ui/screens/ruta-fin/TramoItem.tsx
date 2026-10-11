@@ -50,6 +50,7 @@ export function TramoItem({ item, eng }: Props) {
                 corners={NO_CORNERS}
                 brakes={chart.brakes}
                 label="Velocidad y diferencia de tiempo a lo largo del tramo"
+                hint="Desliza el dedo por la gráfica para ver cada punto del tramo."
               />
             ) : null}
           </div>

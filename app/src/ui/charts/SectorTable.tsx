@@ -47,7 +47,7 @@ export function SectorTable({ id, grid }: { id: string; grid: SectorGrid | null 
                   </tr>
                 ))}
                 <tr className="ch-sum">
-                  <td className="who">Mejores</td>
+                  <td className="who">Mejor</td>
                   {grid.best.map((t, j) => (
                     <td key={j} className="num">
                       <b>{t}</b>

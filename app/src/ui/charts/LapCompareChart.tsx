@@ -41,8 +41,9 @@ interface Props {
   corners: readonly CornerMark[];
   // Dónde empieza cada frenada de las dos (m): triángulos arriba, la referencia encima.
   brakes?: { sub: readonly number[]; ref: readonly number[] };
-  // Lo que dice el lector de pantalla de la gráfica.
+  // Lo que dice el lector de pantalla de la gráfica, y la línea de encima antes de tocarla.
   label?: string;
+  hint?: string;
 }
 
 // Un triángulo hacia abajo de 10 px de ancho con la punta 8 px por debajo de y.
@@ -68,6 +69,7 @@ export function LapCompareChart({
   corners,
   brakes,
   label = "Velocidad y diferencia de tiempo a lo largo de la vuelta",
+  hint = "Desliza el dedo por la gráfica para ver cada punto de la vuelta.",
 }: Props) {
   const box = useRef<HTMLDivElement>(null);
   const width = useChartWidth(box);
@@ -219,10 +221,7 @@ export function LapCompareChart({
   }, [geo, cs, m, corners, width, clip, subKind, refKind, brakes]);
 
   const cur = at !== null && at < m ? at : null;
-  const text =
-    cur === null
-      ? "Desliza el dedo por la gráfica para ver cada punto de la vuelta."
-      : readoutAt(cs, cur, names, corners);
+  const text = cur === null ? hint : readoutAt(cs, cur, names, corners);
 
   const moveTo = (e: PointerEvent<SVGSVGElement>) => {
     if (!geo) return;

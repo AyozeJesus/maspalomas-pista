@@ -108,6 +108,11 @@ describe("LapCompareChart", () => {
     lap(501, () => 30),
     lap(501, (s) => (s > 400 && s < 600 ? 20 : 30)),
   )!;
+  // Lo largo (3 km, como un tramo).
+  const long = compareSeries(
+    lap(1501, () => 25),
+    lap(1501, () => 24),
+  )!;
   const names: CompareNames = {
     sub: { short: "V4", long: "la vuelta 4", time: 68.02 },
     ref: { short: "Mejor", long: "tu mejor vuelta", detail: "la 2", time: 67.2 },
@@ -151,6 +156,32 @@ describe("LapCompareChart", () => {
     expect(svg.querySelectorAll("circle.ch-mark.loss")).toHaveLength(1);
     fireEvent.keyDown(svg, { key: "Home" });
     expect(readout()).toBe("0 m · V4 108 km/h · Mejor 108 km/h · +0,00 s");
+  });
+
+  it("un tramo: sus textos, los km abajo y los triángulos de frenada de las dos", () => {
+    const { container } = render(
+      <LapCompareChart
+        cs={long}
+        subKind="lap"
+        refKind="best"
+        names={names}
+        corners={[]}
+        brakes={{ sub: [400, 2600], ref: [380, 9999] }}
+        label="del tramo"
+        hint="Desliza para ver cada punto del tramo."
+      />,
+    );
+    const svg = container.querySelector("svg.ch-svg") as SVGSVGElement;
+    expect(container.querySelector(".ch-readout")?.textContent).toBe(
+      "Desliza para ver cada punto del tramo.",
+    );
+    expect(svg.getAttribute("aria-label")).toBe("del tramo");
+    expect(svg.textContent).toContain("1 km");
+    // El de fuera del tramo (9999 m), no.
+    expect(svg.querySelectorAll("path.ch-tri.best")).toHaveLength(1);
+    expect(svg.querySelectorAll("path.ch-tri.lap")).toHaveLength(2);
+    fireEvent.keyDown(placed(svg), { key: "End" });
+    expect(container.querySelector(".ch-readout")?.textContent).toMatch(/^km 3,00 · V4 /);
   });
 
   it("frente al objetivo: la línea del objetivo es la discontinua", () => {

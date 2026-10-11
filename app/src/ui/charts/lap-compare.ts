@@ -70,7 +70,7 @@ export function compareSeries(ref: GridLike, sub: GridLike, maxPoints = 700): Co
 }
 
 // Pasos redondos del panel de la diferencia de tiempo (s).
-const DELTA_STEPS = [0.2, 0.5, 1, 2, 3, 5, 10, 20];
+const DELTA_STEPS = [0.2, 0.5, 1, 2, 3, 5, 10, 15, 20, 30, 60];
 const niceUp = (x: number, k: number) => DELTA_STEPS.find((s) => s >= x * k) || Math.ceil(x * k);
 
 // Hasta dónde llega el panel de la diferencia por arriba (lo perdido, up) y por abajo (lo ganado, dn), en pasos
