@@ -18,9 +18,13 @@ import type { LegendItem } from "../../draw/mapa";
 // Una pasada, la guardada o la recién medida (la vuelta de ejemplo no guarda nada).
 export type PassLike = Pick<StoredPass, "tiempo" | "tiempos" | "frenos"> & { fecha?: string };
 
-// Colores de las dos pasadas en la gráfica y en el mapa.
-export const THIS_PASS = "#5aa5f0";
+// Colores de las dos pasadas en la gráfica y en el mapa: los de «tu mejor vuelta frente a otra» (esta, naranja; la
+// otra, morada como los mejores tiempos), que se distinguen también con daltonismo (antes, azul y morado: no).
+export const THIS_PASS = "#f29b38";
 export const OTHER_PASS = "#a86ff0";
+// Y lo que se gana o se pierde (los de la gráfica).
+export const AHEAD = "#4cd37e";
+export const BEHIND = "#ff8a7f";
 
 // Principios de frenada de dos pasadas (m desde la salida), medidos igual en las dos: con el acelerómetro si las dos
 // lo tienen (pasadas en directo o repasadas), si no con la velocidad del GPS.
@@ -219,8 +223,8 @@ function tramoItem(tp: TramoPassRecord, tr: Tramo): TramoItem {
         ["esta pasada", THIS_PASS],
         [beat ? "la anterior mejor" : "tu mejor", OTHER_PASS],
         ["▼ y ● (mapa): empieza a frenar", ""],
-        ["por delante", "#22c35f"],
-        ["por detrás", "#ff5b4f"],
+        ["por delante", AHEAD],
+        ["por detrás", BEHIND],
       ],
       a: mine,
       b: other,

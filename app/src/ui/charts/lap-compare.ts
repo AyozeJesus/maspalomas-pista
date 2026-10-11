@@ -27,8 +27,13 @@ export interface CompareSeries {
   L: number;
 }
 
-// Con menos puntos de rejilla (20 m) no hay nada que comparar.
-const MIN_POINTS = 10;
+// Con menos puntos no hay nada que comparar (en un tramo, 6 marcas: 100 m, como la gráfica de antes).
+const MIN_POINTS = 6;
+
+// Metros a la vista: «412 m» en una vuelta; en lo largo (un tramo de 2 km o más), «km 1,24».
+export function distText(s: number, L: number): string {
+  return L >= 2000 ? "km " + fmt(s / 1000, 2) : fmt(s, 0) + " m";
+}
 
 export function compareSeries(ref: GridLike, sub: GridLike, maxPoints = 700): CompareSeries | null {
   const n = Math.min(
@@ -189,7 +194,8 @@ export function cornerNear(corners: readonly CornerMark[], s: number): CornerMar
   return best;
 }
 
-// Al tocar la gráfica, lo del punto i: «C3 · 412 m · V4 92 km/h · Mejor 98 km/h · +0,31 s».
+// Al tocar la gráfica, lo del punto i: «C3 · 412 m · V4 92 km/h · Mejor 98 km/h · +0,31 s» (en un tramo largo,
+// «km 1,24 · …»).
 export function readoutAt(
   cs: CompareSeries,
   i: number,
@@ -198,7 +204,7 @@ export function readoutAt(
 ): string {
   const c = cornerNear(corners, cs.s[i]);
   const parts = [
-    fmt(cs.s[i], 0) + " m",
+    distText(cs.s[i], cs.L),
     names.sub.short + " " + fmt(cs.sub[i], 0) + " km/h",
     names.ref.short + " " + fmt(cs.ref[i], 0) + " km/h",
     fmtSigned(cs.delta[i], 2) + " s",

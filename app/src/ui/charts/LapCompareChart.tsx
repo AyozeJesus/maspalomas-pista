@@ -39,7 +39,14 @@ interface Props {
   refKind: SeriesKind;
   names: CompareNames;
   corners: readonly CornerMark[];
+  // Dónde empieza cada frenada de las dos (m): triángulos arriba, la referencia encima.
+  brakes?: { sub: readonly number[]; ref: readonly number[] };
+  // Lo que dice el lector de pantalla de la gráfica.
+  label?: string;
 }
+
+// Un triángulo hacia abajo de 10 px de ancho con la punta 8 px por debajo de y.
+const tri = (x: number, y: number) => `M${x - 5},${y}L${x + 5},${y}L${x},${y + 8}Z`;
 
 function finiteRange(...arrs: ArrayLike<number>[]): [number, number] | null {
   let lo = Infinity;
@@ -53,7 +60,15 @@ function finiteRange(...arrs: ArrayLike<number>[]): [number, number] | null {
   return lo <= hi ? [lo, hi] : null;
 }
 
-export function LapCompareChart({ cs, subKind, refKind, names, corners }: Props) {
+export function LapCompareChart({
+  cs,
+  subKind,
+  refKind,
+  names,
+  corners,
+  brakes,
+  label = "Velocidad y diferencia de tiempo a lo largo de la vuelta",
+}: Props) {
   const box = useRef<HTMLDivElement>(null);
   const width = useChartWidth(box);
   const [at, setAt] = useState<number | null>(null);
@@ -80,12 +95,17 @@ export function LapCompareChart({ cs, subKind, refKind, names, corners }: Props)
     const idx = Array.from({ length: m }, (_, i) => i);
     const xi = (i: number) => x(cs.s[i]);
     const marks = corners.filter((c) => c.s >= 0 && c.s <= cs.L).sort((a, b) => a.s - b.s);
-    const meters = marks.length
-      ? []
-      : stepsBetween(0, cs.L, niceStep(cs.L, 5)).filter((s) => s > 0);
+    // Sin curvas, la distancia: en metros o, en lo largo (2 km o más), en km.
+    const long = cs.L >= 2000;
+    const step = long ? niceStep(cs.L / 1000, 5) * 1000 : niceStep(cs.L, 5);
+    const meters = marks.length ? [] : stepsBetween(0, cs.L, step).filter((s) => s > 0);
     const xLabels = marks.length
       ? marks.map((c) => ({ x: x(c.s), text: c.label }))
-      : meters.map((s) => ({ x: x(s), text: fmt(s, 0) + " m" }));
+      : meters.map((s) => ({
+          x: x(s),
+          text: long ? fmt(s / 1000, step < 1000 ? 1 : 0) + " km" : fmt(s, 0) + " m",
+        }));
+    const inside = (s: number) => s >= 0 && s <= cs.L;
     const keep = spacedLabels(
       xLabels.map((l) => l.x),
       24,
@@ -150,6 +170,24 @@ export function LapCompareChart({ cs, subKind, refKind, names, corners }: Props)
           defined={(i) => Number.isFinite(cs.sub[i])}
           className={"ch-line " + CLASS[subKind]}
         />
+        {brakes
+          ? brakes.ref
+              .filter(inside)
+              .map((s, i) => (
+                <path key={"br" + i} className={"ch-tri " + refKind} d={tri(x(s), M.top)} />
+              ))
+              .concat(
+                brakes.sub
+                  .filter(inside)
+                  .map((s, i) => (
+                    <path
+                      key={"bs" + i}
+                      className={"ch-tri " + subKind}
+                      d={tri(x(s), M.top + 10)}
+                    />
+                  )),
+              )
+          : null}
         {(["up", "dn"] as const).map((side) => (
           <g key={side} clipPath={`url(#${clip}-${side})`}>
             <Area
@@ -178,7 +216,7 @@ export function LapCompareChart({ cs, subKind, refKind, names, corners }: Props)
         )}
       </>
     );
-  }, [geo, cs, m, corners, width, clip, subKind, refKind]);
+  }, [geo, cs, m, corners, width, clip, subKind, refKind, brakes]);
 
   const cur = at !== null && at < m ? at : null;
   const text =
@@ -273,7 +311,7 @@ export function LapCompareChart({ cs, subKind, refKind, names, corners }: Props)
           viewBox={`0 0 ${width} ${H}`}
           role="slider"
           tabIndex={0}
-          aria-label="Velocidad y diferencia de tiempo a lo largo de la vuelta"
+          aria-label={label}
           aria-valuemin={0}
           aria-valuemax={Math.round(cs.L)}
           aria-valuenow={Math.round(cur === null ? 0 : cs.s[cur])}

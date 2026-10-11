@@ -20,6 +20,26 @@ const card = (id: string, title: string) =>
   shell(id + "-box") +
   "</section>";
 
+// Los colores de las dos pasadas por un tramo que cambian a propósito: de los de la app de antes a los de ahora.
+const PASS_COLORS: [old: string, now: string][] = [
+  ["#5aa5f0", "#f29b38"], // esta pasada
+  ["#22c35f", "#4cd37e"], // por delante
+  ["#ff5b4f", "#ff8a7f"], // por detrás
+];
+
+// Lo que pinta la app de antes al abrir el resumen (no está en su index.html: lo pone ella), con los cambios de ahora.
+// Desde el 11-oct-2026 la gráfica de cada tramo es la de «tu mejor vuelta frente a otra» (su caja, data-chart) y esta
+// pasada va en naranja, con el verde y el rojo de la gráfica. Se puede llamar más de una vez.
+export function chartsInOldRender(root: ParentNode): void {
+  for (const cv of Array.from(root.querySelectorAll(".tr-item canvas.tr-chart")))
+    cv.outerHTML = '<div class="ch tr-ch" data-chart=""></div>';
+  for (const s of Array.from(root.querySelectorAll(".tr-item .tr-legend span[style]"))) {
+    let style = s.getAttribute("style") || "";
+    for (const [old, now] of PASS_COLORS) style = style.split(old).join(now);
+    s.setAttribute("style", style);
+  }
+}
+
 export function addChartShells(root: ParentNode): void {
   // Desde el 11-oct-2026, boxes lleva los tiempos por vuelta en «Vueltas» (antes de la tabla) y, después, las tarjetas
   // «Tu mejor vuelta frente a otra» y «Sectores».

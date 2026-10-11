@@ -5,6 +5,7 @@ import {
   compareSummary,
   cornerNear,
   deltaExtent,
+  distText,
   indexAtMeters,
   readoutAt,
   type CompareNames,
@@ -86,6 +87,14 @@ describe("compareSeries", () => {
     )!;
     expect(cs.delta[50]).toBeNaN();
     expect(cs.delta[51]).toBeCloseTo(0);
+  });
+});
+
+describe("distText", () => {
+  it("metros en una vuelta; km con dos decimales en lo largo", () => {
+    expect(distText(412.4, 1400)).toBe("412 m");
+    expect(distText(1240, 5200)).toBe("km 1,24");
+    expect(distText(0, 2000)).toBe("km 0,00");
   });
 });
 

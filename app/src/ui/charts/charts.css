@@ -155,6 +155,16 @@
 .ch-mark.model {
   fill: #c4ccd2;
 }
+/* Dónde empieza cada frenada (▼), del color de su pasada. */
+.ch-tri.best {
+  fill: #a86ff0;
+}
+.ch-tri.lap {
+  fill: #f29b38;
+}
+.ch-tri.model {
+  fill: #c4ccd2;
+}
 .ch-mark.loss {
   fill: #ff8a7f;
 }

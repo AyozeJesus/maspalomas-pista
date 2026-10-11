@@ -1,6 +1,7 @@
 // La tarjeta «Tramos» del resumen, igual que live.js: lo que dice la comparación de dos pasadas (dónde se gana o se
-// pierde y dónde se empieza a frenar), las frenadas que se comparan, cuánto de la ruta cubren los tramos y lo que se
-// pinta de dos pasadas (la gráfica y el mapa del tramo).
+// pierde y dónde se empieza a frenar), las frenadas que se comparan, cuánto de la ruta cubren los tramos y el mapa del
+// tramo. La gráfica de dos pasadas es, desde el 11-oct-2026, la de «tu mejor vuelta frente a otra» (ui/charts): aquí,
+// sus series; y esta pasada va en naranja (antes, azul).
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { asCanvas, DrawLog } from "../../../../test/fake-canvas";
 import { demoSeries, EPOCH, routeOf } from "../../../../test/fixtures-ruta-fin";
@@ -10,8 +11,8 @@ import { memoryKV } from "../../../engine/kv";
 import { loadTramos } from "../../../services/tramos-store";
 import { mapa } from "../../draw/mapa";
 import { saveTramoFrom } from "./tramo-save";
-import { drawTramoChart, drawTramoMap } from "./tramo-chart";
-import { brakesPair, passInsights, tramoCoverage, type PassLike } from "./tramos";
+import { drawTramoMap, passGrid, tramoNames, tramoSeries } from "./tramo-chart";
+import { brakesPair, passInsights, THIS_PASS, tramoCoverage, type PassLike } from "./tramos";
 
 const tramosJs = legacy<object>("MaspaTramos", "tramos.js");
 const telemetry = loadLegacy(
@@ -25,7 +26,6 @@ interface Old {
   passInsights: typeof passInsights;
   brakesPair: typeof brakesPair;
   tramoCoverage: (eng: Engine) => number;
-  drawTramoChart: (cv: unknown, a: PassLike, b: PassLike) => void;
   drawTramoMap: (
     cv: unknown,
     eng: Engine,
@@ -38,15 +38,7 @@ interface Old {
 
 function oldFns(globals: Record<string, unknown> = {}): Old {
   return liveFunctions<Old>(
-    [
-      "passInsights",
-      "brakesPair",
-      "tramoCoverage",
-      "drawTramoChart",
-      "drawTramoMap",
-      "fmt",
-      "fmtSigned",
-    ],
+    ["passInsights", "brakesPair", "tramoCoverage", "drawTramoMap", "fmt", "fmtSigned"],
     {
       consts: ["NF", "T"],
       globals: { MaspaTramos: tramosJs, MaspaTelemetry: telemetry, ...globals },
@@ -165,21 +157,44 @@ describe("tramos en el resumen: lo mismo que antes", () => {
     expect(tramoCoverage(again)).toBeGreaterThan(0);
   });
 
-  for (const dpr of [1, 3])
-    it("la gráfica de dos pasadas (densidad " + dpr + ")", () => {
-      for (const [label, a, b] of PASSES) {
-        const L1 = new DrawLog();
-        oldFns({ devicePixelRatio: dpr }).drawTramoChart(
-          L1.canvas({ clientWidth: 380, clientHeight: 240 }),
-          a,
-          b,
-        );
-        vi.stubGlobal("window", { devicePixelRatio: dpr });
-        const L2 = new DrawLog();
-        drawTramoChart(asCanvas(L2.canvas({ clientWidth: 380, clientHeight: 240 })), a, b);
-        expect(L2.entries, label).toStrictEqual(L1.entries);
+  it("la gráfica de dos pasadas: lo perdido en cada marca es esta menos la otra, como la de antes", () => {
+    for (const [label, a, b] of PASSES) {
+      const cs = tramoSeries(a, b);
+      expect(cs, label).not.toBeNull();
+      const n = Math.min(a.tiempos.length, b.tiempos.length);
+      expect(cs!.s.length, label).toBe(n);
+      expect(cs!.L, label).toBe((n - 1) * 20);
+      for (let k = 0; k < n; k++) {
+        expect(cs!.s[k]).toBe(k * 20);
+        expect(cs!.delta[k]).toBeCloseTo(a.tiempos[k] - b.tiempos[k], 9);
+        expect(Number.isFinite(cs!.sub[k]) && Number.isFinite(cs!.ref[k]), label).toBe(true);
       }
-    });
+    }
+  });
+
+  it("la velocidad de cada marca: la de los trozos de al lado (km/h en la gráfica)", () => {
+    // A 72 km/h constantes (20 m cada segundo).
+    const flat = pass(30, () => 72);
+    const g = passGrid(flat)!;
+    for (let k = 0; k < 30; k++) expect(g.v[k] * 3.6).toBeCloseTo(72, 6);
+    expect(tramoSeries(flat, flat)!.sub[10]).toBeCloseTo(72, 6);
+    // Sin marcas suficientes (menos de 100 m), sin gráfica.
+    expect(passGrid({ tiempo: 1, tiempos: [0, 1] })).toBeNull();
+    expect(
+      tramoSeries(
+        pass(5, () => 72),
+        flat,
+      ),
+    ).toBeNull();
+  });
+
+  it("cómo se llaman al tocar: «Esta» frente a «Mejor», o a «Anterior» si esta la ha batido", () => {
+    const [, a, b] = PASSES[0];
+    const slower = a.tiempo > b.tiempo ? { a, b } : { a: b, b: a };
+    expect(tramoNames(slower).ref.short).toBe("Mejor");
+    expect(tramoNames({ a: slower.b, b: slower.a }).ref.short).toBe("Anterior");
+    expect(tramoNames(slower).sub).toMatchObject({ short: "Esta", time: slower.a.tiempo });
+  });
 
   it("el mapa del tramo: la trazada de la pasada y dónde empieza cada frenada", async () => {
     const kv = memoryKV();
@@ -198,7 +213,10 @@ describe("tramos en el resumen: lo mismo que antes", () => {
     });
     drawTramoMap(asCanvas(new DrawLog().canvas()), again, tp, tr, a, b);
     expect(seen).toHaveLength(2);
-    expect(seen[1]).toEqual(seen[0]);
+    // A propósito: los puntos de esta pasada, en naranja (la de antes los ponía en azul). Lo demás, igual.
+    const now = (o: unknown) => JSON.parse(JSON.stringify(o).split("#5aa5f0").join(THIS_PASS));
+    expect(JSON.stringify(seen[0])).toContain("#5aa5f0");
+    expect(seen[1]).toEqual(now(seen[0]));
     expect((seen[1] as { trail: unknown[]; dots: unknown[] }).trail.length).toBeGreaterThan(20);
     expect((seen[1] as { dots: unknown[] }).dots.length).toBeGreaterThan(1);
     // Sin trazada de la pasada (no debería pasar): el camino del tramo.
@@ -206,6 +224,6 @@ describe("tramos en el resumen: lo mismo que antes", () => {
     const lost = { ...tp, t0: NaN };
     oldFns({ MaspaMapa: record }).drawTramoMap({}, again, lost, tr, a, b);
     drawTramoMap(asCanvas(new DrawLog().canvas()), again, lost, tr, a, b);
-    expect(seen[1]).toEqual(seen[0]);
+    expect(seen[1]).toEqual(now(seen[0]));
   });
 });

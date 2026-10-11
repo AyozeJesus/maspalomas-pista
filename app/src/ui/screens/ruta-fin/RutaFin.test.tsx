@@ -24,6 +24,7 @@ import { memoryKV, type KeyValueStore } from "../../../engine/kv";
 import { DEFAULT_SETTINGS, type Settings } from "../../../engine/settings";
 import type { Runtime } from "../../../runtime";
 import { mapa } from "../../draw/mapa";
+import { chartsInOldRender } from "../../../../test/renames-charts";
 import { RuntimeContext } from "../../runtime-context";
 import { RutaFin } from "./RutaFin";
 import { saveTramoFrom } from "./tramo-save";
@@ -133,6 +134,7 @@ async function bench(o: BenchOptions = {}): Promise<Bench> {
 function oldRoot(b: Bench): HTMLElement {
   const el = b.old.doc.getElementById("ruta-fin");
   if (!el) throw new Error("sin #ruta-fin de antes");
+  chartsInOldRender(el);
   return el;
 }
 
@@ -307,9 +309,10 @@ describe("resumen de la ruta: lo mismo que antes", () => {
     const b = await bench({ kv, meta: { id: "20261010-100000-otra", epoch: EPOCH + 86400000 } });
     expect(b.eng.tramoPasses.length).toBeGreaterThan(1);
     expect(domTree(b.root)).toEqual(domTree(oldRoot(b)));
-    expect(b.root.querySelectorAll("#ruf-tr-list .tr-item canvas.tr-chart").length).toBeGreaterThan(
-      0,
-    );
+    // La gráfica de cada tramo, dibujada (la de «tu mejor vuelta frente a otra»).
+    expect(
+      b.root.querySelectorAll("#ruf-tr-list .tr-item .tr-ch svg.ch-svg").length,
+    ).toBeGreaterThan(0);
   });
 
   it.skipIf(!lorosSeries())("Los Loros: subida y bajada (ida y vuelta)", async () => {
