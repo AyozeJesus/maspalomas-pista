@@ -6,7 +6,7 @@ import type { CsvFile } from "../formato";
 import { demoSession } from "./demo";
 import * as T from "./telemetry";
 
-// La app de antes, tal cual (track-data.js, sim.js, analysis.js y telemetry.js de la raíz del repo).
+// La app de antes, tal cual (track-data.js, sim.js, analysis.js y telemetry.js de legacy/).
 const old = legacyMaspalomas();
 
 // Una tanda pequeña como la de Sensor Logger: 3 fijos y 4 muestras de cada sensor (con `time` en ns de época).

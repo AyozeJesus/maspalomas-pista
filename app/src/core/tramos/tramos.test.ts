@@ -4,7 +4,7 @@ import { legacy } from "../../../test/legacy";
 import * as T from "./index";
 import type { GateTramo, LatLon, PathTramo } from "./types";
 
-// La app de antes, tal cual (tramos.js de la raíz del repo).
+// La app de antes, tal cual (tramos.js de legacy/).
 const old = legacy<
   typeof T & {
     GateTracker: new (t: GateTramo) => T.GateTracker;

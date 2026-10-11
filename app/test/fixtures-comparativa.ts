@@ -12,7 +12,7 @@ import { loadLegacy } from "./legacy";
 
 export type Render = (box: HTMLElement, d: DiaComparativa | null | undefined) => void;
 
-// comparativa.js de la raíz del repo, pintando con el document de la prueba (jsdom): lo busca al pintar.
+// comparativa.js de legacy/, pintando con el document de la prueba (jsdom): lo busca al pintar.
 export function legacyRender(): Render {
   const w = loadLegacy("comparativa.js");
   w.document = document;

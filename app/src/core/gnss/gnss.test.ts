@@ -24,7 +24,7 @@ import { legacyGnss } from "../../../test/legacy-gnss";
 import * as G from "./index";
 import type { BytesLike, GnssFix } from "./index";
 
-// El lector de antes (gnss-ble.js de la raíz del repo), tal cual.
+// El lector de antes (gnss-ble.js de legacy/), tal cual.
 interface Lector {
   createParser: typeof G.createParser;
   decodeLocationSpeed: typeof G.decodeLocationSpeed;

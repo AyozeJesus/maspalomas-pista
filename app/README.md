@@ -1,7 +1,8 @@
 # poortelemetry en React (migración)
 
-La app del móvil, rehecha en React + TypeScript. Hasta que se publique, la que usa el móvil sigue siendo la de siempre
-(la de la raíz del repo).
+La app del móvil, rehecha en React + TypeScript. Publicada desde el 10-oct-2026 (GitHub Pages la construye en cada push
+a main). La de antes, en JavaScript, queda congelada en `../legacy/`: no se sirve; solo la usan las pruebas para
+comparar.
 
 ## Cómo está hecha
 

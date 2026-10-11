@@ -4,7 +4,7 @@ import { REAL_FILES, realRecording } from "../../test/fixtures-recording";
 import { legacy } from "../../test/legacy";
 import * as C from "./caida";
 
-// La app de antes, tal cual (caida.js de la raíz del repo).
+// La app de antes, tal cual (caida.js de legacy/).
 const old = legacy<typeof C>("MaspaCaida", "caida.js");
 
 // Todo lo que lleva dentro el aviso (también lo privado), copiado: para comparar el de antes y el nuevo paso a paso.

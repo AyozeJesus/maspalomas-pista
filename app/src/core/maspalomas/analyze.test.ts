@@ -16,7 +16,7 @@ import { MAPS } from "./sim";
 import * as T from "./telemetry";
 import type { AnalyzeOptions, AnalyzeResult, Session } from "./types";
 
-// La app de antes, tal cual (track-data.js, sim.js, analysis.js y telemetry.js de la raíz del repo).
+// La app de antes, tal cual (track-data.js, sim.js, analysis.js y telemetry.js de legacy/).
 const old = legacyMaspalomas();
 
 const demo7 = demoSession({ seed: 7 });

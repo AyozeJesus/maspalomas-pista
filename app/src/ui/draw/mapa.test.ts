@@ -19,7 +19,7 @@ import * as M from "./mapa";
 
 type Mapa = typeof M.mapa;
 
-// La app de antes, tal cual (mapa.js de la raíz del repo).
+// La app de antes, tal cual (mapa.js de legacy/).
 const { mod: old, win } = legacyDraw<Mapa>("MaspaMapa", "mapa.js");
 
 afterEach(() => {

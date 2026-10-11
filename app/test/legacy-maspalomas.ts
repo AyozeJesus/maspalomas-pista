@@ -1,4 +1,4 @@
-// La app de antes del circuito de Maspalomas (track-data.js, sim.js, analysis.js y telemetry.js de la raíz del repo),
+// La app de antes del circuito de Maspalomas (track-data.js, sim.js, analysis.js y telemetry.js de legacy/),
 // cargada en el orden del navegador, para comparar con la versión nueva número a número.
 // - Sus arrays tipados y sus errores son de otro contexto: toEqual daría por distintos dos Float64Array con los
 //   mismos números, así que `plain` lo pasa todo a arrays y objetos normales antes de comparar.

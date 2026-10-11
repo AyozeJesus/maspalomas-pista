@@ -1,4 +1,4 @@
-// La vista 3D de antes (vista3d.js con three.min.js r128 y analysis.js, de la raíz del repo) en un contexto aparte,
+// La vista 3D de antes (vista3d.js con three.min.js r128 y analysis.js, de legacy/) en un contexto aparte,
 // como en el navegador, y lo que hace falta para compararla con la nueva sin GPU: un renderizador de mentira en lugar
 // de WebGLRenderer (en Node no hay WebGL) y un resumen de la escena y de la cámara que se puede comparar entre los dos
 // contextos (cada uno tiene su THREE: nada de instanceof, solo propiedades).

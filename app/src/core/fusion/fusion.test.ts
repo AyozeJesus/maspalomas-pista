@@ -13,7 +13,7 @@ import {
 import { legacy } from "../../../test/legacy";
 import * as F from "./index";
 
-// La app de antes, tal cual (fusion.js de la raíz del repo).
+// La app de antes, tal cual (fusion.js de legacy/).
 const old = legacy<typeof F>("MaspaFusion", "fusion.js");
 
 // Los dos filtros con las mismas opciones y los mismos sucesos.

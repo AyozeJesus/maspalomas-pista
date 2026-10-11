@@ -1,11 +1,11 @@
-// Carga módulos de la app de antes (los .js de la raíz del repo, tal cual se sirven al móvil) para comparar la
-// versión nueva con ellos: mismos datos de entrada, misma salida. Se ejecutan en un contexto aparte, como scripts del
-// navegador: cada uno se cuelga de `window` (MaspaTramos, MaspaTelemetry…).
+// Carga módulos de la app de antes (los .js de legacy/, tal cual se servían al móvil) para comparar la versión nueva
+// con ellos: mismos datos de entrada, misma salida. Se ejecutan en un contexto aparte, como scripts del navegador:
+// cada uno se cuelga de `window` (MaspaTramos, MaspaTelemetry…).
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import vm from "node:vm";
 
-const ROOT = resolve(import.meta.dirname, "../..");
+const ROOT = resolve(import.meta.dirname, "../../legacy");
 
 export function legacyFile(file: string): string {
   return resolve(ROOT, file);

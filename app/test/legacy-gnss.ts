@@ -1,4 +1,4 @@
-// Los receptores GNSS de la app de antes (gnss-ble.js y gnss-usb.js, de la raíz del repo, en ese orden: el de USB usa
+// Los receptores GNSS de la app de antes (gnss-ble.js y gnss-usb.js, de legacy/, en ese orden: el de USB usa
 // el lector del de Bluetooth) en un contexto aparte, como legacy.ts, pero con lo que tocan del navegador puesto a mano:
 // un `navigator` (con Bluetooth y USB de mentira), el reloj (performance.now) y los temporizadores de ahora (también
 // los falsos de Vitest, si están puestos). Cada llamada da un contexto nuevo, sin nada de la anterior.

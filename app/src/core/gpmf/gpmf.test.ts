@@ -3,7 +3,7 @@ import * as F from "../../../test/fixtures-gpmf";
 import { legacy } from "../../../test/legacy";
 import * as G from "./index";
 
-// La app de antes, tal cual (gpmf.js de la raíz del repo).
+// La app de antes, tal cual (gpmf.js de legacy/).
 const old = legacy<typeof G>("MaspaGPMF", "gpmf.js");
 
 type Api = typeof G;

@@ -5,7 +5,7 @@ import { REAL_FILES, realRecording, type Recording } from "../../test/fixtures-r
 import { legacy, loadLegacy } from "../../test/legacy";
 import * as K from "./cortar";
 
-// La app de antes, tal cual (cortar.js de la raíz del repo).
+// La app de antes, tal cual (cortar.js de legacy/).
 const old = legacy<typeof K>("MaspaCortar", "cortar.js");
 
 // Varios recorridos seguidos, uno detrás de otro.

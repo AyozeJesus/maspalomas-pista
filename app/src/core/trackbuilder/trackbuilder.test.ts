@@ -22,7 +22,7 @@ import { legacy } from "../../../test/legacy";
 import { compact } from "../circuito";
 import * as T from "./index";
 
-// La app de antes, tal cual (trackbuilder.js de la raíz del repo).
+// La app de antes, tal cual (trackbuilder.js de legacy/).
 const old = legacy<typeof T>("MaspaTrackBuilder", "trackbuilder.js");
 
 type Outcome<R> = { ok: R } | { error: string };

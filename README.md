@@ -51,7 +51,7 @@ arriba del todo; después las vueltas, las frenadas por curva, el plan para la p
 4. Al parar en boxes la pantalla cambia sola al análisis.
 
 «Vuelta de ejemplo» (en «Rodar») reproduce una tanda generada con el modelo, sin salir de casa (no se guarda), con el
-circuito en 3D (`vista3d.js` sobre three.js r128): desde el casco, desde detrás de la moto o desde arriba, a ×1, ×2
+circuito en 3D (`app/src/ui/three/vista3d.ts` sobre three.js r128): desde el casco, desde detrás de la moto o desde arriba, a ×1, ×2
 o ×4, con los carteles de frenada de la mejor vuelta y el mismo panel de métricas que en pista. Si el móvil no puede
 dibujar en 3D, lo dice y el panel sigue igual.
 
@@ -65,7 +65,7 @@ dibujar en 3D, lo dice y el panel sigue igual.
 - **Inclinación**: giroscopio. En curva la moto gira alrededor de la vertical del mundo y, vista desde la moto
   tumbada, ese giro se reparte entre su vertical y su eje lateral: de ahí sale el ángulo, sin depender de la
   gravedad (que en un giro equilibrado apunta al suelo de la moto). En curvas rápidas se ayuda de la velocidad.
-  El eje adelante sale de cómo va montado el móvil (`mountAxes` en `telemetry.js`): de pie, la espalda del móvil;
+  El eje adelante sale de cómo va montado el móvil (`mountAxes` en `app/src/core/maspalomas/mount.ts`): de pie, la espalda del móvil;
   plano, la parte de arriba de la pantalla (que en ejes del móvil depende de si se ve en vertical u horizontal);
   inclinado, las dos cosas. En las curvas se comprueba (el giro de la curva cae siempre hacia el lado derecho de
   la moto tumbada, nunca sobre su eje adelante) y, si el eje está girado 90° o 180°, se corrige.
@@ -73,7 +73,7 @@ dibujar en 3D, lo dice y el panel sigue igual.
   como en la moto, girando sobre ese eje adelante, por gravedad y por giroscopio.
 - **Resumen de cada curva** (se ve en la recta siguiente): tiempo ganado o perdido en esa curva, inclinación
   máxima, frenada máxima en g, velocidad mínima y punto de frenada, comparados con tu mejor vuelta.
-- **Entrenador** (`coach` en `telemetry.js`): reparte lo que pierde una vuelta frente a una referencia (el
+- **Entrenador** (`coach` en `app/src/core/maspalomas/coach.ts`): reparte lo que pierde una vuelta frente a una referencia (el
   objetivo del modelo, tu mejor vuelta o la mejor de otra tanda del día, tuya o de otro piloto) curva a curva y
   por fases que cubren la vuelta entera: entrada (de la frenada más temprana al vértice), salida (del vértice al gas
   a fondo) y recta. Cada pérdida dice por qué (metros de frenada, g, km/h, tiempo sin gas, radio) y, si es por
@@ -102,7 +102,7 @@ mucho más exactos. Se conecta en «Ajustes», antes de salir:
   Si se pierde la conexión, se reconecta solo.
 - **USB-C** («Conectar por USB», con cable OTG): receptores u-blox M9/M10 de cronometraje y los que llevan chip
   CH340 o CP210x. Después se abre solo al enchufarlo y al abrir la página, hasta que pulses «Desconectar el
-  receptor» (`gnss-usb.js`).
+  receptor» (`app/src/platform/gnss/usb.ts`).
 
 Mientras llegan sus posiciones, el panel pone «25 Hz» (o los que dé) junto al punto del GPS y las del móvil no se
 usan; si el receptor calla 1,5 s, vuelve el GPS del móvil hasta que regrese. Cada fijo va con la hora del propio
@@ -151,7 +151,7 @@ dos tandas que se grabaron seguidas; quedan dos grabaciones con sus vueltas y la
 entera del móvil (en el Mac, si ya se subió, sigue también la entera; las partes se suben como rutas nuevas). Si la
 ruta es de ida y vuelta por la misma carretera (como subir y bajar Los Loros), el corte sale ya puesto en la vuelta
 atrás (el punto más lejano del principio, o la mitad de la parada si paraste allí): en la ruta del 9 de octubre,
-dos partes de 6,3 y 6,2 km (`cortar.js`).
+dos partes de 6,3 y 6,2 km (`app/src/core/cortar.ts`).
 
 ## Ruta libre (cualquier carretera)
 
@@ -212,7 +212,7 @@ Loros una herradura de abajo pasa a 25 m de la meta de arriba. Irse por otro lad
 avanzar por el camino) anula la pasada. Cada tramo de «Tus tramos» tiene «Mapa»: su salida y su meta en Google
 Maps.
 
-**Tramos** (`tramos.js`): en el resumen de una ruta, «Guardar como tramo» con un nombre (o, si es de ida y vuelta
+**Tramos** (`app/src/core/tramos/`): en el resumen de una ruta, «Guardar como tramo» con un nombre (o, si es de ida y vuelta
 por la misma carretera, «Guardar ida y vuelta», que guarda un tramo por sentido; no se ofrece si tus tramos ya
 cubren la ruta casi entera). Desde entonces, cada vez que pases
 por él en el mismo sentido se reconoce solo por la posición (salida y meta 10 m dentro del trazado; esperar parado
@@ -231,7 +231,7 @@ octubre: subida en 4:50,4 y bajada en 4:57,2 (antes la subida salía en 5:06,9: 
 a 20 m de la salida); marcadas con «Salida aquí» y «Meta aquí», 4:52,0 y 5:03,3.
 
 **Compartir**: en el resumen de la ruta («Compartir», arriba, o «Compartir (imagen)», abajo) y en boxes, se hace al
-momento una imagen de 1080 × 1350 (`compartir.js`): la ruta con la trazada en color (o la tanda con la mejor
+momento una imagen de 1080 × 1350 (`app/src/ui/draw/compartir.ts`): la ruta con la trazada en color (o la tanda con la mejor
 vuelta, todas las vueltas y el circuito) y lo más importante (distancia, tiempo, punta, inclinación a cada lado,
 frenada máxima, curvas, frenadas, caballitos). Se manda con lo que ofrezca el móvil (WhatsApp, Telegram…); sin
 red, WhatsApp la deja en cola. Si el navegador no sabe compartir archivos, se descarga.
@@ -253,7 +253,7 @@ en tu mejor vuelta (se quita en Ajustes).
 En la ruta libre (se apaga en Ajustes). Salta si, viniendo a más de 22 km/h, hay un golpe de más de 3,5 g o un
 frenazo de más de 36 km/h a parado en 3 s, y después la moto se queda parada al menos 4 s y tumbada (más de 55° de
 su vertical al rodar) al menos 3 s; o, sin tumbar, tras un golpe de más de 6 g (el móvil arrancado del soporte puede
-quedar plano). Si el GPS calla tras la caída, la parada sale de que el móvil esté quieto (`caida.js`).
+quedar plano). Si el GPS calla tras la caída, la parada sale de que el móvil esté quieto (`app/src/core/caida.ts`).
 
 No saltan soltar el móvil con la moto parada, una frenada de emergencia (la moto sigue derecha), un bache rodando
 (no paras) ni aparcar en la pata de cabra (~12°).
@@ -268,8 +268,8 @@ grabación apuntan cada aviso. El volumen de la sirena es el de multimedia del m
 ### Cualquier otro circuito
 
 En otro circuito (o en un kart), sal en «Ruta libre». Con más de 1 km rodado, cada 30 s se intenta sacar el
-trazado de lo grabado (`trackbuilder.js`, en un worker para no parar el panel: en el Vivo tarda 0,5–0,9 s); en
-cuanto hay 2 vueltas iguales, aparece arriba el cronómetro (`circuito.js`): vuelta en curso, diferencia con la
+trazado de lo grabado (`app/src/core/trackbuilder/`, en un worker para no parar el panel: en el Vivo tarda
+0,5–0,9 s); en cuanto hay 2 vueltas iguales, aparece arriba el cronómetro (`app/src/core/circuito.ts`): vuelta en curso, diferencia con la
 mejor por distancia recorrida y la mejor, con el aviso de vuelta terminada como en Maspalomas. Las vueltas ya dadas
 cuentan. La meta la pone el constructor (mitad de la recta más larga, mejor si pasa por boxes). Al terminar, el
 resumen trae la tabla de vueltas y «Guardar el circuito»: la próxima vez se reconoce a los pocos segundos de rodar
@@ -323,7 +323,8 @@ la ventana de Terminal.
 Por dentro: el garaje está en TypeScript (`garaje/server`, el servidor; `garaje/web`, sus dos páginas) y usa los
 mismos cálculos que la app del móvil (`app/src/core`, más la vista 3D y la comparativa del día de `app/src/ui`). No
 hay que instalar nada con npm ni construir: Node le quita los tipos al arrancar el servidor y al mandar las páginas al
-navegador. three.js y JSZip van copiados tal cual en `garaje/web/vendor/`.
+navegador. three.js y JSZip van copiados tal cual en `garaje/web/vendor/`. La app de antes, en JavaScript, queda
+congelada en `legacy/`: no se sirve; solo la usan las pruebas de `app/` para comparar.
 
 ## Varios pilotos
 
@@ -345,7 +346,7 @@ negado y ningún dato en 1,5 s) y dice cómo permitirlos; lo más sencillo es ab
 
 ## Filtro de Kalman: probado y descartado
 
-`fusion.js` (Kalman con posición, velocidad y sesgo del acelerómetro, que rebobina para los fijos que llegan
+`app/src/core/fusion/` (Kalman con posición, velocidad y sesgo del acelerómetro, que rebobina para los fijos que llegan
 tarde) se probó como posición del panel frente a lo de siempre (el último fijo adelantado con su velocidad y la
 aceleración), cada 0,1 s contra la verdad en la tanda de ejemplo (`tkf-live.js`):
 
@@ -377,7 +378,7 @@ Android 13, Chrome 146, Helio G85, conectado por cable al Mac (adb y DevTools):
 - Relojes: los sensores llegan con el reloj interno del navegador, que en Android no cuenta el tiempo con el móvil
   dormido; los fijos del GPS, con el de pared. Con la app abierta desde antes de dormirlo, los dos se separaban y
   el análisis fallaba («No he podido orientar el móvil respecto a la moto»). Ahora todo va en el reloj de los
-  sensores y la hora de cada fijo se traduce a él (`mapClock` en `live.js`, como la del receptor externo).
+  sensores y la hora de cada fijo se traduce a él (`mapClock` en `app/src/engine/clock.ts`, como la del receptor externo).
 
 ## Con la vibración de la moto (4 rutas reales, 9 de octubre)
 
@@ -400,7 +401,7 @@ atan(v·giro del rumbo/g)), con `rutas-analisis.js` (repasa cada ruta con el mot
 - **Las curvas** sumaban el ruido del giroscopio (el módulo de cada muestra nunca bajaba del umbral de salida): ahora
   el giro va en media de 0,3 s, y una izquierda seguida de una derecha son dos curvas.
 - **El análisis completo** (boxes y el garaje) saca los ejes igual: vertical con la media del acelerómetro rodando y
-  adelante afinado con el balanceo (`imuSolve` en `telemetry.js`). Contra el GPS, la aceleración pasa de r 0,37–0,86
+  adelante afinado con el balanceo (`imuSolve` en `app/src/core/maspalomas/imu.ts`). Contra el GPS, la aceleración pasa de r 0,37–0,86
   y 0,23–0,36 g de error a r 0,76–0,92 y 0,08–0,14 g, y la inclinación de 8–11° a 6–8° de error.
 
 | Contra el GPS                              | Antes                    | Ahora                    |

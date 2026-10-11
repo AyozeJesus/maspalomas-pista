@@ -5,7 +5,7 @@ import * as S from "./sim";
 import { buildTrack } from "./track";
 import type { Pillars, PolyPart, Rider, SimOptions, XY } from "./types";
 
-// La app de antes, tal cual (track-data.js, sim.js, analysis.js y telemetry.js de la raíz del repo).
+// La app de antes, tal cual (track-data.js, sim.js, analysis.js y telemetry.js de legacy/).
 const old = legacyMaspalomas();
 
 // Un trazado abierto (rectas y curvas a los dos lados) y un óvalo cerrado, hechos con polyline.

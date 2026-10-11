@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { DIAS, legacyRender, realDay } from "../../test/fixtures-comparativa";
 import * as C from "./comparativa";
 
-// La comparativa de antes (comparativa.js de la raíz del repo) solo sabe pintar: lo que pinta se lee otra vez como
+// La comparativa de antes (comparativa.js de legacy/) solo sabe pintar: lo que pinta se lee otra vez como
 // bloques para compararlo con lo que calcula la nueva.
 const oldRender = legacyRender();
 

@@ -10,7 +10,7 @@ import {
 import { legacy } from "../../../test/legacy";
 import * as R from "./index";
 
-// La app de antes, tal cual (recorrido.js de la raíz del repo).
+// La app de antes, tal cual (recorrido.js de legacy/).
 const old = legacy<typeof R>("MaspaRecorrido", "recorrido.js");
 
 // Copia de lo que llega en un aviso, en ese momento (el objeto se sigue tocando después: gps, lost…).
