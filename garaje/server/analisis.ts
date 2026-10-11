@@ -3,7 +3,7 @@
 // recibido o la versión del resumen.
 import { join } from "node:path";
 import { analyze, sessionFromCsv } from "../../app/src/core/maspalomas";
-import type { Finish, Resumen, ResumenLista, Stamp, TandaLista } from "../api";
+import type { CircuitoMeta, Finish, Resumen, ResumenLista, Stamp, TandaLista } from "../api";
 import { isNum, readObject, writeAtomic } from "./archivos";
 import { log } from "./log";
 import { filesOf, finishKey, finishOf, readMeta, stampOf, tandaDir } from "./tandas";
@@ -102,6 +102,19 @@ export function queueAnalysis(id: string): void {
   }, 1500);
 }
 
+// Lo que la lista cuenta de una ruta libre por un circuito: su nombre, sus vueltas (válidas o no) y la mejor; sin el
+// trazado, que no le hace falta. Campo a campo, porque meta.json es lo que mandó el móvil.
+function circuitoDe(c: unknown): CircuitoMeta | null {
+  if (!c || typeof c !== "object") return null;
+  const x = c as CircuitoMeta;
+  if (typeof x.nombre !== "string") return null;
+  return {
+    nombre: x.nombre.slice(0, 60),
+    mejor: isNum(x.mejor) ? x.mejor : null,
+    vueltas: Array.isArray(x.vueltas) ? x.vueltas.map((v) => ({ valid: !!(v && v.valid) })) : [],
+  };
+}
+
 // Una tanda para la lista: lo que dijo el móvil y su resumen, si está al día (si no, se pide en segundo plano).
 export function summaryOf(id: string): TandaLista {
   const meta = readMeta(id);
@@ -134,6 +147,10 @@ export function summaryOf(id: string): TandaLista {
           sentido: meta.sentido,
           mejor: meta.mejor,
           vueltas: (meta.vueltas || []).length,
+          // Para la etiqueta del estado: la ruta libre por un circuito (nombre, vueltas y la mejor) y el receptor GPS
+          // externo (a cuántos Hz).
+          circuito: circuitoDe(meta.circuito),
+          gps: meta.gps && isNum(meta.gps.hz) ? { hz: meta.gps.hz } : null,
         }
       : null,
     trozos: stamp.trozos,
