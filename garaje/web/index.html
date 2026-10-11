@@ -148,7 +148,7 @@
   .err { color: var(--bad); font-size: 13px; }
   .empty { color: var(--muted); padding: 16px 2px 0; }
 
-  /* Comparativa del día entre pilotos (la pinta comparativa.js, la misma que en el móvil). */
+  /* Comparativa del día entre pilotos (la pinta app/src/ui/draw/comparativa.ts, la misma que en el móvil). */
   .cmp-top select { font: inherit; color: var(--ink); background: var(--surface); border: 1px solid var(--line-strong); border-radius: var(--r-md); min-height: 44px; padding: 0 10px; margin-left: 6px; cursor: pointer; }
   .cmp-top label { color: var(--muted); font-size: 14px; }
   .cmp-head { margin: 0; padding-bottom: 12px; border-bottom: 1px solid var(--line); font-weight: 600; color: var(--ink-2); }
@@ -265,8 +265,6 @@
   </footer>
 </main>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
-<script src="/lib/comparativa.js"></script>
-<script src="/progreso.js"></script>
-<script src="/garaje.js"></script>
+<script type="module" src="/garaje/web/garaje.ts"></script>
 </body>
 </html>

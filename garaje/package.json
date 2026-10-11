@@ -1,0 +1,6 @@
+{
+  "name": "poortelemetry-garaje",
+  "private": true,
+  "type": "module",
+  "description": "Garaje de poortelemetry en el Mac: TypeScript sin dependencias ni compilar (Node le quita los tipos al cargarlo)."
+}

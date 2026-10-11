@@ -290,7 +290,8 @@ posición parada) y las siguientes a ≤ 0,04 s de la verdad.
 
 Guarda todas tus tandas en `~/Maspalomas-telemetria` (hasta que tú borres la carpeta) y las analiza allí.
 
-1. Doble clic en `garaje/Abrir garaje.command` (la primera vez instala `cloudflared` con Homebrew).
+1. Doble clic en `garaje/Abrir garaje.command` (la primera vez instala `cloudflared` con Homebrew). Hace falta
+   Node.js 22.15 o más nuevo: si es más viejo, la ventana lo dice y cómo actualizarlo.
 2. Se abre la página del garaje con un código QR. Escanéalo con la cámara del móvil: poortelemetry queda conectado.
 3. Deja el Mac encendido, enchufado y con la tapa abierta mientras ruedas. El móvil sube cada tanda por un túnel
    https temporal; si no hay cobertura en el circuito, todo se queda en el móvil y se sube al volver a conectar.
@@ -300,7 +301,7 @@ Guarda todas tus tandas en `~/Maspalomas-telemetria` (hasta que tú borres la ca
    La página principal enseña además el progreso entre días de cada piloto.
 5. «Vídeo con datos» (en el análisis): eliges un vídeo de este Mac (no se sube a ningún sitio) y lleva encima
    velocidad, tumbada, freno y gas, vuelta, diferencia con la mejor y el mapa. Un MP4 de GoPro trae su propio GPS
-   (18 Hz, o 10 Hz en las HERO11 en adelante) y sensores (`gpmf.js` lee su telemetría GPMF): se puede analizar como
+   (18 Hz, o 10 Hz en las HERO11 en adelante) y sensores (`app/src/core/gpmf/` lee su telemetría GPMF): se puede analizar como
    tanda (mucho más fina que el GPS del móvil) y guardar en el garaje, y entonces el vídeo va sincronizado solo; con
    una tanda del móvil abierta, se sincroniza por la hora del GPS de la GoPro. Con otra cámara se marca el cruce de
    meta de una vuelta («Aquí cruzo meta») y se afina con ±0,1 s. La vuelta se exporta con los datos encima
@@ -318,6 +319,11 @@ Guarda todas tus tandas en `~/Maspalomas-telemetria` (hasta que tú borres la ca
 
 El código cambia cada vez que abres el garaje: escanéalo antes de salir hacia el circuito. Para cerrarlo, cierra
 la ventana de Terminal.
+
+Por dentro: el garaje está en TypeScript (`garaje/server`, el servidor; `garaje/web`, sus dos páginas) y usa los
+mismos cálculos que la app del móvil (`app/src/core`, más la vista 3D y la comparativa del día de `app/src/ui`). No
+hay que instalar nada con npm ni construir: Node le quita los tipos al arrancar el servidor y al mandar las páginas al
+navegador. three.js y JSZip van copiados tal cual en `garaje/web/vendor/`.
 
 ## Varios pilotos
 
@@ -425,5 +431,5 @@ amortiguador de vibraciones.
 
 ## Datos
 
-Trazado: © colaboradores de OpenStreetMap (ODbL), contrastado con imagen de satélite. JSZip (MIT).
+Trazado: © colaboradores de OpenStreetMap (ODbL), contrastado con imagen de satélite. JSZip (MIT), three.js (MIT).
 Código QR del garaje: qrcode-generator (MIT).

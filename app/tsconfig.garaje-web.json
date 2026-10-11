@@ -1,0 +1,28 @@
+{
+  // Las páginas del garaje (../garaje/web), que el servidor del Mac manda al navegador sin compilar: les quita los
+  // tipos al servirlas, así que solo vale la sintaxis que se puede borrar sin más (erasableSyntaxOnly), también en lo
+  // que importan de src/. JSZip va como script normal (window.JSZip): de su paquete solo se usan los tipos.
+  "compilerOptions": {
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.garaje-web.tsbuildinfo",
+    "target": "ES2022",
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "types": [],
+    "skipLibCheck": true,
+
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": true,
+    "erasableSyntaxOnly": true,
+    "moduleDetection": "force",
+    "noEmit": true,
+    "paths": { "jszip": ["./node_modules/jszip"] },
+
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true
+  },
+  "include": ["../garaje/web"],
+  "exclude": ["../garaje/web/vendor"]
+}

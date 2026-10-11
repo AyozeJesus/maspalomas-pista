@@ -30,7 +30,7 @@ La app del móvil, rehecha en React + TypeScript. Hasta que se publique, la que 
 npm install
 npm run dev          # http://localhost:5173/
 npm test             # pruebas (Vitest)
-npm run typecheck && npm run lint
+npm run typecheck && npm run lint   # también el garaje (../garaje)
 npm run build        # dist/
 ```
 
@@ -38,7 +38,7 @@ Las pruebas comparan con rutas de verdad solo si `PISTA_DATA` apunta a una carpe
 (nunca se suben al repo: llevan tu posición). Sin ella, usan recorridos sintéticos.
 
 El motor se compara además en Chromium con lo que sacaba la app de antes (en Node las funciones de `Math` redondean
-distinto en el último bit): `PISTA_GOLDEN=<patrones> PISTA_DATA=<grabaciones> node scripts/parity/engine.mjs` tiene
+distinto en el último bit): `PISTA_GOLDEN=<patrones> PISTA_DATA=<grabaciones> node --experimental-strip-types scripts/parity/engine.ts` tiene
 que acabar en «todo igual».
 
 ## Plan
@@ -48,4 +48,7 @@ que acabar en «todo igual».
 3. Motor del directo separado de la interfaz, igual carácter a carácter en Chromium. ✔
 4. Pantallas en React con los mismos ids; la batería de pruebas de siempre, contra esta versión. ✔
 5. Sin cobertura (service worker), mismo manifest (la app instalada sigue valiendo) y mismos datos ✔; publicar.
-6. El garaje del Mac.
+6. El garaje del Mac, también en TypeScript (`../garaje`): sin npm ni construir en el Mac (Node quita los tipos al
+   arrancarlo y al servir sus páginas), con los cálculos de `src/core`; su API y sus páginas, comparadas con las de
+   antes. Sus pruebas están en `test/garaje/` (incluida la que falla si algo que cargan sus páginas importa un paquete
+   de npm, un .tsx o sintaxis que Node no sabe quitar). ✔

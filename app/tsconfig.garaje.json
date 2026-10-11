@@ -1,0 +1,26 @@
+{
+  // El servidor del garaje (../garaje/server), que corre en el Mac sin compilar: Node le quita los tipos al cargarlo,
+  // así que solo vale la sintaxis que se puede borrar sin más (erasableSyntaxOnly: nada de enum ni namespace), también
+  // en lo que importa de src/.
+  "compilerOptions": {
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.garaje.tsbuildinfo",
+    "target": "ES2023",
+    "lib": ["ES2023"],
+    "module": "ESNext",
+    "types": ["node"],
+    "skipLibCheck": true,
+
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": true,
+    "erasableSyntaxOnly": true,
+    "moduleDetection": "force",
+    "noEmit": true,
+
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true
+  },
+  "include": ["../garaje/server", "../garaje/api.ts"]
+}

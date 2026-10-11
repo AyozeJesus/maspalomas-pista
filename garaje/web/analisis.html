@@ -367,12 +367,6 @@
   </section>
 </div>
 
-<script src="/lib/jszip.min.js"></script>
-<script src="/lib/track-data.js"></script>
-<script src="/lib/sim.js"></script>
-<script src="/lib/analysis.js"></script>
-<script src="/lib/telemetry.js"></script>
-<script src="/replay3d.js"></script>
-<script src="/lib/gpmf.js"></script>
-<script src="/video.js"></script>
-<script src="/tel-app.js"></script>
+<script type="importmap">{ "imports": { "three": "/garaje/web/vendor/three.module.js" } }</script>
+<script src="/garaje/web/vendor/jszip.min.js"></script>
+<script type="module" src="/garaje/web/analisis.ts"></script>

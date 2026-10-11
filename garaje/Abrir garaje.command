@@ -27,6 +27,18 @@ fi
 # Al día con lo último publicado (si no hay red, sigue con lo que hay).
 git -C .. pull --ff-only --quiet 2>/dev/null || true
 
-node server.js
+# El garaje es TypeScript que Node ejecuta sin compilar (le quita los tipos al cargarlo): hace falta Node 22.15 o
+# más nuevo.
+if ! node -e 'const m=require("node:module");process.exit(typeof m.registerHooks==="function"&&typeof m.stripTypeScriptTypes==="function"?0:1)' 2>/dev/null; then
+  echo "El garaje necesita Node.js 22.15 o más nuevo (tienes $(node --version))."
+  echo "Actualízalo con: brew install node (o, si usas nvm: nvm install 22)."
+  read -k 1 "?Pulsa una tecla para cerrar."
+  exit 1
+fi
+OPCIONES=(--no-warnings=ExperimentalWarning)
+# Hasta Node 22.17 hay que pedirle que quite los tipos; desde 22.18 lo hace solo.
+node -e 'process.exit(process.features.typescript ? 0 : 1)' 2>/dev/null || OPCIONES+=(--experimental-strip-types)
+
+node "${OPCIONES[@]}" server/main.ts
 echo
 read -k 1 "?Garaje cerrado. Pulsa una tecla para cerrar esta ventana."
