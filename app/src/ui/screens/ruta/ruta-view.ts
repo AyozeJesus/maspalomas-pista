@@ -8,6 +8,7 @@ import type { Reading } from "../dash/live-view";
 
 // El circuito en marcha, «Tramo 2» tras «Nuevo tramo» o «Ruta libre».
 export function routeTitle(E: Engine): string {
+  if (E.ocho) return "Entrenamiento en 8";
   if (E.circ && E.circTrack) return E.circTrack.name;
   return E.segment !== undefined && E.segment > 1 ? "Tramo " + E.segment : "Ruta libre";
 }

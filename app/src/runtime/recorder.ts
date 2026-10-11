@@ -164,6 +164,8 @@ export function buildMeta(E: Engine, estado: "grabando" | "terminada") {
       corners: l.corners || null,
     })),
     analisis: E.analysis,
+    // Entrenamiento en 8: el modo (el repaso vuelve a contar los ochos) y su resumen para la lista.
+    ...(E.ocho ? { modo: "ocho" as const, ochos: E.ocho.summary() } : {}),
   };
 }
 

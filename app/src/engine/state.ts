@@ -5,6 +5,7 @@ import type { CircuitTrack, LapTimer } from "../core/circuito";
 import type { CrashDetector, CrashEvent } from "../core/caida";
 import { CrashDetector as CrashDetectorClass } from "../core/caida";
 import type { Turnaround } from "../core/cortar";
+import type { OchoTracker } from "../core/ocho";
 import * as T from "../core/maspalomas";
 import { Recorrido } from "../core/recorrido";
 import type { GateTracker, StoredPass, Tracker, PassResult, LatLon } from "../core/tramos";
@@ -403,6 +404,8 @@ export interface Engine {
   nombre?: string;
   tramoSaved?: boolean;
   tramoTurn?: Turnaround | null;
+  // Entrenamiento en 8: el contador de ochos (solo en ese modo).
+  ocho?: OchoTracker | null;
 }
 
 export function newCalib(): Calib {

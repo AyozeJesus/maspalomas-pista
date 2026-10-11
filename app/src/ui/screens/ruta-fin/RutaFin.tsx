@@ -10,6 +10,7 @@ import { LapsCard } from "./LapsCard";
 import { MapCard } from "./MapCard";
 import { OptionsCard } from "./OptionsCard";
 import { PhaseCard } from "./PhaseCard";
+import { OchosCard } from "./OchosCard";
 import { StatsCard } from "./StatsCard";
 import { SummaryHeader } from "./SummaryHeader";
 import { summarySub, summaryTitle } from "./summary-text";
@@ -43,6 +44,7 @@ export function RutaFin() {
         colorBy={colorBy}
         onBack={goHome}
       />
+      <OchosCard paint={paint} />
       <StatsCard paint={paint} />
       <MapCard paint={paint} colorBy={colorBy} onColor={toggleColor} refs={refs} />
       <PhaseCard paint={paint} chartRef={refs.chart} />

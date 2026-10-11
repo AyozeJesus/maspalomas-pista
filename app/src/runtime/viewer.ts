@@ -41,11 +41,14 @@ export function createViewer(session: Session, store: PistaStore | null) {
     const patch: Record<string, unknown> = { recorrido: eng.route.summary(), calculo: BUILD };
     // Una tanda: su mejor vuelta (las guardadas antes apuntaban la de siempre del piloto).
     if (!eng.free) patch.mejor = sessionBest(eng);
+    // Entrenamiento en 8: los ochos del repaso (los de la lista dicen lo mismo que «Ver»).
+    if (eng.ocho) patch.ochos = eng.ocho.summary();
     // Ya estaba así (otra vez «Ver»): nada que guardar ni que volver a subir al Mac.
     if (
       meta.calculo === BUILD &&
       JSON.stringify(meta.recorrido) === JSON.stringify(patch.recorrido) &&
-      (eng.free || meta.mejor === patch.mejor)
+      (eng.free || meta.mejor === patch.mejor) &&
+      (!eng.ocho || JSON.stringify(meta.ochos) === JSON.stringify(patch.ochos))
     )
       return Promise.resolve(true);
     return store.patchSession(meta.id, patch).catch(() => false);

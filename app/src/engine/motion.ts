@@ -252,4 +252,6 @@ export function rideStep(
     lag: lagNow(E),
     pitch: E.pitchDeg,
   });
+  // Entrenamiento en 8: el mismo giro, con el signo que el recorrido ha comprobado con el GPS.
+  if (E.ocho) E.ocho.step(t, E.route.yawSign * yawRate, E.leanDeg, v);
 }

@@ -159,7 +159,8 @@ export function tramoCard(
   tramos: readonly Tramo[],
   turn: Turnaround | null,
 ): TramoCard {
-  const canSave = !!((eng.viewing || !eng.sim) && eng.loc.n > 20);
+  // Un entrenamiento en 8 no es un tramo (ni pasa por ninguno: en ese modo no se buscan).
+  const canSave = !eng.ocho && !!((eng.viewing || !eng.sim) && eng.loc.n > 20);
   const hidden = !canSave && !eng.tramoPasses.length;
   if (hidden) return { hidden, items: [], showSave: false, turn: null, note: "" };
   const items: TramoItem[] = [];

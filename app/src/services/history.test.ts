@@ -41,6 +41,23 @@ const CASES: ListedSession[] = [
   { id: "y" },
 ];
 
+describe("línea de un entrenamiento en 8", () => {
+  it("cuántos ochos, el mejor y el tiempo", () => {
+    const s: ListedSession = {
+      ...base,
+      tipo: "ruta",
+      modo: "ocho",
+      recorrido: { distancia: 3200, duracion: 920 },
+      ochos: { n: 12, mejor: 7.416 },
+    };
+    expect(sessionLine(s)).toBe("Entrenamiento en 8 · 12 ochos · mejor 7,42 s · 15:20");
+    expect(sessionLine({ ...s, ochos: { n: 1, mejor: 9 } })).toBe(
+      "Entrenamiento en 8 · 1 ocho · mejor 9,00 s · 15:20",
+    );
+    expect(sessionLine({ ...s, ochos: null })).toBe("Entrenamiento en 8 · 0 ochos · 15:20");
+  });
+});
+
 describe("línea de cada grabación en «Mis rutas»", () => {
   it("la fecha, como antes", () => {
     expect(CASES.map(sessionDate)).toEqual(CASES.map(old.sessionDate));

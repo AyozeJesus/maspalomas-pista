@@ -77,6 +77,28 @@ describe("motor: repasar la tanda de ejemplo", () => {
     });
   }
 
+  it("entrenamiento en 8: el repaso cuenta las vueltas con el giro, sin tramos ni circuitos", async () => {
+    const eng = await replayRecording(
+      host(),
+      { id: "20261001-120000-ocho", tipo: "ruta", modo: "ocho" },
+      demoSeries(),
+      () => false,
+      undefined,
+      () => Promise.resolve(),
+    );
+    const tr = eng.ocho;
+    if (!tr) throw new Error("sin contador de ochos");
+    expect(eng.tramos).toEqual([]);
+    expect(eng.circList).toEqual([]);
+    expect(eng.circ).toBeNull();
+    // La vuelta de Maspalomas tiene curvas a los dos lados: el contador las ve (sin 8 enteros: no son vueltas).
+    expect(tr.lobes.length).toBeGreaterThan(5);
+    expect(new Set(tr.lobes.map((l) => l.dir))).toEqual(new Set([1, -1]));
+    // Lo que gira el contador va con el de la trazada: las curvas a derechas, con inclinación a derechas.
+    for (const l of tr.lobes)
+      if (l.leanMax !== null && l.turn > 60) expect(l.leanMax).toBeGreaterThan(0);
+  });
+
   it("una grabación que se cancela se para", async () => {
     let n = 0;
     await expect(

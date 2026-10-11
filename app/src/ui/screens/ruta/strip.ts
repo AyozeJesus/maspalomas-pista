@@ -1,6 +1,7 @@
 // La franja de vueltas o tramos de la ruta libre (#ru-laps): el circuito en marcha (vuelta, tiempo, diferencia con la
 // mejor), el tramo en marcha o el recién acabado, o la salida marcada a mano. renderCircuit, renderTramoStrip y
 // passTimeAt de live.js, sin DOM.
+import type { OchoTracker } from "../../../core/ocho";
 import { MARK, type TramoEstado } from "../../../core/tramos";
 import { lagNow, type Engine, type TramoRun } from "../../../engine";
 import { fmt, fmtClock, fmtLap, fmtMeters, fmtSigned } from "../../../lib/format";
@@ -87,6 +88,36 @@ function tramoStrip(E: Engine, t: number): StripView {
   };
 }
 
+// Entrenamiento en 8: cuántos ochos van y el tiempo del que está en marcha; en grande, el último (en verde si es el
+// mejor, en rojo si va más de 0,3 s por detrás); a la derecha, el mejor. leanReady: ya hay inclinación (sin
+// calibrar, en una explanada no llega a salir: no hay rectas rápidas), y si no, antes del primer giro lo recuerda.
+export function ochoStrip(tr: OchoTracker, t: number, leanReady = true): StripView {
+  const st = tr.state(t);
+  const now = st.open ? st.open.elapsed : st.lobe ? st.lobe.elapsed : null;
+  const last = st.last;
+  const best = st.best;
+  const idle = !st.count && !st.lobe && !st.open;
+  return {
+    hidden: false,
+    lap:
+      !leanReady && idle
+        ? "Primero, parado: «Calibrar»"
+        : "Ochos " + st.count + (now !== null ? " · " + fmt(now, 1) + " s" : ""),
+    delta: last ? fmt(last.time, 2) + " s" : "—",
+    deltaCls:
+      "num" +
+      (!last || best === null
+        ? ""
+        : last.time === best
+          ? " up"
+          : last.time - best > 0.3
+            ? " down"
+            : ""),
+    best: "Mejor " + (best !== null ? fmt(best, 2) + " s" : "—"),
+  };
+}
+
 export function stripView(E: Engine, t: number): StripView {
+  if (E.ocho) return ochoStrip(E.ocho, t, !!E.leanAxes);
   return E.circ ? circuitStrip(E, t, E.circ) : tramoStrip(E, t);
 }

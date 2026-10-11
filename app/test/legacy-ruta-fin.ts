@@ -9,6 +9,7 @@ import vm from "node:vm";
 import type { Engine } from "../src/engine";
 import type { KeyValueStore } from "../src/engine/kv";
 import { legacyFile, loadLegacy } from "./legacy";
+import { renameLegacyMarkup } from "./renames";
 
 // Lo de live.js que pinta el resumen (las funciones y las constantes que usan).
 const FUNCTIONS = [
@@ -115,11 +116,15 @@ function liveSandbox(globals: Record<string, unknown>): { fns: OldSummary; win: 
   return { fns: sandbox.__fns as OldSummary, win: sandbox as unknown as OldVars };
 }
 
-// El marcado del resumen de antes (index.html, <main id="ruta-fin">…</main>).
+// El marcado del resumen de antes (index.html, <main id="ruta-fin">…</main>), con los cambios hechos a propósito desde
+// entonces (renames.ts).
 export function oldMarkup(): string {
   const html = readFileSync(legacyFile("index.html"), "utf8");
   const a = html.indexOf('<main class="page" id="ruta-fin"');
-  return html.slice(a, html.indexOf("</main>", a) + "</main>".length);
+  const raw = html.slice(a, html.indexOf("</main>", a) + "</main>".length);
+  const doc = new DOMParser().parseFromString("<body>" + raw + "</body>", "text/html");
+  renameLegacyMarkup(doc);
+  return (doc.getElementById("ruta-fin") as HTMLElement).outerHTML;
 }
 
 // Un contexto 2D que lo acepta todo (y mide los textos con 6 px por letra).

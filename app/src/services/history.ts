@@ -15,6 +15,9 @@ export interface ListedSession extends StoredSession {
   vueltas?: { valid: boolean }[];
   mejor?: number | null;
   calculo?: number;
+  // Entrenamiento en 8.
+  modo?: "ocho";
+  ochos?: { n: number; mejor: number | null } | null;
 }
 
 // «vie, 9 oct, 16:31».
@@ -29,7 +32,7 @@ export function sessionDate(s: ListedSession): string {
   });
 }
 
-// «Ruta libre · 23,4 km · 1:12:05» o «Circuito · 8 vueltas · mejor 1:09,32».
+// «Ruta libre · 23,4 km · 1:12:05», «Circuito · 8 vueltas · mejor 1:09,32» o «Entrenamiento en 8 · 12 ochos…».
 export function sessionLine(s: ListedSession): string {
   // La ruta lleva su tiempo en el resumen; si no, del principio al final de la grabación.
   const rd = s.recorrido ? s.recorrido.duracion : undefined;
@@ -40,7 +43,13 @@ export function sessionLine(s: ListedSession): string {
         ? (new Date(s.fin).getTime() - new Date(s.inicio).getTime()) / 1000
         : null;
   const parts: string[] = [];
-  if (s.tipo === "ruta") {
+  if (s.modo === "ocho") {
+    // «Entrenamiento en 8 · 12 ochos · mejor 7,42 s · 15:20».
+    parts.push("Entrenamiento en 8");
+    const n = s.ochos ? s.ochos.n : 0;
+    parts.push(n + (n === 1 ? " ocho" : " ochos"));
+    if (s.ochos && s.ochos.mejor !== null) parts.push("mejor " + fmt(s.ochos.mejor, 2) + " s");
+  } else if (s.tipo === "ruta") {
     parts.push("Ruta libre");
     const km = s.recorrido ? s.recorrido.distancia : null;
     if (km !== null && km !== undefined && Number.isFinite(km))

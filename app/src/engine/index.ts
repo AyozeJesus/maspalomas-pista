@@ -15,6 +15,7 @@ export {
 } from "./track";
 export { replayRecording, type ReplayMeta } from "./replay";
 export { tramoFlush, engDate } from "./tramos";
+export { startOcho, finishOcho } from "./ocho";
 export { markMeta, markMetaKind, markSalida, lastGoodFix, freeName } from "./marks";
 export { applyCircuit, loadCircuits, CIRCUITS_KEY } from "./circuit";
 export { startCalib, calibUi, calibBtnText, isStopped } from "./calib";

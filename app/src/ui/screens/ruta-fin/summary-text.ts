@@ -15,7 +15,7 @@ export interface Readout {
 
 // El nombre que se le ha puesto («Los Loros») o «Tu ruta».
 export function summaryTitle(eng: Engine): string {
-  return engName(eng) || "Tu ruta";
+  return engName(eng) || (eng.ocho ? "Entrenamiento en 8" : "Tu ruta");
 }
 
 // «sábado, 10 de octubre · 12,5 km · 10:25». La fecha, la de la grabación (o la de la que se repasa); la vuelta de

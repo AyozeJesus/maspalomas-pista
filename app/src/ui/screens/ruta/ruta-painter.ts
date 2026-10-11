@@ -16,6 +16,7 @@ import {
   toggleColor,
   toggleFollow,
   tramosCache,
+  viewForSession,
   zoomIn,
   zoomOut,
 } from "./map-view";
@@ -104,10 +105,10 @@ export function createRutaPainter(root: HTMLElement, rt: RutaRuntime) {
     setHidden(els["ru-title"], cal.show);
     setText(els["ru-calib"], cal.text);
     // «Nuevo tramo», siempre que se esté grabando (dos toques): en Los Loros se dio la vuelta arriba sin llegar a
-    // parar, y con el botón solo parado no habría salido.
-    setHidden(els["ru-seg"], !E.rec || E.sim);
+    // parar, y con el botón solo parado no habría salido. En el entrenamiento en 8, ni este ni el de la salida.
+    setHidden(els["ru-seg"], !E.rec || E.sim || !!E.ocho);
     // «Salida aquí» / «Meta aquí»: grabando de verdad y sin circuito en marcha (ese ya tiene su meta).
-    setHidden(els["ru-mark"], !E.rec || E.sim || !!E.circ);
+    setHidden(els["ru-mark"], !E.rec || E.sim || !!E.circ || !!E.ocho);
     if (!arm.kind) setText(els["ru-mark"], markLabel(E));
   }
 
@@ -144,8 +145,8 @@ export function createRutaPainter(root: HTMLElement, rt: RutaRuntime) {
     const E = rt.session.rt.E;
     if (!E || !E.free || E.viewing) return;
     const t = nowOf(E);
-    // Otra ruta, u otro tramo tras «Nuevo tramo»: el mapa, ya.
-    if (E !== lastE) view.drawnAt = 0;
+    // Otra ruta, u otro tramo tras «Nuevo tramo»: el mapa, ya (en el entrenamiento en 8, de cerca).
+    if (E !== lastE) viewForSession(view, !!E.ocho, !!lastE && !!lastE.ocho);
     lastE = E;
     hideFlashIfDue(E, t);
     paintStrip(E, t);

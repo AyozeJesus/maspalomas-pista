@@ -34,7 +34,27 @@ export function renameLegacyMarkup(root: ParentNode): void {
     go.setAttribute("aria-haspopup", "dialog");
     go.setAttribute("aria-controls", "pick-circuit");
   }
+  // Desde el 11-oct, el resumen de la ruta lleva «Ochos» (oculta salvo en el entrenamiento en 8) antes del resumen.
+  const sum = root.querySelector('#ruta-fin section[aria-labelledby="ruf-sum-h"]');
+  if (sum)
+    sum.insertAdjacentHTML(
+      "beforebegin",
+      '<section class="card" aria-labelledby="ruf-o-h" id="ruf-ochos" hidden=""><h2 id="ruf-o-h">Ochos</h2>' +
+        '<div class="readouts" id="ruf-o-stats"></div><p class="muted" id="ruf-o-note"></p></section>',
+    );
+  // Y «Entrenamiento en 8» después de la ruta libre.
+  const freeNote = root.querySelector("#free + .start-note");
+  if (freeNote)
+    freeNote.insertAdjacentHTML(
+      "afterend",
+      '<button class="big" id="ocho">Entrenamiento en 8</button><p class="start-note">' +
+        OCHO_NOTE +
+        "</p>",
+    );
 }
+
+const OCHO_NOTE =
+  "Ochos en una explanada: cuenta cada 8 y su tiempo, la inclinación a cada lado y la velocidad. Antes de empezar, «Calibrar» con la moto parada y derecha.";
 
 // Lo apuntado al pintar una imagen con el compartir.js de antes, con la marca de ahora.
 export function renameImageLog<T extends unknown[]>(log: T[]): T[] {

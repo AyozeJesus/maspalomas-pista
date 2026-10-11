@@ -9,6 +9,7 @@ import { createEngine } from "./create";
 import { onMotion } from "./motion";
 import type { Engine, EngineHost, ViewingMeta } from "./state";
 import { onFix } from "./track";
+import { finishOcho, startOcho } from "./ocho";
 import { tramoFlush } from "./tramos";
 import { norm3 } from "./vec";
 
@@ -35,6 +36,8 @@ export async function replayRecording(
   eng.circTryAt = Infinity;
   eng.orientTried = true;
   eng.segment = meta.segmento && meta.segmento > 1 ? meta.segmento : 1;
+  // Entrenamiento en 8: los ochos salen del repaso, como todo lo demás.
+  if (meta.modo === "ocho") startOcho(eng);
   eng.crashLog = Array.isArray(meta.caidas) ? meta.caidas.slice() : [];
   // El giro de la pantalla de cuando se grabó, nunca el de ahora.
   eng.screenAngle =
@@ -92,6 +95,7 @@ export async function replayRecording(
       if (eng.free && !flushed) {
         flushed = true;
         tramoFlush(eng, eng.simT);
+        finishOcho(eng, eng.simT);
       }
     }
   };

@@ -6,9 +6,11 @@ import {
   createEngine,
   enterPits as enginePits,
   enterRide as engineRide,
+  finishOcho,
   nowOf,
   onFix,
   onMotion,
+  startOcho,
   tramoFlush,
   type Engine,
   type EngineHost,
@@ -326,27 +328,28 @@ export function createSession(deps: SessionDeps) {
     onMotion(E, t, lin, grav, gyro);
   }
 
-  // free: ruta libre por cualquier carretera (sin circuito). Entre el toque y el panel pasan pantalla completa y
-  // permisos (cientos de ms): un segundo toque entonces no arranca otra (dejaría un seguimiento del GPS que nadie
-  // para y que mandaría fijos repetidos a la siguiente).
+  // free: ruta libre por cualquier carretera (sin circuito); opts.ocho: entrenamiento en 8 (una ruta libre que cuenta
+  // los ochos). Entre el toque y el panel pasan pantalla completa y permisos (cientos de ms): un segundo toque entonces
+  // no arranca otra (dejaría un seguimiento del GPS que nadie para y que mandaría fijos repetidos a la siguiente).
   let starting = false;
-  async function startReal(free?: boolean): Promise<void> {
+  async function startReal(free?: boolean, opts?: { ocho?: boolean }): Promise<void> {
     if (starting || (rt.E && !rt.E.viewing)) return;
     starting = true;
     try {
-      await startRealNow(free);
+      await startRealNow(free, opts);
     } finally {
       starting = false;
     }
   }
 
-  async function startRealNow(free?: boolean): Promise<void> {
+  async function startRealNow(free?: boolean, opts?: { ocho?: boolean }): Promise<void> {
     const motionOk = await askMotion();
     if (!("geolocation" in navigator)) {
       setStatus("gps", "bad", "Este navegador no da acceso al GPS.");
       return;
     }
     const E = createEngine(host(), false, free === true);
+    if (free === true && opts && opts.ocho) startOcho(E);
     E.t0 = perfNow();
     E.wall0 = Date.now();
     rt.E = E;
@@ -493,7 +496,10 @@ export function createSession(deps: SessionDeps) {
   function stopAll(): void {
     const E = rt.E;
     if (E) {
-      if (E.free && !E.viewing) tramoFlush(E, nowOf(E));
+      if (E.free && !E.viewing) {
+        tramoFlush(E, nowOf(E));
+        finishOcho(E, nowOf(E));
+      }
       recorder.flush(E, true);
       recorder.saveMeta(E, "terminada");
     }

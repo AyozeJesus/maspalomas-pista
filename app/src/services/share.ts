@@ -2,6 +2,7 @@
 // para mandarla por WhatsApp o lo que ofrezca el móvil; sin «compartir archivos», se descarga. Sin red también:
 // WhatsApp la manda cuando la haya.
 import { MASPA_GEO } from "../core/maspalomas";
+import type { OchoTracker } from "../core/ocho";
 import { engDate, type Engine } from "../engine";
 import { target, type Settings } from "../engine/settings";
 import { topCurves, curveMarks } from "../lib/curves";
@@ -38,7 +39,52 @@ function capital(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
+// Entrenamiento en 8: los ochos (mejor, media, regularidad, inclinación a cada lado) y lo general de la sesión.
+function ochoShareData(eng: Engine, tr: OchoTracker, colorBy: ColorBy): RouteImageData {
+  const s = eng.route.summary();
+  const o = tr.summary();
+  const d = engDate(eng);
+  const fecha = longDate(d);
+  const deg = (x: number | null) => (x ? fmt(x, 0) + "°" : "—");
+  const secs = (x: number | null) => (x === null ? "—" : fmt(x, 2) + " s");
+  const titulo = "Entrenamiento en 8";
+  return {
+    titulo,
+    subtitulo:
+      capital(fecha) +
+      " · " +
+      o.n +
+      (o.n === 1 ? " ocho" : " ochos") +
+      " · " +
+      fmtClock(s.duracion),
+    trail: eng.route.trail,
+    colorBy,
+    stats: [
+      ["Ochos", String(o.n)],
+      ["Mejor 8", secs(o.mejor), true],
+      ["Media", secs(o.media)],
+      ["Regularidad", o.desviacion === null ? "—" : "±" + fmt(o.desviacion, 2) + " s"],
+      ["Incl. izquierda", deg(o.izq)],
+      ["Incl. derecha", deg(o.der)],
+      ["Tiempo", fmtClock(s.duracion)],
+      ["Distancia", fmt(s.distancia / 1000, 1) + " km"],
+      ["Punta", fmt(s.punta, 0) + " km/h"],
+    ],
+    pie: PIE,
+    text:
+      titulo +
+      " · " +
+      fecha +
+      " · " +
+      o.n +
+      (o.n === 1 ? " ocho" : " ochos") +
+      (o.mejor !== null ? " · mejor " + secs(o.mejor) : ""),
+    name: "poortelemetry-ochos-" + fileStamp(d) + ".png",
+  };
+}
+
 export function routeShareData(eng: Engine, colorBy: ColorBy): RouteImageData {
+  if (eng.ocho) return ochoShareData(eng, eng.ocho, colorBy);
   const s = eng.route.summary();
   const d = engDate(eng);
   const fecha = longDate(d);

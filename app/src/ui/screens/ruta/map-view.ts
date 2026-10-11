@@ -11,8 +11,9 @@ import type { ColorBy, MapDot, MapDrawOptions } from "../../draw/mapa";
 
 export interface MapView {
   follow: boolean;
-  // Metros en el lado corto siguiendo a la moto.
+  // Metros en el lado corto siguiendo a la moto, y hasta dónde se puede acercar.
   span: number;
+  minSpan: number;
   colorBy: ColorBy;
   // Cuándo se pintó (performance.now): 0, otra vez en el próximo fotograma.
   drawnAt: number;
@@ -20,8 +21,34 @@ export interface MapView {
   legendBy: ColorBy | null;
 }
 
+const SPAN = 600;
+const MIN_SPAN = 150;
+// Entrenamiento en 8: un 8 de dos círculos de 8 m cabe entero en 60 m, y se puede acercar hasta 30.
+const OCHO_SPAN = 60;
+const OCHO_MIN_SPAN = 30;
+
 export function newMapView(): MapView {
-  return { follow: true, span: 600, colorBy: "fase", drawnAt: 0, legendBy: null };
+  return {
+    follow: true,
+    span: SPAN,
+    minSpan: MIN_SPAN,
+    colorBy: "fase",
+    drawnAt: 0,
+    legendBy: null,
+  };
+}
+
+// Al empezar otra sesión: en el entrenamiento en 8, de cerca; al volver a una ruta después de uno, como siempre.
+export function viewForSession(v: MapView, ocho: boolean, wasOcho: boolean): void {
+  if (ocho) {
+    v.span = OCHO_SPAN;
+    v.minSpan = OCHO_MIN_SPAN;
+    v.follow = true;
+  } else if (wasOcho) {
+    v.span = SPAN;
+    v.minSpan = MIN_SPAN;
+  }
+  v.drawnAt = 0;
 }
 
 // Los botones del mapa: «Fases»/«Incl.», «Toda»/«Seguir», + y −.
@@ -34,7 +61,7 @@ export function toggleFollow(v: MapView): void {
   v.drawnAt = 0;
 }
 export function zoomIn(v: MapView): void {
-  v.span = Math.max(150, v.span / 1.6);
+  v.span = Math.max(v.minSpan, v.span / 1.6);
   v.follow = true;
   v.drawnAt = 0;
 }

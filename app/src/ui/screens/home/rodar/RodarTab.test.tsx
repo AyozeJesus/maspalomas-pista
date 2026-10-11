@@ -59,9 +59,11 @@ describe("pestaña «Rodar»", () => {
     expect(real).not.toHaveBeenCalled();
     act(() => closeCircuitPicker());
     fireEvent.click($("free"));
+    fireEvent.click($("ocho"));
     fireEvent.click($("sim"));
     fireEvent.click($("sensors"));
-    expect(real.mock.calls).toEqual([[true]]);
+    // Ruta libre, y el entrenamiento en 8 (una ruta libre que cuenta los ochos).
+    expect(real.mock.calls).toEqual([[true], [true, { ocho: true }]]);
     expect(sim.mock.calls).toEqual([[1]]);
     expect(sensors).toHaveBeenCalledTimes(1);
   });
