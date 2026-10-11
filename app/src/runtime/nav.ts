@@ -3,7 +3,15 @@
 // prueba de sensores, a la portada; repasando una grabación, la cierra; rodando no para nada (avisa de cómo terminar);
 // en la portada, la primera vez avisa y la segunda sale. La entrada se pone al tocar la pantalla: al ir atrás, Chrome
 // se salta las que una página añade sin que nadie la haya tocado.
-import { closeCircuitPicker, refreshHome, setTab, show, toast, uiStore } from "../app/ui-store";
+import {
+  closeCircuitPicker,
+  refreshHome,
+  setTab,
+  show,
+  subidasBack,
+  toast,
+  uiStore,
+} from "../app/ui-store";
 import type { CrashUi } from "./crash-ui";
 import type { SensorTest } from "./sensor-test";
 import type { Session } from "./session";
@@ -41,6 +49,11 @@ export function createNav(session: Session, viewer: Viewer, crash: CrashUi, sens
     // El selector del circuito («Salir a pista»): se cierra.
     if (ui.circuitPicker) {
       closeCircuitPicker();
+      return backArm();
+    }
+    // La hoja de las subidas de montaña: un paso atrás (y, al principio, se cierra).
+    if (ui.subidas) {
+      subidasBack();
       return backArm();
     }
     if (viewer.busy()) {

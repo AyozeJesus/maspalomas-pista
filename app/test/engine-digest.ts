@@ -1,5 +1,6 @@
 // Lo que se compara de un motor acabado con el de la app de antes (el mismo resumen que saca golden-engine.js de la
 // app vieja): ruta, curvas, frenadas, vueltas, calibración, canales… Se pasa por JSON (NaN → null, como allí).
+import { isSubida } from "../src/app/subidas";
 import type { Engine } from "../src/engine";
 import type { Series } from "../src/engine/series";
 
@@ -40,13 +41,17 @@ export function digestOf(eng: Engine): unknown {
       ? { laps: eng.circ.laps, best: eng.circ.best ? eng.circ.best.time : null, L: eng.circ.L }
       : null,
     circTrack: eng.circTrack ? { name: eng.circTrack.name, length: eng.circTrack.length } : null,
-    tramoPasses: eng.tramoPasses.map((p) => ({
-      id: p.id,
-      nombre: p.nombre,
-      t0: p.t0,
-      t1: p.t1,
-      tiempo: p.pasada.tiempo,
-    })),
+    // Las subidas de montaña (desde el 11-oct) no las tenía la app de antes: fuera de la comparación (se prueban en
+    // src/engine/subidas.test.ts).
+    tramoPasses: eng.tramoPasses
+      .filter((p) => !isSubida(p.id))
+      .map((p) => ({
+        id: p.id,
+        nombre: p.nombre,
+        t0: p.t0,
+        t1: p.t1,
+        tiempo: p.pasada.tiempo,
+      })),
     crashLog: eng.crashLog,
     calib: {
       f: eng.calib.f,

@@ -42,19 +42,26 @@ export function renameLegacyMarkup(root: ParentNode): void {
       '<section class="card" aria-labelledby="ruf-o-h" id="ruf-ochos" hidden=""><h2 id="ruf-o-h">Ochos</h2>' +
         '<div class="readouts" id="ruf-o-stats"></div><p class="muted" id="ruf-o-note"></p></section>',
     );
-  // Y «Entrenamiento en 8» después de la ruta libre.
+  // Y «Entrenamiento en 8» después de la ruta libre; desde el 11-oct, detrás, «Subidas de montaña» (abre su hoja).
   const freeNote = root.querySelector("#free + .start-note");
   if (freeNote)
     freeNote.insertAdjacentHTML(
       "afterend",
       '<button class="big" id="ocho">Entrenamiento en 8</button><p class="start-note">' +
         OCHO_NOTE +
+        "</p>" +
+        '<button class="big" id="subidas" aria-haspopup="dialog" aria-controls="pick-subida">' +
+        "Subidas de montaña</button>" +
+        '<p class="start-note">' +
+        SUBIDAS_NOTE +
         "</p>",
     );
 }
 
 const OCHO_NOTE =
   "Ochos en una explanada: cuenta cada 8 y su tiempo, la inclinación a cada lado y la velocidad. Antes de empezar, «Calibrar» con la moto parada y derecha.";
+const SUBIDAS_NOTE =
+  "Las de cada isla, en los dos sentidos, con tu mejor tiempo en cada una. En la ruta libre se cronometran solas al pasar por ellas.";
 
 // Lo apuntado al pintar una imagen con el compartir.js de antes, con la marca de ahora.
 export function renameImageLog<T extends unknown[]>(log: T[]): T[] {

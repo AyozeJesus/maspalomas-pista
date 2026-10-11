@@ -28,6 +28,15 @@ export function saveTramos(kv: KeyValueStore, list: Tramo[]): void {
   kv.store(TRAMOS_KEY, list);
 }
 
+// Dónde se guarda un tramo y sus pasadas: tus tramos («pista-tramos») o las subidas de montaña («pista-subidas»,
+// services/subidas-store).
+export interface TramoBook {
+  load(kv: KeyValueStore): Tramo[];
+  save(kv: KeyValueStore, list: Tramo[]): void;
+}
+
+export const TUS_TRAMOS: TramoBook = { load: loadTramos, save: saveTramos };
+
 export function newTramoId(nowMs: number): string {
   return "tr-" + nowMs.toString(36) + Math.random().toString(36).slice(2, 6);
 }
@@ -50,8 +59,9 @@ export function recordPass(
   sesion: string | null,
   epochMs: number,
   p: PassResult,
+  book: TramoBook = TUS_TRAMOS,
 ): StoredPass | null {
-  const list = loadTramos(kv);
+  const list = book.load(kv);
   const tr = list.find((x) => x.id === tramoId);
   if (!tr) return null;
   tr.pasadas = tr.pasadas || [];
@@ -68,7 +78,7 @@ export function recordPass(
           JSON.stringify(dup.frenos) !== JSON.stringify(p.frenos)))
     ) {
       dup.frenos = p.frenos;
-      saveTramos(kv, list);
+      book.save(kv, list);
     }
     return dup;
   }
@@ -93,6 +103,6 @@ export function recordPass(
       .slice(0, 20);
     tr.pasadas = tr.pasadas.filter((q) => fast.includes(q) || recent.includes(q));
   }
-  saveTramos(kv, list);
+  book.save(kv, list);
   return pasada;
 }

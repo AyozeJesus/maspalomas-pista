@@ -58,11 +58,12 @@ function runningStrip(x: TramoRun, st: Running): StripView {
   };
 }
 
-// Sin circuito: el tramo en marcha; si no, el acabado (12 s); si no, la salida marcada a mano.
+// Sin circuito: el tramo en marcha; si no, el acabado (12 s); si no, la salida marcada a mano. Una subida en marcha
+// sale solo cuando ya va de verdad hacia su meta (al acabar una, se sale por la salida de la contraria).
 function tramoStrip(E: Engine, t: number): StripView {
   for (const x of E.tramos) {
     const st = x.tk.estado(t);
-    if (st.en) return runningStrip(x, st);
+    if (st.en && st.ok !== false) return runningStrip(x, st);
   }
   const done = E.tramoDone && t - E.tramoDone.at < 12 ? E.tramoDone : null;
   if (done)

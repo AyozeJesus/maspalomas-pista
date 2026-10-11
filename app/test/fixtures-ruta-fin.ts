@@ -51,7 +51,12 @@ export function demoSeries(): MergedSeriesSet {
 
 // Los Loros (null si no está en este ordenador).
 export function lorosSeries(): MergedSeriesSet | null {
-  const r = realRide(LOROS) as { series: Raw } | null;
+  return realSeries(LOROS);
+}
+
+// Una ruta de verdad de vivo-datos/ (null si no está en este ordenador).
+export function realSeries(file: string): MergedSeriesSet | null {
+  const r = realRide(file) as { series: Raw } | null;
   return r ? merged(r.series) : null;
 }
 

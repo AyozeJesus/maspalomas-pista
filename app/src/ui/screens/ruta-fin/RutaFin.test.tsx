@@ -28,6 +28,13 @@ import { RuntimeContext } from "../../runtime-context";
 import { RutaFin } from "./RutaFin";
 import { saveTramoFrom } from "./tramo-save";
 
+// La app de antes no tenía subidas de montaña: para comparar, sin ellas (la ruta de Los Loros pasa por una; con ellas,
+// en src/engine/subidas.test.ts).
+vi.mock("../../../app/subidas", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../../app/subidas")>()),
+  todasLasSubidas: () => [],
+}));
+
 const frames: (() => void)[] = [];
 let demoCache: MergedSeriesSet | null = null;
 

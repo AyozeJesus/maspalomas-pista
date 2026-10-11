@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { closeCircuitPicker, refreshHome, uiStore } from "../../../../app/ui-store";
+import { closeCircuitPicker, closeSubidas, refreshHome, uiStore } from "../../../../app/ui-store";
 import { memoryKV, type KeyValueStore } from "../../../../engine/kv";
 import { createRuntime, type Runtime } from "../../../../runtime";
 import { RuntimeContext } from "../../../runtime-context";
@@ -66,6 +66,13 @@ describe("pestaña «Rodar»", () => {
     expect(real.mock.calls).toEqual([[true], [true, { ocho: true }]]);
     expect(sim.mock.calls).toEqual([[1]]);
     expect(sensors).toHaveBeenCalledTimes(1);
+    // «Subidas de montaña» abre su hoja (isla, dirección y la lista); no echa a rodar.
+    expect($("subidas").textContent).toBe("Subidas de montaña");
+    expect($("subidas").getAttribute("aria-controls")).toBe("pick-subida");
+    fireEvent.click($("subidas"));
+    expect(uiStore.getState().subidas).toEqual({ isla: null, sentido: null });
+    expect(real.mock.calls.length).toBe(2);
+    act(() => closeSubidas());
   });
 
   it("los puntos del GPS y la pantalla, como los pone la sesión", () => {

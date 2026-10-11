@@ -1,9 +1,9 @@
-// «Tramos»: las pasadas de esta ruta por tus tramos guardados y guardar la ruta como tramo (o su ida y su vuelta como
-// dos), una vez por resumen.
+// «Tramos»: las pasadas de esta ruta por tus tramos guardados y por las subidas de montaña, y guardar la ruta como tramo
+// (o su ida y su vuelta como dos), una vez por resumen.
 import { memo, useLayoutEffect, useReducer, useRef } from "react";
 import { refreshHome, toast } from "../../../app/ui-store";
 import type { Engine } from "../../../engine";
-import { loadTramos } from "../../../services/tramos-store";
+import { allTramos } from "../../../services/subidas-store";
 import { useRuntime } from "../../runtime-context";
 import type { Paint } from "./paint";
 import { markTramoSaved, saveTramoFrom, setTramoTurn } from "./tramo-save";
@@ -16,7 +16,7 @@ export const TramosCard = memo(function TramosCard({ paint }: { paint: Paint | n
   const { kv, session } = useRuntime();
   // Al guardar, la tarjeta se vuelve a pintar (con las pasadas nuevas).
   const [, bump] = useReducer((n: number) => n + 1, 0);
-  const card = paint ? tramoCard(paint.eng, loadTramos(kv), paint.turn) : null;
+  const card = paint ? tramoCard(paint.eng, allTramos(kv), paint.turn) : null;
   const name = useRef<HTMLInputElement>(null);
   // La vuelta atrás que se ofrece queda apuntada en el motor (la usa «Guardar ida y vuelta»).
   const offerTurn = card && card.showSave ? card.turn : undefined;

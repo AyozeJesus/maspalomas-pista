@@ -1,7 +1,8 @@
-// Salir: a pista (primero se elige el circuito: ui/overlays/CircuitPicker), ruta libre, entrenamiento en 8, probar los
-// sensores o la vuelta de ejemplo. Lo que pide permisos (sensores en el iPhone, GPS, Bluetooth) tiene que arrancar en el
-// mismo toque: aquí se llama sin esperas antes.
-import { openCircuitPicker } from "../../../../app/ui-store";
+// Salir: a pista (primero se elige el circuito: ui/overlays/CircuitPicker), ruta libre, entrenamiento en 8, las subidas
+// de montaña (isla, dirección y la lista: ui/overlays/SubidasSheet), probar los sensores o la vuelta de ejemplo. Lo que
+// pide permisos (sensores en el iPhone, GPS, Bluetooth) tiene que arrancar en el mismo toque: aquí se llama sin esperas
+// antes.
+import { openCircuitPicker, openSubidas } from "../../../../app/ui-store";
 import { useRuntime } from "../../../runtime-context";
 
 export function StartActions() {
@@ -38,6 +39,19 @@ export function StartActions() {
       <p className="start-note">
         Ochos en una explanada: cuenta cada 8 y su tiempo, la inclinación a cada lado y la
         velocidad. Antes de empezar, «Calibrar» con la moto parada y derecha.
+      </p>
+      <button
+        className="big"
+        id="subidas"
+        aria-haspopup="dialog"
+        aria-controls="pick-subida"
+        onClick={openSubidas}
+      >
+        Subidas de montaña
+      </button>
+      <p className="start-note">
+        Las de cada isla, en los dos sentidos, con tu mejor tiempo en cada una. En la ruta libre se
+        cronometran solas al pasar por ellas.
       </p>
       <div className="actions">
         <button id="sensors" onClick={() => void sensors.start()}>

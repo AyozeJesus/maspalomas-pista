@@ -45,6 +45,20 @@ export function tramoLine(tr: Tramo): string {
   );
 }
 
+// Una subida de montaña en su lista (hoja «Subidas de montaña»): como la de un tramo, más corta («6,1 km · 2 pasadas ·
+// mejor 4:35,0 (dom, 11 oct)»; sin camino aún, «2,0 km en línea recta · sin pasadas»).
+export function subidaLine(tr: Tramo): string {
+  const best = bestPass(tr);
+  const n = (tr.pasadas || []).length;
+  const [a, b] = tramoEnds(tr);
+  return (
+    (tr.largo ? fmt(tr.largo / 1000, 1) + " km" : fmtMeters(meters(a, b)) + " en línea recta") +
+    " · " +
+    (n ? n + (n === 1 ? " pasada" : " pasadas") : "sin pasadas") +
+    (best ? " · mejor " + fmtLap(best.tiempo, 1) + " (" + shortDate(best.fecha) + ")" : "")
+  );
+}
+
 // Lo que avisa «Buscar» al acabar.
 export function searchToast(added: number): string {
   return added

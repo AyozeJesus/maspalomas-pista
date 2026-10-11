@@ -41,3 +41,20 @@
 .sheet #pick-cancel {
   justify-self: center;
 }
+
+/* Subidas de montaña: la lista de una dirección es larga (la hoja se desplaza dentro, con la cabecera arriba), cada
+   fila con su detalle («Desde el bar de Los Loros») y su línea de tiempos; abajo, «Atrás» y «Cerrar». */
+.sheet.scroll {
+  max-height: calc(100dvh - 24px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.sheet h2:focus {
+  outline: none;
+}
+.sheet .hist-txt .sub-det {
+  font-style: italic;
+}
+.sheet .sheet-foot {
+  justify-content: center;
+}

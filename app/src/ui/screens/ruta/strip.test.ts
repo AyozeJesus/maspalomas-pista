@@ -129,4 +129,23 @@ describe("franja de la ruta libre", () => {
     const both2 = eng({ mark, route: { stats: { dist: 3820 } }, tramos: [tramo("Este", RUN)] });
     expect(stripView(both2, 85)).toMatchObject({ hidden: false, lap: "Este · 1:15" });
   });
+
+  it("una subida que aún no va hacia su meta (la contraria al acabar otra) no sale; la que sí, aunque vaya detrás", () => {
+    const phantom: TramoEstado = { ...RUN, ok: false };
+    const real: TramoEstado = { ...RUN, tiempo: 40.2, ok: true };
+    const two = eng({
+      tramos: [
+        tramo("Barranco Hondo (Santa Cruz)", phantom),
+        tramo("Cuesta de Las Tablas (sur)", real),
+      ],
+    });
+    expect(stripView(two, 85)).toMatchObject({ lap: "Cuesta de Las Tablas (sur) · 0:40" });
+    // Sola, sin confirmar: como si no hubiera nada (o el recién acabado).
+    expect(stripView(eng({ tramos: [tramo("X (sur)", phantom)] }), 85)).toEqual({ hidden: true });
+    const justDone = eng({
+      tramos: [tramo("Barranco Hondo (Santa Cruz)", phantom)],
+      tramoDone: { nombre: "Barranco Hondo (sur)", tiempo: 103.7, best: null, at: 80 },
+    });
+    expect(stripView(justDone, 85)).toMatchObject({ lap: "Barranco Hondo (sur)", best: "Primera" });
+  });
 });

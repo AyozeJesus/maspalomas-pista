@@ -9,6 +9,7 @@ import type { OchoTracker } from "../core/ocho";
 import * as T from "../core/maspalomas";
 import { Recorrido } from "../core/recorrido";
 import type { GateTracker, StoredPass, Tracker, PassResult, LatLon } from "../core/tramos";
+import type { TramoBook } from "../services/tramos-store";
 import { newClock, type ClockMap } from "./clock";
 import type { KeyValueStore } from "./kv";
 import { Series } from "./series";
@@ -190,13 +191,16 @@ export interface RecState {
   queue: Promise<unknown>;
 }
 
-// Un tramo seguido en esta ruta.
+// Un tramo seguido en esta ruta. book: dónde se guardan sus pasadas (sin él, en tus tramos); guard: una subida de
+// montaña (va en los dos sentidos: con las protecciones de GateTracker).
 export interface TramoRun {
   id: string;
   nombre: string;
   gate: boolean;
   tk: Tracker | GateTracker;
   best: StoredPass | null;
+  book?: TramoBook;
+  guard?: boolean;
 }
 
 export interface TramoPassRecord {

@@ -33,6 +33,12 @@ vi.mock("../../../services/export", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../../services/export")>()),
   exportSession: vi.fn(() => Promise.resolve(true)),
 }));
+// Como la app de antes, sin subidas de montaña (la ruta de Los Loros pasa por una; con ellas, en
+// src/engine/subidas.test.ts).
+vi.mock("../../../app/subidas", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../../app/subidas")>()),
+  todasLasSubidas: () => [],
+}));
 
 let demoCache: MergedSeriesSet | null = null;
 function demo(): MergedSeriesSet {

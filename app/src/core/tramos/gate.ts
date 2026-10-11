@@ -11,6 +11,20 @@ const GATE_TIGHT = 15; // m
 const GATE_DONE = 0.75; // parte del camino hecha para que la meta valga
 const GATE_STALL_S = 300; // s sin avanzar por el camino
 
+// Protecciones (`guard`) de las subidas de montaña, que van en los dos sentidos: al acabar una se sale por la salida de
+// la contraria, y una pasada así (que no va hacia su meta) ni se enseña ni puede contar.
+const AWAY = 1500; // m más lejos de la meta que al salir: se fue por otro lado
+const BACK = 150; // m: alejarse de la salida más que esto y volver a ella sin haber avanzado es dar la vuelta
+const OUT = 100; // m: el trozo de la salida que se guarda para reconocer la vuelta por la misma carretera
+const RETRACE = 10; // m: tan cerca de ese trozo, es la misma carretera (una herradura de otra altura va a 20–30 m)
+const OK_PATH = 100; // m por el camino aprendido: ya va por el tramo
+const OK_NEAR = 150; // m más cerca de la meta que al salir (sin camino): ya va hacia ella
+const OFF_PATH_S = 120; // s sin empezar a avanzar por el camino aprendido: sigue como si no lo tuviera
+// Para el panel basta menos: 10 s en marcha y haber estado 30 m más cerca de la meta que al salir (una carretera que
+// sale de lado tarda en acercarse 150 m, y puede alejarse luego un rato; la contraria de una que acaba nunca se acerca).
+const SHOW_S = 10;
+const SHOW_NEAR = 30;
+
 interface GateRun {
   t0: number;
   dA0: number;
@@ -19,6 +33,14 @@ interface GateRun {
   j: number;
   s: number;
   tS: number;
+  // Con guard: la distancia a la meta al salir y la menor desde entonces, lo más lejos de la salida, el trozo de la
+  // salida (m locales), si ya va por el tramo y si sigue sin el camino aprendido (no le cuadra).
+  dB0: number;
+  dBmin: number;
+  aMax: number;
+  out: [number, number][];
+  ok: boolean;
+  off: boolean;
 }
 
 interface Fix {
@@ -28,7 +50,27 @@ interface Fix {
   v: number;
 }
 
-export type GateEvent = { evento: "fin"; t0: number; t1: number };
+export interface GateOptions {
+  guard?: boolean;
+}
+
+// sinCamino: con guard, la pasada no siguió el camino aprendido (hay que volver a aprenderlo de ella).
+export type GateEvent = { evento: "fin"; t0: number; t1: number; sinCamino?: true };
+
+// Distancia de (x, y) a la polilínea `line`.
+function lineDist(line: readonly [number, number][], x: number, y: number): number {
+  let best = Infinity;
+  for (let i = 0; i < line.length; i++) {
+    const [ax, ay] = line[i];
+    const [bx, by] = i + 1 < line.length ? line[i + 1] : line[i];
+    const dx = bx - ax;
+    const dy = by - ay;
+    const l2 = dx * dx + dy * dy;
+    const u = l2 > 0 ? Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / l2)) : 0;
+    best = Math.min(best, Math.hypot(ax + dx * u - x, ay + dy * u - y));
+  }
+  return best;
+}
 
 // Sigue una pasada de salida a meta. Cuenta desde el momento en que se pasa más cerca de la salida (a menos de GATE_R;
 // parado allí, desde que se echa a rodar) hasta el momento en que se pasa más cerca de la meta, entre fijos (en línea
@@ -38,6 +80,11 @@ export type GateEvent = { evento: "fin"; t0: number; t1: number };
 // aprendido) o, sin camino aún, pasando a menos de GATE_TIGHT (o parando dentro del círculo): en la subida de Los
 // Loros, una herradura de abajo pasa a 25 m de un punto de arriba. Acaba al salir del círculo de la meta o al pararse
 // en él.
+//
+// Con `guard` (las subidas de montaña): una pasada que se aleja de su meta 1,5 km más que al salir se deshace; la que
+// vuelve a pasar por la salida sin haber avanzado (por la misma carretera, si aún no hay camino: dio la vuelta) vuelve
+// a empezar allí; la que no sigue el camino aprendido en 2 min sigue como sin él y avisa al acabar (sinCamino); y el
+// panel dice si ya va de verdad por el tramo (ok).
 export class GateTracker {
   readonly tramo: GateTramo;
   readonly toXY: ToXY;
@@ -46,16 +93,18 @@ export class GateTracker {
   readonly far: number;
   // Con el camino ya aprendido, por dónde va (para la meta y la diferencia con la mejor pasada en el panel).
   readonly geo: Geometry | null;
+  readonly guard: boolean;
   run: GateRun | null = null;
-  private vis: { t: number; d: number } | null = null;
+  private vis: { t: number; d: number; x: number; y: number } | null = null;
   private prev: Fix | null = null;
 
-  constructor(tramo: GateTramo) {
+  constructor(tramo: GateTramo, opts: GateOptions = {}) {
     this.tramo = tramo;
     this.toXY = localizer(tramo.salida[0], tramo.salida[1]);
     this.B = this.toXY(tramo.meta[0], tramo.meta[1]);
     this.far = 3 * Math.hypot(this.B[0], this.B[1]) + 2000;
     this.geo = needsPath(tramo) ? null : geometry(tramo as GateTramo & { pts: LatLon[] });
+    this.guard = !!opts.guard;
   }
 
   reset(): void {
@@ -69,10 +118,10 @@ export class GateTracker {
     const prev = this.prev && t - this.prev.t <= 5 ? this.prev : null;
     this.prev = cur;
     const moving = cur.v > 1;
-    // Lo más cerca de (px, py) desde el fijo anterior hasta este: { d, t }. Si en este se ha parado, llegó frenando
-    // (en el doble de lo que se tarda a la velocidad del anterior), no en este fijo.
+    // Lo más cerca de (px, py) desde el fijo anterior hasta este: { d, t } y dónde. Si en este se ha parado, llegó
+    // frenando (en el doble de lo que se tarda a la velocidad del anterior), no en este fijo.
     const near = (px: number, py: number) => {
-      if (!prev) return { d: Math.hypot(x - px, y - py), t };
+      if (!prev) return { d: Math.hypot(x - px, y - py), t, x, y };
       const dx = x - prev.x;
       const dy = y - prev.y;
       const l2 = dx * dx + dy * dy;
@@ -83,44 +132,68 @@ export class GateTracker {
         !moving && prev.v > 1
           ? Math.min(t, prev.t + (2 * u * Math.sqrt(l2)) / prev.v)
           : prev.t + (t - prev.t) * u;
-      return { d, t: tu };
+      return { d, t: tu, x: prev.x + dx * u, y: prev.y + dy * u };
     };
     const a = near(0, 0);
     const b = near(this.B[0], this.B[1]);
     const dB = Math.hypot(x - this.B[0], y - this.B[1]);
     let r = this.run;
     if (a.d < GATE_R && !(r && r.atB)) {
-      // Parado en la salida, o pasando más cerca que donde empezó: la salida es ahora.
-      if (r && (!moving || a.d < r.dA0)) this.run = r = null;
+      // Parado en la salida, o pasando más cerca que donde empezó: la salida es ahora. Con guard, también si dio la
+      // vuelta (lo de antes no era esta pasada).
+      if (r && (!moving || a.d < r.dA0 || this.turnedBack(r, a.x, a.y))) this.run = r = null;
       if (!r) {
-        if (!moving) this.vis = { t, d: Math.hypot(x, y) };
-        else if (!this.vis || a.d <= this.vis.d) this.vis = { t: a.t, d: a.d };
+        if (!moving) this.vis = { t, d: Math.hypot(x, y), x, y };
+        else if (!this.vis || a.d <= this.vis.d) this.vis = { t: a.t, d: a.d, x: a.x, y: a.y };
         return null;
       }
     } else if (this.vis && !r) {
       // Deja el círculo de la salida: empieza la pasada.
-      this.run = r = { t0: this.vis.t, dA0: this.vis.d, atB: null, dB, j: 0, s: 0, tS: this.vis.t };
+      const vis = this.vis;
+      this.run = r = {
+        t0: vis.t,
+        dA0: vis.d,
+        atB: null,
+        dB,
+        j: 0,
+        s: 0,
+        tS: vis.t,
+        dB0: dB,
+        dBmin: dB,
+        aMax: 0,
+        out: [[vis.x, vis.y]],
+        ok: false,
+        off: false,
+      };
       this.vis = null;
     }
     if (!r) return null;
     r.dB = dB;
-    if (this.geo) {
-      const [gx, gy] = this.geo.toXY(lat, lon);
-      const p = project(this.geo, gx, gy, r.j - 5, r.j + 60);
+    const geo = r.off ? null : this.geo;
+    if (geo) {
+      const [gx, gy] = geo.toXY(lat, lon);
+      const p = project(geo, gx, gy, r.j - 5, r.j + 60);
       if (p && p.d < ON && p.s > r.s) {
         r.s = p.s;
         r.j = p.j;
         r.tS = t;
       }
     }
-    // Se fue por otro lado: muy lejos de la meta, o (con camino) 5 min sin avanzar por él. La pasada no vale.
-    if (t - r.t0 > GATE_MAX_S || dB > this.far || (this.geo && t - r.tS > GATE_STALL_S)) {
+    if (this.guard) this.check(r, t, x, y, !!geo);
+    // Se fue por otro lado: muy lejos de la meta, o (con camino) 5 min sin avanzar por él. La pasada no vale. Con
+    // guard, también 1,5 km más lejos de la meta que al salir.
+    if (
+      t - r.t0 > GATE_MAX_S ||
+      dB > this.far ||
+      (geo && t - r.tS > GATE_STALL_S) ||
+      (this.guard && dB > r.dB0 + AWAY)
+    ) {
       this.reset();
       return null;
     }
-    const done = this.geo ? r.s >= GATE_DONE * this.geo.L : true;
+    const done = geo ? r.s >= GATE_DONE * geo.L : true;
     if (b.d < GATE_R && done) {
-      if ((b.d < (this.geo ? GATE_R : GATE_TIGHT) || !moving) && (!r.atB || b.d < r.atB.d))
+      if ((b.d < (geo ? GATE_R : GATE_TIGHT) || !moving) && (!r.atB || b.d < r.atB.d))
         r.atB = { t: b.t, d: b.d };
       // Parado en la meta: ha llegado.
       return !moving && r.atB ? this.finish() : null;
@@ -129,9 +202,31 @@ export class GateTracker {
     return r.atB ? this.finish() : null;
   }
 
+  // Con guard, cada fijo de una pasada: el trozo de la salida, si ya va de verdad por el tramo (avanzando por el camino
+  // o acercándose a la meta) y, con camino, si en 2 min no ha empezado a seguirlo (sigue sin él).
+  private check(r: GateRun, t: number, x: number, y: number, withPath: boolean): void {
+    const dA = Math.hypot(x, y);
+    if (r.aMax <= OUT && r.out.length < 50) r.out.push([x, y]);
+    r.aMax = Math.max(r.aMax, dA);
+    r.dBmin = Math.min(r.dBmin, r.dB);
+    if (!r.ok)
+      r.ok = withPath
+        ? r.s >= OK_PATH
+        : r.dB0 - r.dBmin >= Math.min(OK_NEAR, Math.max(30, 0.25 * r.dB0));
+    if (withPath && !r.ok && t - r.t0 > OFF_PATH_S) r.off = true;
+  }
+
+  // ¿Vuelve a pasar por la salida después de dar la vuelta? Lejos ya (más de BACK) sin haber avanzado por el tramo y,
+  // sin camino que lo diga, por la misma carretera por la que salió (una herradura de otra altura va a 20–30 m).
+  private turnedBack(r: GateRun, px: number, py: number): boolean {
+    if (!this.guard || r.ok || r.aMax <= BACK) return false;
+    return (!!this.geo && !r.off) || lineDist(r.out, px, py) < RETRACE;
+  }
+
   private finish(): GateEvent {
     const r = this.run as GateRun & { atB: { t: number; d: number } };
     const out: GateEvent = { evento: "fin", t0: r.t0, t1: r.atB.t };
+    if (this.guard && r.off) out.sinCamino = true;
     this.reset();
     return out;
   }
@@ -144,6 +239,7 @@ export class GateTracker {
   estado(t: number): TramoEstado {
     const r = this.run;
     if (!r) return { en: false };
+    const geo = r.off ? null : this.geo;
     return {
       en: true,
       gate: true,
@@ -151,9 +247,10 @@ export class GateTracker {
       tiempo: t - r.t0,
       dMeta: r.dB,
       // Con camino: por dónde va (m desde la salida) y el tiempo en el último fijo que avanzó.
-      s: this.geo ? r.s : null,
+      s: geo ? r.s : null,
       tFix: r.tS - r.t0,
-      frac: this.geo ? Math.max(0, Math.min(1, r.s / this.geo.L)) : null,
+      frac: geo ? Math.max(0, Math.min(1, r.s / geo.L)) : null,
+      ...(this.guard ? { ok: r.ok || (t - r.t0 >= SHOW_S && r.dB0 - r.dBmin >= SHOW_NEAR) } : {}),
     };
   }
 }
@@ -164,8 +261,9 @@ export function findGatePasses(
   tramo: GateTramo,
   loc: LocSeries,
   open?: boolean,
+  opts?: GateOptions,
 ): { t0: number; t1: number }[] {
-  const tk = new GateTracker(tramo);
+  const tk = new GateTracker(tramo, opts);
   const out: { t0: number; t1: number }[] = [];
   let last: number | null = null;
   for (let i = 0; i < loc.t.length; i++) {

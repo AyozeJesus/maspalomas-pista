@@ -66,4 +66,6 @@ export type TramoEstado =
       frac: number | null;
       // m a la meta en línea recta (tramos de salida y meta).
       dMeta?: number;
+      // Subidas (guard): ya va de verdad por el tramo. Sin él (los demás tramos), siempre.
+      ok?: boolean;
     };
