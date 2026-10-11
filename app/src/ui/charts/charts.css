@@ -1,0 +1,240 @@
+/* Gráficas en SVG (ui/charts) con el tema de siempre: fondo de las gráficas, rejilla y ejes en líneas finas que no
+   compiten con los datos, cifras tabulares. Cada cosa lleva siempre su color: la mejor vuelta en morado (como en los
+   tiempos), la vuelta que se mira en naranja, el objetivo en gris claro discontinuo; perder en rojo y ganar en verde
+   (con su signo en el texto: el color nunca es lo único). Morado y naranja se distinguen también con daltonismo. */
+
+.ch {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+.ch[data-empty] {
+  display: none;
+}
+/* Una tarjeta que es solo su gráfica no sale sin datos. */
+.card.ch-card:has(> .ch[data-empty]) {
+  display: none;
+}
+
+.ch-svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: var(--r-md);
+  background: #0a0d10;
+  /* El dedo de lado lee la gráfica; de arriba abajo, la página sigue desplazándose. */
+  touch-action: pan-y;
+  -webkit-user-select: none;
+  user-select: none;
+}
+.ch-svg:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+.ch-svg text {
+  fill: var(--muted);
+  font: 500 11px var(--sans);
+  font-variant-numeric: tabular-nums;
+}
+.ch-svg .ch-strong {
+  fill: var(--ink);
+  font-weight: 700;
+}
+
+.ch-grid {
+  stroke: rgba(255, 255, 255, 0.08);
+  stroke-width: 1;
+}
+.ch-guide {
+  stroke: rgba(255, 255, 255, 0.05);
+  stroke-width: 1;
+}
+.ch-zero {
+  stroke: rgba(255, 255, 255, 0.28);
+  stroke-width: 1;
+}
+
+.ch-plot {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+.ch-line {
+  fill: none;
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+.ch-trend {
+  stroke: rgba(196, 204, 210, 0.4);
+  stroke-width: 1.5;
+}
+.ch-best {
+  stroke: #a86ff0;
+}
+.ch-lap {
+  stroke: #f29b38;
+}
+.ch-model {
+  stroke: #c4ccd2;
+  stroke-dasharray: 6 4;
+  stroke-width: 1.5;
+}
+
+.ch-loss {
+  fill: rgba(255, 138, 127, 0.2);
+}
+.ch-gain {
+  fill: rgba(76, 211, 126, 0.2);
+}
+.ch-line.ch-loss {
+  fill: none;
+  stroke: #ff8a7f;
+}
+.ch-line.ch-gain {
+  fill: none;
+  stroke: #4cd37e;
+}
+
+.ch-target {
+  stroke: #c4ccd2;
+  stroke-width: 1;
+  stroke-dasharray: 4 4;
+}
+.ch-svg .ch-target-label {
+  fill: var(--ink-2);
+}
+
+.ch-dot {
+  fill: #8b969e;
+  stroke: #0a0d10;
+  stroke-width: 2;
+}
+.ch-dot.best {
+  fill: #a86ff0;
+}
+.ch-pick {
+  fill: none;
+  stroke: var(--ink);
+  stroke-width: 1.5;
+}
+
+.ch-cursor {
+  stroke: rgba(255, 255, 255, 0.75);
+  stroke-width: 1;
+}
+.ch-mark {
+  stroke: #0a0d10;
+  stroke-width: 2;
+}
+.ch-mark.best {
+  fill: #a86ff0;
+}
+.ch-mark.lap {
+  fill: #f29b38;
+}
+.ch-mark.model {
+  fill: #c4ccd2;
+}
+.ch-mark.loss {
+  fill: #ff8a7f;
+}
+.ch-mark.gain {
+  fill: #4cd37e;
+}
+
+/* Lo que dice el punto tocado (o cómo se lee), encima de la gráfica: siempre su alto, para que nada salte. */
+.ch-readout {
+  min-height: 1.45em;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+.ch-readout.hint {
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.ch-legend {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-2);
+}
+.ch-legend span::before {
+  content: "";
+  display: inline-block;
+  width: 14px;
+  height: 3px;
+  border-radius: 2px;
+  margin-right: 6px;
+  vertical-align: middle;
+  background: var(--muted);
+}
+.ch-legend .k-best::before {
+  background: #a86ff0;
+}
+.ch-legend .k-lap::before {
+  background: #f29b38;
+}
+.ch-legend .k-model::before {
+  background: repeating-linear-gradient(90deg, #c4ccd2 0 5px, transparent 5px 8px);
+}
+.ch-legend .k-loss::before,
+.ch-legend .k-gain::before {
+  width: 10px;
+  height: 10px;
+}
+.ch-legend .k-loss::before {
+  background: #ff8a7f;
+}
+.ch-legend .k-gain::before {
+  background: #4cd37e;
+}
+.ch-legend .k-target::before {
+  background: repeating-linear-gradient(90deg, #c4ccd2 0 4px, transparent 4px 8px);
+  height: 1px;
+}
+
+/* Qué vuelta se compara: botones en fila que pasan a la siguiente si no caben. */
+.ch-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.ch-chips button {
+  min-height: 44px;
+  padding: 6px 14px;
+  font-size: 15px;
+  border-radius: 999px;
+  font-variant-numeric: tabular-nums;
+}
+.ch-chips button[aria-pressed="true"] {
+  background: var(--surface-3);
+  border-color: #f29b38;
+}
+.ch-chips button.model[aria-pressed="true"] {
+  border-color: #c4ccd2;
+}
+.ch-note {
+  color: var(--muted);
+  font-size: 14px;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .ch-svg {
+    animation: ch-in 0.25s ease-out;
+  }
+}
+@keyframes ch-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}

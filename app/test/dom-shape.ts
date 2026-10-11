@@ -24,6 +24,8 @@ export function domShape(el: Element, skip?: (el: Element, name: string) => bool
     attrs[a.name] = a.value;
   }
   const out: Shape = { tag: el.tagName.toLowerCase(), attrs, kids: [] };
+  // Una gráfica (data-chart) se compara solo por fuera: lo de dentro es su dibujo, como los píxeles de un lienzo.
+  if (el.hasAttribute("data-chart")) return out;
   if (el.tagName === "INPUT" || el.tagName === "SELECT")
     out.value = (el as HTMLInputElement | HTMLSelectElement).value;
   if (el.tagName === "BUTTON") out.disabled = (el as HTMLButtonElement).disabled;

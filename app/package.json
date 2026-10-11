@@ -16,6 +16,11 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "@visx/axis": "^4.0.0",
+    "@visx/grid": "^4.0.0",
+    "@visx/group": "^4.0.0",
+    "@visx/scale": "^4.0.0",
+    "@visx/shape": "^4.0.0",
     "idb": "^8.0.4",
     "jszip": "^3.10.1",
     "react": "^19.3.0",

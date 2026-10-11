@@ -2,7 +2,7 @@
 // se vio al pasar por meta, el de la lista, el de la imagen y el de tu mejor vuelta guardada (el análisis lo afinaba
 // unas milésimas y boxes decía 1:07,21 donde todo lo demás decía 1:07,20). Del análisis, lo que el cronómetro no mide:
 // inclinación y punta de cada vuelta.
-import type { AnalyzeResult } from "../../../core/maspalomas";
+import type { AnalyzeResult, Grid } from "../../../core/maspalomas";
 import type { Engine, Lap } from "../../../engine";
 import { fmt, fmtLap, fmtSigned } from "../../../lib/format";
 
@@ -16,13 +16,17 @@ export interface LapTable {
   rows: LapCell[][];
   // La mejor vuelta de la tabla (s) o null si no hay ninguna.
   bestT: number | null;
+  // Las vueltas de la tabla, en su orden (la fila i es la vuelta i + 1): las gráficas de boxes usan las mismas.
+  laps: TableLap[];
 }
 
-// Una vuelta de la tabla: la del análisis (con inclinación y punta) o, sin análisis, la del cronómetro.
-interface TableLap {
+// Una vuelta de la tabla: la del análisis (con inclinación, punta y su rejilla de distancia) o, sin análisis, la del
+// cronómetro.
+export interface TableLap {
   time: number;
   leanMax?: number;
   vMax?: number;
+  profile?: Grid;
 }
 
 export function lapTable(laps: readonly Lap[], analysis: AnalyzeResult | null): LapTable {
@@ -41,9 +45,9 @@ export function lapTable(laps: readonly Lap[], analysis: AnalyzeResult | null): 
         .filter((l) => l.valid)
         .map((l) => {
           const m = timerOf(l);
-          return { time: m ? m.time : l.time, leanMax: l.leanMax, vMax: l.vMax };
+          return { time: m ? m.time : l.time, leanMax: l.leanMax, vMax: l.vMax, profile: l.grid };
         })
-    : valid;
+    : valid.map((l) => ({ time: l.time }));
   const bestT = list.length ? Math.min(...list.map((l) => l.time)) : null;
   // Máximos de la tanda (inclinación y punta), marcados como la mejor vuelta.
   const maxOf = (key: "leanMax" | "vMax") => {
@@ -68,7 +72,7 @@ export function lapTable(laps: readonly Lap[], analysis: AnalyzeResult | null): 
       best: l.vMax === topV && list.length > 1,
     },
   ]);
-  return { rows, bestT };
+  return { rows, bestT, laps: list };
 }
 
 type SubEngine = Pick<Engine, "laps" | "best" | "calib" | "extInfo" | "lagR2" | "lag">;

@@ -6,6 +6,7 @@ import { BackIcon } from "../../icons";
 import { useRuntime } from "../../runtime-context";
 import { BRAKES_NOTE } from "./brake-table";
 import { BrakesCard } from "./BrakesCard";
+import { LapCompareCard } from "./LapCompareCard";
 import { LapsCard } from "./LapsCard";
 import { OptionsCard } from "./OptionsCard";
 import { PitsMain } from "./PitsMain";
@@ -50,7 +51,12 @@ export function Pits() {
       </header>
       {/* Lo de cada entrada en boxes (dos toques, calibrar, nombre, cortar…) empieza de nuevo en la siguiente. */}
       <PitsMain key={"m" + entry} viewing={viewing} />
-      <LapsCard laps={view ? view.laps : []} ideal={view ? view.ideal : ""} />
+      <LapsCard
+        laps={view ? view.laps : []}
+        ideal={view ? view.ideal : ""}
+        chart={view ? view.chart : null}
+      />
+      <LapCompareCard data={view ? view.chart : null} />
       <BrakesCard rows={view ? view.brakes : []} note={view ? BRAKES_NOTE : ""} />
       <TipsCard tips={view ? view.tips : []} />
       <OptionsCard key={"o" + entry} view={view} onRenamed={onRenamed} />

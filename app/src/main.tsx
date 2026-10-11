@@ -10,13 +10,14 @@ import { createRuntime } from "./runtime";
 import appCss from "./styles/app.css?inline";
 import rootCss from "./styles/root.css?inline";
 import sheetCss from "./styles/sheet.css?inline";
+import chartsCss from "./ui/charts/charts.css?inline";
 import { RuntimeContext } from "./ui/runtime-context";
 
 // Los estilos van dentro de la página, como en la de siempre: llegan con ella (sin un archivo aparte que pueda faltar
 // sin cobertura o servirse con otro tipo) y están antes de pintar nada. Sin ellos los lienzos que se miden por su caja
 // crecerían sin parar.
 const style = document.createElement("style");
-style.textContent = appCss + "\n" + rootCss + "\n" + sheetCss;
+style.textContent = appCss + "\n" + rootCss + "\n" + sheetCss + "\n" + chartsCss;
 document.head.appendChild(style);
 
 const runtime = createRuntime();

@@ -7,6 +7,7 @@ import { canName, engName, sessionIdOf } from "../../../services/naming";
 import type { PistaStore } from "../../../storage";
 import { brakeRows } from "./brake-table";
 import { coachPlan, type Tip } from "./coach-plan";
+import { lapChartData, type LapChartData } from "./lap-chart-data";
 import { lapTable, pitsSub, type LapCell } from "./lap-table";
 import { tandaCut, type TandaCut } from "./tanda-cut";
 
@@ -17,6 +18,8 @@ export interface PitsView {
   title: string;
   sub: string;
   laps: LapCell[][];
+  // Las gráficas de las vueltas (tiempos por vuelta y una frente a la mejor).
+  chart: LapChartData;
   ideal: string;
   tips: Tip[];
   brakes: Cell[][];
@@ -34,7 +37,8 @@ export function pitsView(
   const viewing = !!E.viewing;
   const analysis = E.pitsAnalysis || null;
   const table = lapTable(E.laps, analysis);
-  const plan = coachPlan(analysis, target(settings));
+  const goal = target(settings);
+  const plan = coachPlan(analysis, goal);
   const sid = sessionIdOf(E);
   return {
     entry,
@@ -42,6 +46,7 @@ export function pitsView(
     title: (viewing && engName(E)) || "Boxes",
     sub: pitsSub(E, table.bestT),
     laps: table.rows,
+    chart: lapChartData(table, analysis, goal),
     ideal: plan.ideal,
     tips: plan.tips,
     brakes: brakeRows(E),
