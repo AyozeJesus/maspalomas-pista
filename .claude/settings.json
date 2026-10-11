@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "env": {
+    "PISTA_REVISION_OBLIGATORIA": "1"
+  },
+  "permissions": {
+    "allow": [
+      "Bash(sh .claude/scripts/marcar-revisado.sh)",
+      "Bash(sh .claude/scripts/instalar-git-hooks.sh)",
+      "Bash(sh .claude/git-hooks/pre-commit.test.sh)",
+      "Bash(npm run typecheck)",
+      "Bash(npm run lint)",
+      "Bash(npm test)",
+      "Bash(npm test *)",
+      "Bash(npx vitest run *)"
+    ]
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh \"$CLAUDE_PROJECT_DIR/.claude/scripts/instalar-git-hooks.sh\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,44 @@
+#!/bin/sh
+# pre-commit de poortelemetry: un commit solo entra si lo que de verdad va en él (el índice del commit, también con
+# -a, con rutas o con «git add … && git commit») ya pasó /revisar, que apunta su árbol con marcar-revisado.sh.
+#
+# Solo actúa en las sesiones de Claude abiertas en el repo: .claude/settings.json pone PISTA_REVISION_OBLIGATORIA=1.
+# Los commits a mano y los de sesiones abiertas desde otra carpeta pasan como siempre.
+# Lo activa .claude/scripts/instalar-git-hooks.sh (core.hooksPath = .claude/git-hooks; lo corre el SessionStart).
+#
+# Pasan sin revisión:
+#   - git revert, cherry-pick, merge y rebase: no pasan por pre-commit, y un revert, cherry-pick o merge a medias
+#     cerrado con «git commit» tampoco (REVERT_HEAD, CHERRY_PICK_HEAD, MERGE_HEAD);
+#   - un commit sin nada nuevo (cambiar el mensaje, --allow-empty) y el de BUILD al aterrizar (solo version.ts);
+#   - con PISTA_SIN_REVISION=1 en el entorno del commit, SOLO si el usuario lo pidió expresamente.
+# Ante un fallo de git dentro del hook deja pasar: nunca deja a nadie sin poder hacer commit por un error suyo.
+# Pruebas: sh .claude/git-hooks/pre-commit.test.sh
+
+[ "${PISTA_REVISION_OBLIGATORIA:-}" = 1 ] || exit 0
+if [ "${PISTA_SIN_REVISION:-}" = 1 ]; then
+  echo "poortelemetry: commit SIN la revisión de /revisar (PISTA_SIN_REVISION=1)." >&2
+  exit 0
+fi
+
+gitdir=$(git rev-parse --absolute-git-dir) || exit 0
+for a_medias in REVERT_HEAD CHERRY_PICK_HEAD MERGE_HEAD; do
+  [ -f "$gitdir/$a_medias" ] && exit 0
+done
+
+preparado=$(git diff --cached --name-only) || exit 0
+[ -n "$preparado" ] || exit 0
+[ "$preparado" = app/src/app/version.ts ] && exit 0
+
+arbol=$(git write-tree) || exit 0
+comun=$(git rev-parse --path-format=absolute --git-common-dir) || exit 0
+grep -qx "$arbol" "$comun/poortelemetry-revisado" 2>/dev/null && exit 0
+
+cuantos=$(printf '%s\n' "$preparado" | wc -l | tr -d ' ')
+[ "$cuantos" = 1 ] && cuantos="1 archivo" || cuantos="$cuantos archivos"
+cat >&2 <<EOF
+poortelemetry: este commit ($cuantos) no ha pasado la revisión.
+Antes de cada commit: skill «revisar» (/revisar). Los agentes expertos analizan lo preparado, se corrige lo que
+encuentren, quedan en verde tipos + lint + pruebas y .claude/scripts/marcar-revisado.sh lo apunta; entonces este
+mismo commit pasa. Si cambias lo preparado después, hay que revisarlo otra vez. No uses --no-verify.
+EOF
+exit 1
