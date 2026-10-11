@@ -1,5 +1,5 @@
 // El motor repasa una grabación y su resumen (ruta, curvas, frenadas, vueltas, calibración, canales) no cambia sin
-// querer. La paridad con la app de antes se comprueba en el navegador (scripts/parity/engine.mjs: mismos números,
+// querer. La paridad con la app de antes se comprueba en el navegador (scripts/parity/engine.ts: mismos números,
 // carácter a carácter, que live.js en Chromium; en Node no se puede porque su V8 redondea distinto exp, sin, atan2…).
 // Aquí, en Node, una instantánea de la tanda de ejemplo (sintética) que avisa de cualquier cambio: exacta en todo menos
 // en el último bit de los números, que cambia de una plataforma a otra (test/close.ts). Para rehacerla tras un cambio

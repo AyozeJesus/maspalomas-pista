@@ -9,7 +9,7 @@
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "typecheck": "tsc -b --noEmit",
-    "lint": "eslint .",
+    "lint": "export NODE_OPTIONS='--experimental-strip-types --no-warnings=ExperimentalWarning' ESLINT_FLAGS=unstable_native_nodejs_ts_config && eslint . && cd .. && eslint --config app/eslint.config.ts garaje",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "test": "vitest run",
