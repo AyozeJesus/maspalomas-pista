@@ -74,7 +74,11 @@ describe("garaje: lista de tandas", () => {
 
   it("la etiqueta lo dice", () => {
     const tag = (id: string) => stateTag(list[id].meta, list[id].resumen);
-    expect(tag("20261011-100000-ru01")).toEqual(["tag", "Los Loros · 1 vuelta · mejor 4:52,04"]);
+    // Sin perder los km ni la tumbada de la ruta (lo de siempre).
+    expect(tag("20261011-100000-ru01")).toEqual([
+      "tag",
+      "ruta libre · 9,8 km · máx 35° · Los Loros · 1 vuelta · mejor 4:52,04",
+    ]);
     expect(tag("20261011-110000-pi01")).toEqual(["tag", "terminada · GPS 25 Hz"]);
     expect(tag("20261011-120000-ra01")).toEqual(["tag", "ruta libre"]);
     expect(tag("20261011-130000-pi02")).toEqual(["tag", "terminada"]);
