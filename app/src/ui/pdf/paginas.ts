@@ -16,13 +16,22 @@ import {
 } from "./captura";
 import { pageCss } from "./css";
 
-// A4 a 150 puntos por pulgada.
+// A4 a 150 puntos por pulgada, y lo que queda dentro de los márgenes y encima del pie.
 export const PAGE = { w: 1240, h: 1754, margin: 56, foot: 44 };
+const CW = PAGE.w - 2 * PAGE.margin;
+const PAGE_H = PAGE.h - 2 * PAGE.margin - PAGE.foot;
 // Entre tarjeta y tarjeta, como en la pantalla (px de CSS).
 const GAP = 16;
 const JPEG_QUALITY = 0.9;
 // Un trozo de tarjeta partida, como poco esta parte de la página.
 const MIN_SLICE = 0.2;
+// Una imagen (el mapa), como mucho esta parte de la página: cabe con el título de su tarjeta.
+const MAX_IMAGE = 0.8;
+
+// Lo más alto (px de CSS) que puede ser una imagen de una tarjeta de ese ancho.
+export function maxImageHeight(blockWidth: number): number {
+  return (MAX_IMAGE * PAGE_H * blockWidth) / CW;
+}
 
 // Las filas [y0, y1) de la tarjeta block (px de CSS) pintadas a scale píxeles por px.
 export type RenderSlice = (
@@ -88,15 +97,13 @@ export async function composePages(
   look: PageLook,
   footer: string,
 ): Promise<PdfPage[]> {
-  const cw = PAGE.w - 2 * PAGE.margin;
-  const pageH = PAGE.h - 2 * PAGE.margin - PAGE.foot;
-  const minSlice = Math.round(pageH * MIN_SLICE);
+  const minSlice = Math.round(PAGE_H * MIN_SLICE);
   // Cada tarjeta a lo ancho de la página (una tabla más ancha que el móvil, algo más pequeña).
-  const scales = blocks.map((b) => cw / b.w);
+  const scales = blocks.map((b) => CW / b.w);
   const base = Math.min(...blocks.map((b) => b.w));
   const { slices, pages } = packBlocks(
     blocks.map((b, i) => Math.ceil(b.h * scales[i])),
-    { pageH, gap: Math.round((GAP * cw) / base), minSlice },
+    { pageH: PAGE_H, gap: Math.round((GAP * CW) / base), minSlice },
     (i, from, maxEnd) =>
       bestCut(
         blocks[i].cuts.map((c) => c * scales[i]),
@@ -142,7 +149,7 @@ export async function screenPdf(
     vw: view.innerWidth,
     vh: view.innerHeight,
   });
-  const { blocks, unmount } = mountClone(screen, prepareClone(screen));
+  const { blocks, unmount } = mountClone(screen, prepareClone(screen), maxImageHeight);
   let markups: string[];
   try {
     markups = blocks.map((b) => blockMarkup(b, screen, css));

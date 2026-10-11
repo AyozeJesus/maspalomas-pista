@@ -1,6 +1,17 @@
 import { describe, expect, it, vi } from "vitest";
 import { asCanvas, asDocument, DrawLog } from "../../../test/fake-canvas";
-import { composePages, PAGE } from "./paginas";
+import { composePages, maxImageHeight, PAGE } from "./paginas";
+
+describe("maxImageHeight", () => {
+  it("una imagen (el mapa) ocupa como mucho el 80 % de la página, a la escala de su tarjeta", () => {
+    const pageH = PAGE.h - 2 * PAGE.margin - PAGE.foot;
+    const cw = PAGE.w - 2 * PAGE.margin;
+    // El mapa de 520 px de un móvil de 393 de ancho no cabe con su título; con el tope, sí.
+    expect(maxImageHeight(393)).toBeCloseTo((0.8 * pageH * 393) / cw, 6);
+    expect(maxImageHeight(393)).toBeLessThan(520);
+    expect(maxImageHeight(393) * (cw / 393)).toBeCloseTo(0.8 * pageH, 6);
+  });
+});
 
 const LOOK = { family: "Roboto", color: "#f3f5f6", background: "#050607" };
 // Ancho útil de la página y la escala de una tarjeta de móvil (360 px de CSS).

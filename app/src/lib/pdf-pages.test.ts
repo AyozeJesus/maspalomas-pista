@@ -88,6 +88,31 @@ describe("packBlocks", () => {
     ]);
   });
 
+  it("la alta que no tiene dónde cortarse en lo que queda (una gráfica a caballo) empieza en la siguiente", () => {
+    // Sitio de sobra (780), pero el único corte seguro está en 900: no cabe en lo que queda.
+    const cut = (_b: number, from: number, maxEnd: number) => bestCut([900], from, maxEnd, 100);
+    const r = packBlocks([200, 1500], O, cut);
+    expect(r.slices.map((s) => [s.page, s.y, s.srcY, s.h])).toEqual([
+      [0, 0, 0, 200],
+      [1, 0, 0, 900],
+      [2, 0, 900, 600],
+    ]);
+    // Con un corte seguro en lo que queda, empieza donde está.
+    const ok = packBlocks([200, 1500], O, (_b, from, maxEnd) =>
+      bestCut([700, 1400], from, maxEnd, 100),
+    );
+    expect(ok.slices.map((s) => [s.page, s.y, s.srcY, s.h])).toEqual([
+      [0, 0, 0, 200],
+      [0, 220, 0, 700],
+      [1, 0, 700, 800],
+    ]);
+    // Arriba de una página no hay a dónde llevarla: se corta en el borde.
+    expect(packBlocks([1500], O, () => NaN).slices.map((s) => [s.page, s.h])).toEqual([
+      [0, 1000],
+      [1, 500],
+    ]);
+  });
+
   it("sin alto no se pone; sin nada, ninguna página", () => {
     expect(packBlocks([0, 300, -5, NaN], O).slices).toEqual([
       { block: 1, srcY: 0, h: 300, page: 0, y: 0 },

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { blockMarkup, prepareClone, windowSvg, type CanvasShot } from "./captura";
+import { blockMarkup, mountClone, prepareClone, windowSvg, type CanvasShot } from "./captura";
 
 const SCREEN =
   '<main class="page" id="ruta-fin">' +
@@ -26,6 +26,7 @@ function live(): HTMLElement {
 }
 
 afterEach(() => {
+  vi.restoreAllMocks();
   document.body.innerHTML = "";
 });
 
@@ -71,6 +72,79 @@ describe("prepareClone", () => {
     const screen = live();
     screen.hidden = true;
     expect(prepareClone(screen, () => null).hidden).toBe(false);
+  });
+});
+
+describe("mountClone", () => {
+  // jsdom no mide: cada elemento dice su caja en data-top/-w/-h (o en su style, si se le ha puesto) y su tabla, lo que
+  // mide entera (data-sw) y lo que se ve (data-cw).
+  function fakeLayout() {
+    const num = (el: Element, k: string) => Number((el as HTMLElement).dataset[k] ?? 0);
+    vi.spyOn(Element.prototype, "getBoundingClientRect").mockImplementation(function (
+      this: Element,
+    ) {
+      const st = (this as HTMLElement).style;
+      const top = num(this, "top");
+      const w = st.width ? parseFloat(st.width) : num(this, "w");
+      const h = st.height ? parseFloat(st.height) : num(this, "h");
+      return {
+        x: 0,
+        y: top,
+        top,
+        left: 0,
+        width: w,
+        height: h,
+        right: w,
+        bottom: top + h,
+      } as DOMRect;
+    });
+    vi.spyOn(Element.prototype, "scrollWidth", "get").mockImplementation(function (this: Element) {
+      return num(this, "sw");
+    });
+    vi.spyOn(Element.prototype, "clientWidth", "get").mockImplementation(function (this: Element) {
+      return num(this, "cw");
+    });
+  }
+
+  it("mide cada tarjeta fuera de la vista: sin las ocultas, la imagen alta encogida, la tabla ancha entera", () => {
+    fakeLayout();
+    document.body.innerHTML =
+      '<main id="m" data-w="393">' +
+      '<section id="a" data-w="361" data-h="0"></section>' +
+      '<section id="b" data-w="361" data-h="300"><h2 data-top="16" data-h="20"></h2>' +
+      '<p data-top="40" data-h="20"></p><img data-top="70" data-w="329" data-h="520"></section>' +
+      '<section id="c" data-top="400" data-w="361" data-h="200">' +
+      '<div class="cmp-wrap" data-sw="500" data-cw="329"><table><tbody>' +
+      '<tr data-top="410" data-h="30"></tr><tr data-top="440" data-h="30"></tr></tbody></table></div></section>' +
+      "</main>";
+    const screen = document.getElementById("m") as HTMLElement;
+    const clone = screen.cloneNode(true) as HTMLElement;
+    const maxImage = vi.fn(() => 400);
+    const { blocks, unmount } = mountClone(screen, clone, maxImage);
+    // La copia, fuera de la vista y sin que se pueda tocar ni la lea el lector de pantalla.
+    const host = clone.parentElement as HTMLElement;
+    expect(host.parentElement).toBe(document.body);
+    expect(host.getAttribute("aria-hidden")).toBe("true");
+    expect(host.inert).toBe(true);
+    expect(host.style.left).toBe("-100000px");
+    expect(host.style.width).toBe("393px");
+    expect(blocks.map((b) => [b.el.id, b.w, b.h])).toEqual([
+      ["b", 361, 300],
+      // 171 px más ancha: lo que la tabla se desplazaba de lado.
+      ["c", 532, 200],
+    ]);
+    expect(maxImage).toHaveBeenCalledWith(361);
+    const img = clone.querySelector("img") as HTMLImageElement;
+    expect(img.style.height).toBe("400px");
+    expect(img.style.objectFit).toBe("contain");
+    expect((clone.querySelector(".cmp-wrap") as HTMLElement).style.overflow).toBe("visible");
+    // Dónde se puede partir: entre el título, el párrafo y la imagen (que sigue más abajo de la tarjeta); entre filas.
+    expect(blocks[0].cuts).toEqual([16, 36, 40, 60, 70]);
+    expect(blocks[1].cuts).toEqual([10, 40, 70]);
+    // La pantalla de verdad, sin tocar.
+    expect((screen.querySelector("img") as HTMLImageElement).style.height).toBe("");
+    unmount();
+    expect(host.isConnected).toBe(false);
   });
 });
 

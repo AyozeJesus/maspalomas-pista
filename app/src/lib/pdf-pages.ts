@@ -57,6 +57,11 @@ export function packBlocks(
   let page = 0;
   // Lo ocupado de la página (0: vacía).
   let y = 0;
+  // El corte bueno para el trozo que empieza en src con room de sitio (NaN: ninguno; sin cut, cualquiera vale).
+  const safeEnd = (block: number, src: number, room: number) => {
+    const want = cut ? Math.round(cut(block, src, src + room)) : NaN;
+    return want >= src + Math.min(o.minSlice, room) && want <= src + room ? want : NaN;
+  };
   heights.forEach((h, block) => {
     if (!(h > 0)) return;
     let top = y === 0 ? 0 : y + o.gap;
@@ -65,7 +70,13 @@ export function packBlocks(
       y = top + h;
       return;
     }
-    if (h <= o.pageH || o.pageH - top < Math.max(o.minSlice, o.pageH * START_HERE)) {
+    // A la página siguiente: la que cabe entera en una; la alta, si queda poco sitio o si en lo que queda no hay dónde
+    // cortarla sin partir nada (una gráfica o una imagen a caballo de dos páginas).
+    if (
+      h <= o.pageH ||
+      o.pageH - top < Math.max(o.minSlice, o.pageH * START_HERE) ||
+      (cut && y > 0 && Number.isNaN(safeEnd(block, 0, o.pageH - top)))
+    ) {
       if (y > 0) page++;
       top = 0;
     }
@@ -82,10 +93,9 @@ export function packBlocks(
         y = top + h - src;
         return;
       }
-      const want = cut ? Math.round(cut(block, src, src + room)) : NaN;
-      // Un trozo más corto que minSlice (o pasado el borde) no vale: se corta en el borde.
-      const end =
-        want >= src + Math.min(o.minSlice, room) && want <= src + room ? want : src + room;
+      // Sin un corte bueno (más corto que minSlice, pasado el borde o ninguno), en el borde.
+      const safe = safeEnd(block, src, room);
+      const end = Number.isNaN(safe) ? src + room : safe;
       slices.push({ block, srcY: src, h: end - src, page, y: top });
       src = end;
       page++;

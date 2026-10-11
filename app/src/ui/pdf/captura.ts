@@ -102,11 +102,13 @@ export interface Block {
 
 const WIDE = ".cmp-wrap, .table-wrap";
 
-// Monta la copia fuera de la vista, con el ancho de la pantalla, y mide sus tarjetas. Hay que llamar a unmount al
-// acabar.
+// Monta la copia fuera de la vista, con el ancho de la pantalla, y mide sus tarjetas. maxImage(ancho de la tarjeta): lo
+// más alto que puede ser una imagen (el mapa) para caber en una página; una más alta se encoge sin deformarse. Hay que
+// llamar a unmount al acabar.
 export function mountClone(
   live: HTMLElement,
   clone: HTMLElement,
+  maxImage: (blockWidth: number) => number = () => Infinity,
 ): { blocks: Block[]; unmount: () => void } {
   const doc = live.ownerDocument;
   const host = doc.createElement("div");
@@ -128,6 +130,12 @@ export function mountClone(
     for (const t of wides) extra = Math.max(extra, t.scrollWidth - t.clientWidth);
     if (extra > 0) el.style.width = r.width + extra + "px";
     for (const t of wides) t.style.overflow = "visible";
+    const cap = Math.floor(maxImage(el.getBoundingClientRect().width));
+    for (const img of Array.from(el.querySelectorAll("img"))) {
+      if (img.getBoundingClientRect().height <= cap) continue;
+      img.style.height = cap + "px";
+      img.style.objectFit = "contain";
+    }
     r = el.getBoundingClientRect();
     const spans = Array.from(el.querySelectorAll(ATOMS), (a) => {
       const ar = a.getBoundingClientRect();
