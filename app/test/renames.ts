@@ -44,6 +44,22 @@ export function renameLegacyMarkup(root: ParentNode): void {
       '<section class="card" aria-labelledby="ruf-o-h" id="ruf-ochos" hidden=""><h2 id="ruf-o-h">Ochos</h2>' +
         '<div class="readouts" id="ruf-o-stats"></div><p class="muted" id="ruf-o-note"></p></section>',
     );
+  // Desde el 11-oct, la vista 3D de lo grabado: en el resumen, «En 3D» después del mapa; en boxes, «Vuelta en 3D»
+  // después de la cabecera. Lo de dentro de su caja (data-chart) cambia y se compara solo por fuera.
+  const map = root.querySelector('#ruta-fin section[aria-labelledby="ruf-map-h"]');
+  if (map)
+    map.insertAdjacentHTML(
+      "afterend",
+      '<section class="card r3d-card" aria-labelledby="ruf-3d-h" id="ruf-3d" data-pdf="omit"><h2 id="ruf-3d-h">En 3D</h2>' +
+        '<div class="r3d-in" id="ruf-3d-in" data-chart=""></div></section>',
+    );
+  const pitsHead = root.querySelector("#pits > header.page-head");
+  if (pitsHead)
+    pitsHead.insertAdjacentHTML(
+      "afterend",
+      '<section class="card r3d-card" aria-labelledby="p-3d-h" id="p-3d" data-pdf="omit"><h2 id="p-3d-h">Vuelta en 3D</h2>' +
+        '<div class="r3d-in" id="p-3d-in" data-chart=""></div></section>',
+    );
   // Y «Entrenamiento en 8» después de la ruta libre; desde el 11-oct, detrás, «Subidas de montaña» (abre su hoja).
   const freeNote = root.querySelector("#free + .start-note");
   if (freeNote)

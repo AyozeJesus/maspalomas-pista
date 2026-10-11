@@ -53,8 +53,8 @@ export interface UiState {
   // «Salir a pista»: el selector del circuito a la vista.
   circuitPicker: boolean;
   // «Subidas de montaña»: la hoja a la vista (null: cerrada) y lo elegido en ella (isla y luego sentido: 0, el primero
-  // de la isla; 1, el otro).
-  subidas: { isla: string | null; sentido: 0 | 1 | null } | null;
+  // de la isla; 1, el otro). ver: la subida (id en su sentido) cuya vuelta de prueba se ve en 3D.
+  subidas: { isla: string | null; sentido: 0 | 1 | null; ver?: string | null } | null;
 }
 
 export const uiStore = createStore<UiState>(() => ({
@@ -142,11 +142,20 @@ export function pickSentido(sentido: 0 | 1): void {
   if (s && s.isla) uiStore.setState({ subidas: { isla: s.isla, sentido } });
 }
 
-// Un paso atrás en la hoja de las subidas (de la lista al sentido, del sentido a la isla); en la isla, se cierra.
+// La vuelta de prueba en 3D de una subida de la lista (id en su sentido); null, de vuelta a la lista.
+export function verSubida(id: string | null): void {
+  const s = uiStore.getState().subidas;
+  if (s && s.isla && s.sentido !== null)
+    uiStore.setState({ subidas: { isla: s.isla, sentido: s.sentido, ver: id } });
+}
+
+// Un paso atrás en la hoja de las subidas (del 3D a la lista, de la lista al sentido, del sentido a la isla); en la
+// isla, se cierra.
 export function subidasBack(): void {
   const s = uiStore.getState().subidas;
   if (!s) return;
-  if (s.sentido !== null) uiStore.setState({ subidas: { isla: s.isla, sentido: null } });
+  if (s.ver) uiStore.setState({ subidas: { isla: s.isla, sentido: s.sentido, ver: null } });
+  else if (s.sentido !== null) uiStore.setState({ subidas: { isla: s.isla, sentido: null } });
   else if (s.isla !== null) uiStore.setState({ subidas: { isla: null, sentido: null } });
   else closeSubidas();
 }

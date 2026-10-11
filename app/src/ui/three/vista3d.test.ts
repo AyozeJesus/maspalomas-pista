@@ -160,9 +160,22 @@ function pair(t: V.Vista3DTrack, o: V.Vista3DOptions, env: Env = {}): { mine: Si
   };
 }
 
+// Cambio a propósito desde la de antes (11-oct-2026): el suelo no apunta profundidad (y se dibuja el primero), porque en
+// un plano tan grande la profundidad pierde precisión y tapaba trozos de asfalto. Se aplica a la escena de antes para
+// comparar todo lo demás.
+function legacyGround(side: Side): void {
+  const g = side.renderer.scene?.children.find(
+    (o) => (o as { geometry?: { type?: string } }).geometry?.type === "PlaneGeometry",
+  ) as { material: { depthWrite: boolean }; renderOrder: number } | undefined;
+  if (!g) return;
+  g.material.depthWrite = false;
+  g.renderOrder = -1;
+}
+
 // Todo lo que se ve de una vista: su depuración, el modo, lo pedido al renderizador, la cámara y la escena entera.
-function state(side: Side) {
+function state(side: Side, legacy = false) {
   const r = side.renderer;
+  if (legacy) legacyGround(side);
   return {
     debug: side.view.debug(),
     mode: side.view.mode,
@@ -183,7 +196,7 @@ function step(
   p.mine.view.update(pose, dt, ghost);
   p.theirs.view.update(pose, dt, ghost);
   const mine = state(p.mine);
-  expect(mine, `s=${pose.s} lean=${pose.lean}`).toEqual(state(p.theirs));
+  expect(mine, `s=${pose.s} lean=${pose.lean}`).toEqual(state(p.theirs, true));
   return mine;
 }
 

@@ -48,7 +48,7 @@ export function useRouteCanvas(
   paint: Paint | null,
   colorBy: ColorBy,
   dots: readonly MapDot[],
-): void {
+): ReturnType<typeof createRouteCanvas> {
   const [canvas] = useState(createRouteCanvas);
   useLayoutEffect(() => {
     const els = elementsOf(refs);
@@ -63,4 +63,6 @@ export function useRouteCanvas(
   useLayoutEffect(() => {
     if (paint) canvas.setup(paint.eng);
   }, [canvas, paint]);
+  // El punto que se mueve (la vista 3D del resumen va a la par).
+  return canvas;
 }

@@ -14,6 +14,7 @@ import { SectorsCard } from "./SectorsCard";
 import { StoreLine } from "./StoreLine";
 import { TipsCard } from "./TipsCard";
 import { usePitsView } from "./usePitsView";
+import { Lap3dCard } from "./Lap3dCard";
 
 export function Pits() {
   const { session } = useRuntime();
@@ -50,6 +51,7 @@ export function Pits() {
         </p>
         <StoreLine />
       </header>
+      <Lap3dCard />
       {/* Lo de cada entrada en boxes (dos toques, calibrar, nombre, cortar…) empieza de nuevo en la siguiente. */}
       <PitsMain key={"m" + entry} viewing={viewing} />
       <LapsCard

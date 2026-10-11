@@ -11,6 +11,7 @@ import { MapCard } from "./MapCard";
 import { OptionsCard } from "./OptionsCard";
 import { PhaseCard } from "./PhaseCard";
 import { OchosCard } from "./OchosCard";
+import { Route3dCard } from "./Route3dCard";
 import { StatsCard } from "./StatsCard";
 import { SummaryHeader } from "./SummaryHeader";
 import { summarySub, summaryTitle } from "./summary-text";
@@ -30,7 +31,7 @@ export function RutaFin() {
   const refs = useScrubRefs();
   const cutInput = useRef<HTMLInputElement>(null);
   const cut = useCut(paint, runtime, cutInput);
-  useRouteCanvas(refs, paint, colorBy, cut.dots);
+  const scrub = useRouteCanvas(refs, paint, colorBy, cut.dots);
   const toggleColor = useCallback(() => {
     setColorBy((c) => (c === "fase" ? "incl" : "fase"));
     repaint();
@@ -47,6 +48,7 @@ export function RutaFin() {
       <OchosCard paint={paint} />
       <StatsCard paint={paint} />
       <MapCard paint={paint} colorBy={colorBy} onColor={toggleColor} refs={refs} />
+      <Route3dCard paint={paint} visible={visible} scrub={scrub} />
       <PhaseCard paint={paint} chartRef={refs.chart} />
       <TramosCard paint={paint} />
       <LapsCard paint={paint} />

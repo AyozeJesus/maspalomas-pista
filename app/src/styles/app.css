@@ -427,3 +427,23 @@ table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nu
   .dash, button, .switch input { transition: none; }
   .flash.brake { animation: none; }
 }
+/* Vista 3D de lo grabado (rutas en el resumen, vueltas en boxes): el recuadro como el de la vuelta de ejemplo, el
+   marcador encima y debajo reproducir, la barra y la velocidad. Sin nada que ver (data-empty), la tarjeta no sale. */
+.card.r3d-card:has(> .r3d-in[data-empty]) { display: none; }
+.r3d-in { display: grid; gap: 12px; min-width: 0; }
+.r3d { display: grid; gap: 8px; min-width: 0; }
+.r3d-box { grid-row: auto; grid-column: auto; margin: 0; width: 100%; aspect-ratio: 16 / 10; max-height: 72vh; }
+.r3d-hud { position: absolute; left: 10px; top: 8px; right: 10px; display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 12px; color: #fff; text-shadow: 0 1px 6px rgba(0, 0, 0, 0.85); pointer-events: none; }
+.r3d-hud b { font-size: 28px; font-weight: 900; line-height: 1.1; }
+.r3d-side { font-size: 18px; font-weight: 800; }
+.r3d-side.good { color: #6df29b; }
+.r3d-side.bad { color: #ff9a8f; }
+.r3d-hud small { flex-basis: 100%; font-size: 14px; font-weight: 700; }
+.r3d-bar { display: flex; align-items: center; gap: 10px; }
+.r3d-bar input[type="range"] { flex: 1; min-width: 0; height: 40px; accent-color: var(--primary); }
+.r3d-bar button { min-width: 52px; min-height: 44px; padding: 6px 10px; }
+.r3d-play { font-size: 18px; }
+.r3d-laps { display: flex; flex-wrap: wrap; gap: 6px; }
+.r3d-laps button { min-height: 44px; padding: 8px 12px; }
+.r3d-laps button[aria-pressed="true"] { background: var(--primary); border-color: var(--primary); color: #fff; }
+.r3d-sub { display: grid; gap: 10px; min-width: 0; }

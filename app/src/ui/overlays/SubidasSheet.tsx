@@ -1,11 +1,19 @@
-// «Subidas de montaña»: la isla, hacia dónde y todas las de esa dirección, con tu mejor tiempo en cada una y «Mapa» (su
-// salida y su meta en Google Maps). Se cronometran solas en la ruta libre: «Salir en ruta libre» echa a rodar en ese
+// «Subidas de montaña»: la isla, hacia dónde y todas las de esa dirección, con tu mejor tiempo en cada una, «Mapa» (su
+// salida y su meta en Google Maps) y «3D» (su vuelta de prueba, en la misma hoja: «Atrás» vuelve a la lista). Se cronometran solas en la ruta libre: «Salir en ruta libre» echa a rodar en ese
 // mismo toque. Hoja desde abajo, como la del circuito: «Atrás» y el atrás del móvil vuelven un paso; «Cerrar», tocar
 // fuera o Escape la cierran; y se cierra sola si se deja «Rodar».
 import { useEffect, useRef } from "react";
 import { ISLAS, subidasEn } from "../../app/subidas";
-import { closeSubidas, pickIsla, pickSentido, subidasBack, useUi } from "../../app/ui-store";
+import {
+  closeSubidas,
+  pickIsla,
+  pickSentido,
+  subidasBack,
+  useUi,
+  verSubida,
+} from "../../app/ui-store";
 import { loadSubidas } from "../../services/subidas-store";
+import { Subida3d } from "../replay3d/Subida3d";
 import { useRuntime } from "../runtime-context";
 import { mapsLink, subidaLine } from "../screens/home/rutas/tramo-rows";
 
@@ -18,6 +26,11 @@ export function SubidasSheet() {
   const open = !!st;
   const isla = st && st.isla ? (ISLAS.find((i) => i.id === st.isla) ?? null) : null;
   const k = st && isla ? st.sentido : null;
+  // La subida cuya vuelta de prueba se ve en 3D.
+  const ver =
+    st && st.ver && isla && k !== null
+      ? (subidasEn(isla, k).find((s) => s.id === st.ver) ?? null)
+      : null;
 
   useEffect(() => {
     if (open && !onRodar) closeSubidas();
@@ -36,10 +49,10 @@ export function SubidasSheet() {
     };
   }, [open, session]);
 
-  // En cada paso, el foco en lo primero que elegir; en la lista, en su título (que se vea desde arriba).
-  const step = !open ? "" : !isla ? "isla" : k === null ? "sentido" : "lista";
+  // En cada paso, el foco en lo primero que elegir; en la lista (y en el 3D), en su título (que se vea desde arriba).
+  const step = !open ? "" : !isla ? "isla" : k === null ? "sentido" : ver ? "ver" : "lista";
   useEffect(() => {
-    if (step === "lista") head.current?.focus();
+    if (step === "lista" || step === "ver") head.current?.focus();
     else if (step) first.current?.focus();
   }, [step]);
 
@@ -54,7 +67,9 @@ export function SubidasSheet() {
     ? "Subidas de montaña"
     : k === null
       ? isla.nombre
-      : isla.nombre + " · " + isla.sentidos[k].nombre;
+      : ver
+        ? ver.nombre
+        : isla.nombre + " · " + isla.sentidos[k].nombre;
 
   return (
     <div
@@ -106,6 +121,8 @@ export function SubidasSheet() {
               ))}
             </div>
           </>
+        ) : ver ? (
+          <Subida3d s={ver} k={k} active={open} />
         ) : (
           <>
             <div className="hist-list" id="subida-list">
@@ -127,6 +144,15 @@ export function SubidasSheet() {
                       >
                         Mapa
                       </a>
+                      <button
+                        type="button"
+                        className="btn"
+                        data-sub3d={s.subida}
+                        aria-label={"Vuelta de prueba en 3D: " + s.titulo}
+                        onClick={() => verSubida(s.id)}
+                      >
+                        3D
+                      </button>
                     </div>
                   </div>
                 );

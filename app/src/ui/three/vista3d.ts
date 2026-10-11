@@ -11,13 +11,15 @@ export type Vista3DPoint = readonly [number, number];
 
 // Lo que la vista lee del trazado (el de buildTrack en telemetry.js): el eje cerrado (sin repetir el primer punto),
 // la normal a la derecha en cada punto, la distancia acumulada (n + 1 valores), la longitud y, si la hay, la trazada
-// ideal (alineada índice a índice con el eje).
+// ideal (alineada índice a índice con el eje). closed: false es un trazado abierto (una carretera, de la salida a la
+// llegada): cs lleva entonces un valor por punto (el último es L) y más allá de los extremos se sigue en línea recta.
 export interface Vista3DTrack {
   C: readonly Vista3DPoint[];
   N: readonly Vista3DPoint[];
   cs: ArrayLike<number>;
   L: number;
   full?: readonly Vista3DPoint[] | null;
+  closed?: boolean;
 }
 
 // Una curva: índice de su vértice en el eje (lleva pianos por dentro y por fuera).
@@ -25,17 +27,24 @@ export interface Vista3DCorner {
   i?: number;
 }
 
-// Curvas y límites de sector (m desde meta, franjas amarillas).
+// Curvas y límites de sector (m desde meta, franjas amarillas). style «carretera»: dos carriles (7 m) con sus líneas,
+// la discontinua del medio e hitos a los lados, sin pianos ni barreras (una ruta). extras: la moto lleva luz de freno
+// y hace caballitos (pose.brake y pose.pitch, para repasar lo grabado). Sin ellos, el circuito de siempre.
 export interface Vista3DOptions {
   corners?: readonly Vista3DCorner[] | null;
   bounds?: readonly number[] | null;
+  style?: "circuito" | "carretera";
+  extras?: boolean;
 }
 
-// s (m desde meta), lean (grados, + derecha) y v (m/s; aleja la mirada desde el casco).
+// s (m desde meta), lean (grados, + derecha) y v (m/s; aleja la mirada desde el casco). Con extras: brake (frenando:
+// luz de freno) y pitch (grados, + morro arriba: el caballito).
 export interface Vista3DPose {
   s: number;
   lean: number;
   v?: number;
+  brake?: boolean;
+  pitch?: number;
 }
 
 // La moto fantasma de otra vuelta: { s, lean }.
@@ -85,6 +94,9 @@ interface Bike {
   group: THREE.Group;
   tilt: THREE.Group;
   ring: THREE.Mesh;
+  // Con extras: el giro sobre la rueda de atrás (caballito) y la luz de freno.
+  pitch: THREE.Group | null;
+  brake: THREE.Mesh<THREE.BoxGeometry, THREE.MeshBasicMaterial> | null;
 }
 
 interface ViewState {
@@ -101,6 +113,16 @@ type Board = THREE.Mesh<THREE.BoxGeometry, THREE.MeshBasicMaterial>;
 type AnyMesh = THREE.Mesh<THREE.BufferGeometry, THREE.Material>;
 
 const WIDTH = 12;
+// Carretera: dos carriles de 3,5 m; discontinua del medio de 3 m cada 12 m; un hito a cada lado cada 50 m.
+const ROAD_WIDTH = 7;
+const DASH = 3;
+const DASH_EVERY = 12;
+const POST_EVERY = 50;
+// Un trazado abierto va en trozos de tantos puntos (≈ 1 km): three.js no dibuja los que quedan fuera de la cámara.
+const CHUNK = 300;
+// Luz de freno: apagada y encendida.
+const BRAKE_OFF = 0x5a1414;
+const BRAKE_ON = 0xff2a1f;
 // Ángulo vertical mínimo y ángulo horizontal deseado por cámara: con el móvil de pie
 // el vertical crece (hasta 95°) para no ver la pista por una rendija.
 const FOV: Record<Vista3DMode, number> = { casco: 74, detras: 58, arriba: 45 };
@@ -165,6 +187,9 @@ function build(
 ): Vista3D {
   const C = track.C;
   const n = C.length;
+  // Trazado abierto (una ruta): de la salida a la llegada, sin dar la vuelta. Carretera: dos carriles e hitos.
+  const open = track.closed === false;
+  const road = opts.style === "carretera";
   // Centro del circuito como origen (números pequeños para la GPU).
   let cx = 0;
   let cy = 0;
@@ -173,6 +198,14 @@ function build(
     cy += p[1] / n;
   }
   const W = (x: number, y: number): [number, number] => [x - cx, y - cy];
+  // El suelo mide 6 km de lado; en una ruta, lo que haga falta para que llegue a toda ella (la niebla tapa el borde).
+  let groundSize = 6000;
+  if (open)
+    for (const p of C)
+      groundSize = Math.max(
+        groundSize,
+        2 * Math.max(Math.abs(p[0] - cx), Math.abs(p[1] - cy)) + 4000,
+      );
 
   const scene = new THREE.Scene();
   const sky = new THREE.Color(0xbcd7ea);
@@ -185,10 +218,14 @@ function build(
   const sun = new THREE.DirectionalLight(0xffffff, 0.5);
   sun.position.set(-300, 600, 250);
   scene.add(sun);
+  // El suelo es lo primero que se dibuja y no apunta profundidad: debajo de él no hay nada que tapar. Un plano de
+  // kilómetros con solo dos triángulos pierde precisión de profundidad y aun así tapaba trozos de asfalto (visto el
+  // 11-oct en el km 0,3 de El Teide, y en Los Loros).
   const ground = new THREE.Mesh(
-    new THREE.PlaneGeometry(6000, 6000),
-    new THREE.MeshLambertMaterial({ color: 0xd9cba8 }),
+    new THREE.PlaneGeometry(groundSize, groundSize),
+    new THREE.MeshLambertMaterial({ color: 0xd9cba8, depthWrite: false }),
   );
+  ground.renderOrder = -1;
   ground.rotation.x = -Math.PI / 2;
   // El suelo, bien por debajo del asfalto (5 cm no bastaban para la precisión de profundidad de lejos).
   ground.position.y = -0.4;
@@ -207,6 +244,25 @@ function build(
   ): THREE.BufferGeometry {
     const pos: number[] = [];
     const col: number[] = [];
+    ribbonInto(pos, col, P, NN, idx, d0, d1, y, colorAt);
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+    if (colorAt) geo.setAttribute("color", new THREE.Float32BufferAttribute(col, 3));
+    geo.computeVertexNormals();
+    return geo;
+  }
+  // Los triángulos de una cinta, añadidos a pos (y sus colores a col).
+  function ribbonInto(
+    pos: number[],
+    col: number[],
+    P: readonly Vista3DPoint[],
+    NN: readonly Vista3DPoint[],
+    idx: readonly number[],
+    d0: number,
+    d1: number,
+    y: number,
+    colorAt: ((k: number) => THREE.Color) | null,
+  ): void {
     for (let k = 0; k < idx.length - 1; k++) {
       const i = idx[k];
       const j = idx[k + 1];
@@ -221,15 +277,8 @@ function build(
         for (let r = 0; r < 6; r++) col.push(c.r, c.g, c.b);
       }
     }
-    const geo = new THREE.BufferGeometry();
-    geo.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
-    if (colorAt) geo.setAttribute("color", new THREE.Float32BufferAttribute(col, 3));
-    geo.computeVertexNormals();
-    return geo;
   }
-  const loop: number[] = [];
-  for (let i = 0; i <= n; i++) loop.push(i % n);
-  const half = WIDTH / 2;
+  const half = (road ? ROAD_WIDTH : WIDTH) / 2;
   // Lo pintado sobre el asfalto (líneas, pianos, meta) se adelanta en profundidad en vez de subirlo unos
   // milímetros: así no parpadea ni desaparece de lejos.
   const flat = (
@@ -248,66 +297,212 @@ function build(
         extra || {},
       ),
     );
-  scene.add(
-    new THREE.Mesh(
-      ribbon(C, N, loop, -half, half, 0, null),
-      new THREE.MeshLambertMaterial({
-        color: 0x353c42,
-        side: THREE.DoubleSide,
-      }),
-    ),
-  );
-  for (const d of [-half + 0.25, half - 0.55])
-    scene.add(new THREE.Mesh(ribbon(C, N, loop, d, d + 0.3, 0.02, null), flat(0xf4f6f7)));
-  // Pianos en las curvas: por dentro y por fuera, rojo y blanco.
-  const red = new THREE.Color(0xd2382d);
-  const white = new THREE.Color(0xffffff);
-  for (const c of opts.corners || []) {
-    const ci = Math.round(c.i !== undefined ? c.i : 0);
-    const turn = turnAt(C, ci);
-    for (const [span, side] of [
-      [10, -1],
-      [5, 1],
-    ] as const) {
-      const idx: number[] = [];
-      for (let j = ci - span; j <= ci + span; j++) idx.push(((j % n) + n) % n);
-      const s = side * turn;
-      const d0 = s > 0 ? half : -half - 1.4;
-      const d1 = s > 0 ? half + 1.4 : -half;
-      scene.add(
-        new THREE.Mesh(
-          ribbon(C, N, idx, d0, d1, 0.03, (k) => (k % 2 ? white : red)),
-          flat(0xffffff, { vertexColors: true }),
-        ),
-      );
-    }
-  }
-  // Barreras de neumáticos a los lados (dan referencia de profundidad desde el casco).
-  for (const d of [-half - 3.5, half + 3.5]) {
-    const pos: number[] = [];
-    for (let i = 0; i < n; i++) {
-      const j = (i + 1) % n;
-      const a = W(C[i][0] + N[i][0] * d, C[i][1] + N[i][1] * d);
-      const b = W(C[j][0] + N[j][0] * d, C[j][1] + N[j][1] * d);
-      pos.push(a[0], 0, a[1], b[0], 0, b[1], a[0], 0.9, a[1]);
-      pos.push(a[0], 0.9, a[1], b[0], 0, b[1], b[0], 0.9, b[1]);
-    }
-    const geo = new THREE.BufferGeometry();
-    geo.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
-    geo.computeVertexNormals();
+  if (open) buildOpen();
+  else buildClosed();
+
+  // El circuito (cerrado): asfalto y líneas de una pieza, pianos en las curvas y barreras.
+  function buildClosed(): void {
+    const loop: number[] = [];
+    for (let i = 0; i <= n; i++) loop.push(i % n);
     scene.add(
       new THREE.Mesh(
-        geo,
+        ribbon(C, N, loop, -half, half, 0, null),
         new THREE.MeshLambertMaterial({
-          color: 0x3a3f44,
+          color: 0x353c42,
           side: THREE.DoubleSide,
         }),
       ),
     );
+    for (const d of [-half + 0.25, half - 0.55])
+      scene.add(new THREE.Mesh(ribbon(C, N, loop, d, d + 0.3, 0.02, null), flat(0xf4f6f7)));
+    // Pianos en las curvas: por dentro y por fuera, rojo y blanco.
+    const red = new THREE.Color(0xd2382d);
+    const white = new THREE.Color(0xffffff);
+    for (const c of opts.corners || []) {
+      const ci = Math.round(c.i !== undefined ? c.i : 0);
+      const turn = turnAt(C, ci);
+      for (const [span, side] of [
+        [10, -1],
+        [5, 1],
+      ] as const) {
+        const idx: number[] = [];
+        for (let j = ci - span; j <= ci + span; j++) idx.push(((j % n) + n) % n);
+        const s = side * turn;
+        const d0 = s > 0 ? half : -half - 1.4;
+        const d1 = s > 0 ? half + 1.4 : -half;
+        scene.add(
+          new THREE.Mesh(
+            ribbon(C, N, idx, d0, d1, 0.03, (k) => (k % 2 ? white : red)),
+            flat(0xffffff, { vertexColors: true }),
+          ),
+        );
+      }
+    }
+    // Barreras de neumáticos a los lados (dan referencia de profundidad desde el casco).
+    for (const d of [-half - 3.5, half + 3.5]) {
+      const pos: number[] = [];
+      for (let i = 0; i < n; i++) barrierInto(pos, i, (i + 1) % n, d);
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+      geo.computeVertexNormals();
+      scene.add(
+        new THREE.Mesh(
+          geo,
+          new THREE.MeshLambertMaterial({
+            color: 0x3a3f44,
+            side: THREE.DoubleSide,
+          }),
+        ),
+      );
+    }
+  }
+
+  // Un trozo de barrera (0,9 m de alto) entre los puntos i y j, a d metros del eje.
+  function barrierInto(pos: number[], i: number, j: number, d: number): void {
+    const a = W(C[i][0] + N[i][0] * d, C[i][1] + N[i][1] * d);
+    const b = W(C[j][0] + N[j][0] * d, C[j][1] + N[j][1] * d);
+    pos.push(a[0], 0, a[1], b[0], 0, b[1], a[0], 0.9, a[1]);
+    pos.push(a[0], 0.9, a[1], b[0], 0, b[1], b[0], 0.9, b[1]);
+  }
+
+  // Una ruta (abierta), en trozos de CHUNK puntos: asfalto; líneas (y en carretera, la discontinua del medio); hitos en
+  // carretera o barreras en el circuito. Los materiales son de todos los trozos.
+  function buildOpen(): void {
+    const asphalt = new THREE.MeshLambertMaterial({ color: 0x353c42, side: THREE.DoubleSide });
+    const marks = flat(0xf4f6f7);
+    const sides = new THREE.MeshLambertMaterial({
+      color: road ? 0xe8ebe6 : 0x3a3f44,
+      side: THREE.DoubleSide,
+    });
+    const lineW = road ? 0.15 : 0.3;
+    const lines = road ? [-half + 0.15, half - 0.3] : [-half + 0.25, half - 0.55];
+    const cs = track.cs;
+    for (let a = 0; a < n - 1; a += CHUNK) {
+      const b = Math.min(n - 1, a + CHUNK);
+      const idx: number[] = [];
+      for (let i = a; i <= b; i++) idx.push(i);
+      part(ribbon(C, N, idx, -half, half, 0, null), asphalt, "asfalto");
+      const m: number[] = [];
+      for (const d of lines) ribbonInto(m, [], C, N, idx, d, d + lineW, 0.02, null);
+      const side: number[] = [];
+      if (road) {
+        // La discontinua: cada raya empieza en su trozo.
+        for (let k = Math.ceil(cs[a] / DASH_EVERY); k * DASH_EVERY < cs[b]; k++) {
+          const s0 = k * DASH_EVERY;
+          const s1 = Math.min(s0 + DASH, track.L);
+          if (s1 - s0 > 0.5) stripInto(m, s0, s1, -0.06, 0.06, 0.02);
+        }
+        for (let k = Math.ceil(cs[a] / POST_EVERY); k * POST_EVERY < cs[b]; k++) {
+          const p = pointAt(C, k * POST_EVERY);
+          const nn = N[p.i];
+          for (const sg of [-1, 1]) {
+            const w = W(p.x + nn[0] * sg * (half + 1.2), p.y + nn[1] * sg * (half + 1.2));
+            boxInto(side, w[0], 0.45, w[1], 0.14, 0.9, 0.14);
+          }
+        }
+      } else
+        for (const d of [-half - 3.5, half + 3.5])
+          for (let i = a; i < b; i++) barrierInto(side, i, i + 1, d);
+      part(geometryOf(m), marks, "marcas");
+      if (side.length) part(geometryOf(side), sides, road ? "hitos" : "barreras");
+    }
+  }
+
+  function part(geo: THREE.BufferGeometry, mat: THREE.Material, name: string): void {
+    const m = new THREE.Mesh(geo, mat);
+    m.name = name;
+    scene.add(m);
+  }
+
+  function geometryOf(pos: number[]): THREE.BufferGeometry {
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+    geo.computeVertexNormals();
+    return geo;
+  }
+
+  // Una franja recta sobre el asfalto de s0 a s1 (m), entre d0 y d1 del eje.
+  function stripInto(
+    pos: number[],
+    s0: number,
+    s1: number,
+    d0: number,
+    d1: number,
+    y: number,
+  ): void {
+    const p = pointAt(C, s0);
+    const q = pointAt(C, s1);
+    const np = N[p.i];
+    const nq = N[q.i];
+    const a0 = W(p.x + np[0] * d0, p.y + np[1] * d0);
+    const a1 = W(p.x + np[0] * d1, p.y + np[1] * d1);
+    const b0 = W(q.x + nq[0] * d0, q.y + nq[1] * d0);
+    const b1 = W(q.x + nq[0] * d1, q.y + nq[1] * d1);
+    pos.push(a0[0], y, a0[1], b0[0], y, b0[1], a1[0], y, a1[1]);
+    pos.push(a1[0], y, a1[1], b0[0], y, b0[1], b1[0], y, b1[1]);
+  }
+
+  // Una caja (sin la cara de abajo) centrada en x, y, z del mundo, de sx × sy × sz.
+  function boxInto(
+    pos: number[],
+    x: number,
+    y: number,
+    z: number,
+    sx: number,
+    sy: number,
+    sz: number,
+  ): void {
+    const [x0, x1, y0, y1, z0, z1] = [
+      x - sx / 2,
+      x + sx / 2,
+      y - sy / 2,
+      y + sy / 2,
+      z - sz / 2,
+      z + sz / 2,
+    ];
+    pos.push(x1, y0, z0, x1, y1, z0, x1, y1, z1, x1, y0, z0, x1, y1, z1, x1, y0, z1);
+    pos.push(x0, y0, z1, x0, y1, z1, x0, y1, z0, x0, y0, z1, x0, y1, z0, x0, y0, z0);
+    pos.push(x1, y0, z1, x1, y1, z1, x0, y1, z1, x1, y0, z1, x0, y1, z1, x0, y0, z1);
+    pos.push(x0, y0, z0, x0, y1, z0, x1, y1, z0, x0, y0, z0, x1, y1, z0, x1, y0, z0);
+    pos.push(x0, y1, z0, x0, y1, z1, x1, y1, z1, x0, y1, z0, x1, y1, z1, x1, y1, z0);
+  }
+
+  // Un punto de una ruta (abierta) a s metros de la salida: antes de la salida y después de la llegada sigue en
+  // línea recta (las cámaras van por delante y por detrás de la moto).
+  function openPointAt(
+    P: readonly Vista3DPoint[],
+    s0: number,
+  ): { x: number; y: number; i: number } {
+    const L = track.L;
+    const cs = track.cs;
+    const s = Number.isFinite(s0) ? s0 : 0;
+    if (s <= 0 || s >= L) {
+      const [i, j, d] = s <= 0 ? [0, 1, -s] : [n - 1, n - 2, s - L];
+      const a = P[i];
+      const b = P[j];
+      const len = Math.hypot(a[0] - b[0], a[1] - b[1]) || 1;
+      return {
+        x: a[0] + ((a[0] - b[0]) / len) * d,
+        y: a[1] + ((a[1] - b[1]) / len) * d,
+        i: Math.min(i, j),
+      };
+    }
+    let lo = 0;
+    let hi = n - 1;
+    while (hi - lo > 1) {
+      const mid = (lo + hi) >> 1;
+      if (cs[mid] <= s) lo = mid;
+      else hi = mid;
+    }
+    const a = P[lo];
+    const b = P[lo + 1];
+    const f = (s - cs[lo]) / (cs[lo + 1] - cs[lo] || 1);
+    return { x: a[0] + (b[0] - a[0]) * f, y: a[1] + (b[1] - a[1]) * f, i: lo };
   }
 
   // Puntos sobre el trazado por distancia s (eje o trazada ideal).
   function pointAt(P: readonly Vista3DPoint[], s: number): { x: number; y: number; i: number } {
+    if (open) return openPointAt(P, s);
     const L = track.L;
     const ss = ((s % L) + L) % L;
     let lo = 0;
@@ -326,18 +521,22 @@ function build(
       i: lo,
     };
   }
-  // Línea de meta y de sectores (franjas a lo ancho). Nadie pasa `w` y la escala ya es 1: esa línea no hace nada
-  // (venía así de antes).
-  function gate(s: number, color: number, w?: number): void {
+  // Línea de meta y de sectores (franjas a lo ancho); en una ruta, la salida y la llegada.
+  function gate(s: number, color: number, name = ""): void {
     const p = pointAt(C, s);
     const i = p.i;
-    const j = (i + 1) % n;
+    const j = open ? Math.min(i + 1, n - 1) : (i + 1) % n;
     const g = new THREE.Mesh(ribbon(C, N, [i, j], -half, half, 0.04, null), flat(color));
-    if (w) g.scale.set(1, 1, 1);
+    g.name = name;
     scene.add(g);
   }
-  gate(0, 0xffffff);
-  for (const b of opts.bounds || []) gate(b, 0xf2c230);
+  if (open) {
+    gate(0, 0xffffff, "salida");
+    gate(track.L, 0xffffff, "llegada");
+  } else {
+    gate(0, 0xffffff);
+    for (const b of opts.bounds || []) gate(b, 0xf2c230);
+  }
   // Carteles de frenada (de la mejor vuelta): tablero rojo a la derecha de la pista.
   const boards = new THREE.Group();
   scene.add(boards);
@@ -373,22 +572,48 @@ function build(
     const group = new THREE.Group();
     const tilt = new THREE.Group();
     group.add(tilt);
+    // Con extras, las piezas cuelgan del eje de la rueda de atrás (dx más adelante que él): el caballito gira ahí.
+    let parent: THREE.Group = tilt;
+    let pitch: THREE.Group | null = null;
+    const dx = opts.extras ? 0.78 : 0;
+    if (opts.extras) {
+      pitch = new THREE.Group();
+      pitch.name = "cabeceo";
+      pitch.position.set(-dx, 0, 0);
+      tilt.add(pitch);
+      parent = pitch;
+    }
     const body = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.75, 0.62), mat(color));
-    body.position.set(0, 0.85, 0);
-    tilt.add(body);
+    body.position.set(0 + dx, 0.85, 0);
+    parent.add(body);
     const rider = new THREE.Mesh(new THREE.BoxGeometry(0.75, 0.6, 0.5), mat(0xf4f6f7));
-    rider.position.set(-0.25, 1.45, 0);
-    tilt.add(rider);
+    rider.position.set(-0.25 + dx, 1.45, 0);
+    parent.add(rider);
     const head = new THREE.Mesh(new THREE.SphereGeometry(0.3, 16, 12), mat(color));
-    head.position.set(0.25, 1.85, 0);
-    tilt.add(head);
+    head.position.set(0.25 + dx, 1.85, 0);
+    parent.add(head);
     const wheel = new THREE.CylinderGeometry(0.33, 0.33, 0.22, 18);
     const wheelMat = mat(0x1a1d20);
     for (const x of [-0.78, 0.78]) {
       const w = new THREE.Mesh(wheel, wheelMat);
       w.rotation.x = Math.PI / 2;
-      w.position.set(x, 0.33, 0);
-      tilt.add(w);
+      w.position.set(x + dx, 0.33, 0);
+      parent.add(w);
+    }
+    // Luz de freno, detrás del colín.
+    let brake: Bike["brake"] = null;
+    if (opts.extras) {
+      brake = new THREE.Mesh(
+        new THREE.BoxGeometry(0.1, 0.14, 0.36),
+        new THREE.MeshBasicMaterial(
+          opacity < 1
+            ? { color: BRAKE_OFF, transparent: true, opacity, depthWrite: false }
+            : { color: BRAKE_OFF },
+        ),
+      );
+      brake.name = "luz-freno";
+      brake.position.set(-1.03 + dx, 1.0, 0);
+      parent.add(brake);
     }
     const ring = new THREE.Mesh(
       new THREE.CylinderGeometry(6, 6, 0.1, 28),
@@ -401,7 +626,7 @@ function build(
     ring.position.y = 0.06;
     group.add(ring);
     scene.add(group);
-    return { group, tilt, ring };
+    return { group, tilt, ring, pitch, brake };
   }
   const main = makeBike(0x2b80dd, 1);
   const bike = main.group;
@@ -436,6 +661,11 @@ function build(
     const P = track.full || C;
     const p = pointAt(P, pose.s);
     const heading = placeBike(main, pose.s, pose.lean, 0);
+    // Con extras: el caballito (sobre la rueda de atrás) y la luz de freno.
+    if (main.pitch)
+      main.pitch.rotation.z =
+        ((Number.isFinite(pose.pitch) ? (pose.pitch as number) : 0) * Math.PI) / 180;
+    if (main.brake) main.brake.material.color.setHex(pose.brake ? BRAKE_ON : BRAKE_OFF);
     const w = W(p.x, p.y);
     const leanRad = ((Number.isNaN(pose.lean) ? 0 : pose.lean) * Math.PI) / 180;
     halo.visible = view.mode === "arriba";
