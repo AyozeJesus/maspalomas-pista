@@ -259,6 +259,13 @@ export type Tree = string | { tag: string; attrs: string[]; props: string[]; kid
 export function domTree(n: Node): Tree {
   if (n.nodeType !== 1) return n.nodeValue ?? "";
   const el = n as Element;
+  // Una gráfica (data-chart) se compara solo por fuera: sin lo de dentro (su dibujo, como los píxeles de un lienzo) ni
+  // data-empty (si tiene datos o no). Como en dom-shape.ts.
+  if (el.hasAttribute("data-chart")) {
+    const attrs = Array.from(el.attributes, (a) => a.name + "=" + a.value);
+    const outside = attrs.filter((a) => !a.startsWith("data-empty=")).sort();
+    return { tag: el.tagName.toLowerCase(), attrs: outside, props: [], kids: [] };
+  }
   const kids: Tree[] = [];
   let text = "";
   const flush = () => {
