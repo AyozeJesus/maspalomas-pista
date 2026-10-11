@@ -380,4 +380,23 @@ describe("compartir la imagen (igual que la de antes)", () => {
         expect(mine.log).toContainEqual(["a1", "click"]);
       }
     });
+
+  it("un PDF se comparte como PDF (el tipo, el del blob); sin tipo, como imagen", async () => {
+    const types: string[] = [];
+    vi.stubGlobal(
+      "File",
+      class {
+        readonly name: string;
+        constructor(_parts: unknown[], name: string, opts: { type: string }) {
+          types.push(opts.type);
+          this.name = name;
+        }
+      },
+    );
+    vi.stubGlobal("navigator", { canShare: () => true, share: async () => {} });
+    const pdf = new Blob(["%PDF-1.4"], { type: "application/pdf" });
+    expect(await C.compartir.share(pdf, "poortelemetry-ruta.pdf", "Ruta libre")).toBe("compartida");
+    expect(await C.compartir.share(new Blob(["x"]), "a.png")).toBe("compartida");
+    expect(types).toEqual(["application/pdf", "image/png"]);
+  });
 });

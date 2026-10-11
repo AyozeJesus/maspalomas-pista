@@ -3,6 +3,7 @@
 // live.js o el compartir.js de antes aplican aquí esos cambios a lo de antes: así siguen comprobando todo lo demás, y lo
 // que cambia queda escrito en un solo sitio.
 import { addChartShells } from "./renames-charts";
+import { addPdfButtons } from "./renames-pdf";
 
 // La marca de arriba de las imágenes para compartir.
 export const IMAGE_BRAND = { old: "MODO PISTA · MASPALOMAS", now: "POORTELEMETRY" };
@@ -22,6 +23,7 @@ const TEXTS: [selector: string, text: string][] = [
 // El marcado de antes (un documento o un trozo), con los cambios de ahora.
 export function renameLegacyMarkup(root: ParentNode): void {
   addChartShells(root);
+  addPdfButtons(root);
   const brand = root.querySelector(".masthead .brand");
   if (brand)
     brand.innerHTML =

@@ -3,6 +3,7 @@ import { useMemo, type RefObject } from "react";
 import { exportSession } from "../../../services/export";
 import { canName, engName, sessionIdOf } from "../../../services/naming";
 import { NameField } from "../../components/NameField";
+import { PdfButton } from "../../components/PdfButton";
 import { ShareButton } from "../../components/ShareButton";
 import type { ColorBy } from "../../draw/mapa";
 import { useRuntime } from "../../runtime-context";
@@ -36,6 +37,9 @@ export function OptionsCard({ paint, colorBy, cut, cutInput, onRenamed }: Props)
         <ShareButton id="ruf-share2" kind="ruta" colorBy={colorBy}>
           Compartir (imagen)
         </ShareButton>
+        <PdfButton id="ruf-pdf" kind="ruta">
+          Compartir (PDF)
+        </PdfButton>
         <button id="ruf-export" onClick={() => void exportSession(session.rt.lastE)}>
           Exportar la ruta (.zip)
         </button>

@@ -2,6 +2,7 @@
 // el garaje del Mac), calibrar (no repasando) y «Cortar en dos».
 import { useSettings } from "../../../runtime/settings";
 import { NameField } from "../../components/NameField";
+import { PdfButton } from "../../components/PdfButton";
 import { ShareButton } from "../../components/ShareButton";
 import { useRuntime } from "../../runtime-context";
 import { ExportButton } from "./ExportButton";
@@ -31,6 +32,9 @@ export function OptionsCard({ view, onRenamed }: Props) {
         <ShareButton id="p-share" kind="tanda">
           Compartir (imagen)
         </ShareButton>
+        <PdfButton id="p-pdf" kind="tanda">
+          Compartir (PDF)
+        </PdfButton>
         <ExportButton />
         <button id="pits-day" hidden={!paired} onClick={() => nav.showDay("pits")}>
           Tiempos del día

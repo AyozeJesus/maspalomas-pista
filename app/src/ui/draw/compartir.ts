@@ -319,10 +319,10 @@ function isAbort(e: unknown): boolean {
   );
 }
 
-// Comparte la imagen (WhatsApp, Telegram… lo que ofrezca el móvil). Sin «compartir archivos» (navegador de
-// ordenador, algunos móviles), se descarga. Devuelve "compartida", "cancelada" o "descargada".
+// Comparte la imagen (o el PDF: el tipo, el del blob) por WhatsApp, Telegram… lo que ofrezca el móvil. Sin «compartir
+// archivos» (navegador de ordenador, algunos móviles), se descarga. Devuelve "compartida", "cancelada" o "descargada".
 export async function share(blob: Blob, name: string, text?: string): Promise<ShareResult> {
-  const file = new File([blob], name, { type: "image/png" });
+  const file = new File([blob], name, { type: blob.type || "image/png" });
   const data = { files: [file], text };
   // canShare y share no están en todos los navegadores.
   const nav: Partial<Pick<Navigator, "canShare" | "share">> = navigator;
