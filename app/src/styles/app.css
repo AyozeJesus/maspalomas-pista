@@ -447,3 +447,11 @@ table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nu
 .r3d-laps button { min-height: 44px; padding: 8px 12px; }
 .r3d-laps button[aria-pressed="true"] { background: var(--primary); border-color: var(--primary); color: #fff; }
 .r3d-sub { display: grid; gap: 10px; min-width: 0; }
+
+/* ── 7f: «Salir a pista» aún fuera de la pista: el mapa con tu posición en el sitio de la vista 3D de la vuelta de
+   ejemplo (fila del medio; en horizontal, la columna de la izquierda), con a cuánto está el circuito arriba y el
+   delta, pequeño, abajo. ── */
+.away-box { grid-row: 2; grid-column: 1; position: relative; min-height: 0; margin: 4px max(10px, env(safe-area-inset-right)) 6px max(10px, env(safe-area-inset-left)); border-radius: var(--r-lg); overflow: hidden; background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.14); }
+.away-map { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.away-l { position: absolute; top: 8px; left: 12px; right: 12px; margin: 0; font-weight: 800; font-size: min(4.6vw, 4.4vh); text-shadow: 0 1px 6px #000; pointer-events: none; }
+.dash.away .delta { grid-row: 2; grid-column: 1; align-self: end; z-index: 2; pointer-events: none; padding-bottom: 12px; font-size: min(12vw, 11vh); text-shadow: 0 2px 10px rgba(0, 0, 0, 0.8); }

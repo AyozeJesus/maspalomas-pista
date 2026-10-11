@@ -43,12 +43,21 @@ export function createViewer(session: Session, store: PistaStore | null) {
     if (!eng.free) patch.mejor = sessionBest(eng);
     // Entrenamiento en 8: los ochos del repaso (los de la lista dicen lo mismo que «Ver»).
     if (eng.ocho) patch.ochos = eng.ocho.summary();
+    // Ruta libre: sus pasadas por tramos (tus tramos y las subidas), para la línea de «Mis rutas»; sin ninguna, la lista
+    // vacía (así se quitan las de un repaso anterior).
+    if (eng.free)
+      patch.tramos = eng.tramoPasses.map((p) => ({
+        id: p.id,
+        nombre: p.nombre,
+        tiempo: p.pasada.tiempo,
+      }));
     // Ya estaba así (otra vez «Ver»): nada que guardar ni que volver a subir al Mac.
     if (
       meta.calculo === BUILD &&
       JSON.stringify(meta.recorrido) === JSON.stringify(patch.recorrido) &&
       (eng.free || meta.mejor === patch.mejor) &&
-      (!eng.ocho || JSON.stringify(meta.ochos) === JSON.stringify(patch.ochos))
+      (!eng.ocho || JSON.stringify(meta.ochos) === JSON.stringify(patch.ochos)) &&
+      (!eng.free || JSON.stringify(meta.tramos) === JSON.stringify(patch.tramos))
     )
       return Promise.resolve(true);
     return store.patchSession(meta.id, patch).catch(() => false);

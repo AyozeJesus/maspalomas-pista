@@ -1,6 +1,7 @@
 // En pista: el panel (vuelta, diferencia con la mejor, tiempo, sectores, inclinación y g, la última curva, el mapa del
-// circuito y, en la vuelta de ejemplo, la vista 3D). Se pinta en cada fotograma sin pasar por el estado de React
-// (dash-painter.ts); aquí, el marcado de siempre y los botones.
+// circuito y, en la vuelta de ejemplo, la vista 3D; aún fuera de la pista, el mapa con tu posición: away-map.ts). Se
+// pinta en cada fotograma sin pasar por el estado de React (dash-painter.ts); aquí, el marcado de siempre y los
+// botones.
 import { useRef } from "react";
 import { useUi } from "../../../app/ui-store";
 import { useRuntime } from "../../runtime-context";
@@ -20,6 +21,10 @@ export function Dash() {
     <section className="dash" id="dash" hidden={screen !== "dash"} aria-live="off" ref={root}>
       <DashTop />
       <View3dBox painter={painter} />
+      <div className="away-box" id="d-away" hidden>
+        <canvas className="away-map" id="d-away-map" aria-hidden="true"></canvas>
+        <p className="away-l" id="d-away-l"></p>
+      </div>
       <div className="delta num" id="d-delta">
         —<small id="d-delta-sub">esperando meta</small>
       </div>

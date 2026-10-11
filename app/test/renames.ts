@@ -74,6 +74,29 @@ export function renameLegacyMarkup(root: ParentNode): void {
         SUBIDAS_NOTE +
         "</p>",
     );
+  addAwayMap(root);
+  // Y desde el 11-oct, antes de «Tramos», «Por tramos» (la ruta desgranada): su caja se compara solo por fuera
+  // (data-chart) y sin pasadas no sale (data-empty).
+  root
+    .querySelector("#ruf-tr")
+    ?.insertAdjacentHTML(
+      "beforebegin",
+      '<section class="card ch-card" aria-labelledby="ruf-bd-h" id="ruf-bd"><h2 id="ruf-bd-h">Por tramos</h2>' +
+        '<div class="ch" id="ruf-bd-box" data-chart=""></div></section>',
+    );
+}
+
+// Desde el 11-oct, el panel de pista lleva detrás de la vista 3D el mapa de «aún fuera de la pista» (con tu posición y
+// a cuánto está el circuito), oculto en la pista y en la vuelta de ejemplo. Para el panel de antes suelto
+// (legacy-panel.ts) y para la página entera.
+export function addAwayMap(root: ParentNode): void {
+  const v3d = root.querySelector("#d-3d");
+  if (v3d && !root.querySelector("#d-away"))
+    v3d.insertAdjacentHTML(
+      "afterend",
+      '<div class="away-box" id="d-away" hidden=""><canvas class="away-map" id="d-away-map" aria-hidden="true">' +
+        '</canvas><p class="away-l" id="d-away-l"></p></div>',
+    );
 }
 
 const OCHO_NOTE =

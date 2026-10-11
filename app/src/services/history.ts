@@ -18,7 +18,12 @@ export interface ListedSession extends StoredSession {
   // Entrenamiento en 8.
   modo?: "ocho";
   ochos?: { n: number; mejor: number | null } | null;
+  // Ruta libre: sus pasadas por tramos (los tuyos y las subidas), en orden (las guarda el repaso: viewer.keepResult).
+  tramos?: { id: string; nombre: string; tiempo: number }[] | null;
 }
+
+// Tramos que se nombran en la línea; del resto, cuántos.
+const TRAMOS_SHOWN = 3;
 
 // «vie, 9 oct, 16:31».
 export function sessionDate(s: ListedSession): string {
@@ -65,6 +70,11 @@ export function sessionLine(s: ListedSession): string {
     if (s.mejor) parts.push("mejor " + fmtLap(s.mejor));
   }
   if (dur !== null && dur > 0) parts.push(fmtClock(dur));
+  // «… · Barranco Hondo (sur) 1:43,7 · Cuesta de Las Tablas (sur) 1:04,7».
+  const tramos = s.modo !== "ocho" && s.tipo === "ruta" && Array.isArray(s.tramos) ? s.tramos : [];
+  for (const p of tramos.slice(0, TRAMOS_SHOWN)) parts.push(p.nombre + " " + fmtLap(p.tiempo, 1));
+  const more = tramos.length - TRAMOS_SHOWN;
+  if (more > 0) parts.push("y " + more + (more === 1 ? " tramo más" : " tramos más"));
   if (s.estado === "cortada") parts.push("cortada");
   return parts.join(" · ");
 }

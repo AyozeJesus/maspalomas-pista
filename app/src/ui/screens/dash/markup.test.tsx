@@ -5,6 +5,7 @@
 import { cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { oldPanelHtml } from "../../../../test/legacy-panel";
+import { addAwayMap } from "../../../../test/renames";
 import { uiStore } from "../../../app/ui-store";
 import { memoryKV } from "../../../engine/kv";
 import { DEFAULT_SETTINGS } from "../../../engine/settings";
@@ -51,6 +52,8 @@ describe("marcado de los paneles", () => {
     );
     const old = document.implementation.createHTMLDocument("antes");
     old.body.innerHTML = oldPanelHtml();
+    // Lo que cambia a propósito: el mapa de «aún fuera de la pista» (test/renames.ts).
+    addAwayMap(old);
     for (const id of ["dash", "ruta"]) {
       const a = old.getElementById(id);
       const b = container.querySelector("#" + id);

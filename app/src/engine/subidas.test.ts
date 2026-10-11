@@ -5,6 +5,7 @@ import type { MergedSeriesSet } from "../core/formato";
 import type { GateTracker } from "../core/tramos";
 import { allTramos, loadSubidas } from "../services/subidas-store";
 import { TRAMOS_KEY } from "../services/tramos-store";
+import { breakdown } from "../ui/screens/ruta-fin/breakdown";
 import { tramoCard, tramoCoverage } from "../ui/screens/ruta-fin/tramos";
 import { memoryKV, type KeyValueStore } from "./kv";
 
@@ -145,6 +146,18 @@ describe("subidas en la ruta libre", () => {
         "Los Loros (Santa Cruz)",
       ]);
       expect(tramoCoverage(loros)).toBeGreaterThan(0.8);
+      // «Por tramos» al verlas: Barranco Hondo y la cuesta seguidas (el cruce no cuenta), y Los Loros casi entera.
+      const bh = breakdown(engs[1], allTramos(kv));
+      expect(bh?.pieces.filter((p) => p.tramo).map((p) => p.nombre)).toEqual([
+        "Barranco Hondo (sur)",
+        "Cuesta de Las Tablas (sur)",
+      ]);
+      const ll = breakdown(loros, allTramos(kv));
+      expect(ll?.pieces.filter((p) => p.tramo).map((p) => p.nombre)).toEqual([
+        "Los Loros (sur)",
+        "Los Loros (Santa Cruz)",
+      ]);
+      expect(Number(ll?.note.match(/\((\d+) %\)/)?.[1])).toBeGreaterThan(85);
       const got = passesOf(kv);
       expect(Object.keys(got).sort()).toEqual(
         [

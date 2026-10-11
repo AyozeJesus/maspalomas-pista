@@ -19,6 +19,7 @@ import {
 import { brakeFlash, hideFlashIfDue } from "./flash";
 import { calibView, gpsDotClass, gReading, leanReading, wheelieView } from "./live-view";
 import { miniMapOptions, sectorPaths } from "./minimap";
+import { awayMap } from "./away-map";
 import { asCanvas, byIds, setNodeText, setReading } from "./panel-dom";
 import { createView3d } from "./view3d-controller";
 
@@ -30,6 +31,9 @@ const IDS = [
   "d-speed",
   "d-3d",
   "d-3d-wait",
+  "d-away",
+  "d-away-map",
+  "d-away-l",
   "d-speedx",
   "d-delta",
   "d-delta-sub",
@@ -68,6 +72,8 @@ function setCell(main: Element, diff: Element, c: RecapCell): void {
 export function createDashPainter(root: HTMLElement, rt: DashRuntime) {
   const els = byIds(root, IDS);
   const canvas = asCanvas(els["d-map"]);
+  const awayCanvas = asCanvas(els["d-away-map"]);
+  let awayAt = -Infinity;
   const sectorBoxes = Array.from(els["d-sectors"].children);
   const view3d = createView3d({ box: els["d-3d"], wait: els["d-3d-wait"] }, rt.view3d);
   rt.view3d.close = view3d.close;
@@ -124,6 +130,21 @@ export function createDashPainter(root: HTMLElement, rt: DashRuntime) {
     mapa.draw(canvas, miniMapOptions(E, tr, t, p, sectors));
   }
 
+  // Aún fuera de la pista: el mapa con tu posición de verdad y a cuánto está el circuito (el dibujo, como mucho cada
+  // 300 ms). Devuelve si se ve.
+  function paintAway(E: Engine, t: number): boolean {
+    const m = awayMap(E, t, rt.settings.get().mapa !== false);
+    setHidden(els["d-away"], !m);
+    if (!m) return false;
+    setText(els["d-away-l"], m.label);
+    const nowMs = performance.now();
+    if (nowMs - awayAt >= 300) {
+      awayAt = nowMs;
+      mapa.draw(awayCanvas, m.options);
+    }
+    return true;
+  }
+
   function paint(): void {
     const E = rt.session.rt.E;
     if (E && E !== lastE && E.sim) simStarted(E);
@@ -131,6 +152,7 @@ export function createDashPainter(root: HTMLElement, rt: DashRuntime) {
     if (!E || E.free || E.mode !== "ride" || E.viewing) return;
     const t = nowOf(E);
     hideFlashIfDue(E, t);
+    const away = paintAway(E, t);
     setCls(els["d-gps"], gpsDotClass(E, t));
     const hz = rt.ext.hzText(E.extGps);
     setText(els["d-hz"], hz);
@@ -140,7 +162,7 @@ export function createDashPainter(root: HTMLElement, rt: DashRuntime) {
     setText(els["d-lap"], lapLabel(E));
     const d = stepDelta(E, t, p, rt.settings.get());
     if (d.cue) brakeFlash(E);
-    setCls(root, dashClass(E, d.cls));
+    setCls(root, dashClass(E, d.cls) + (away ? " away" : ""));
     if (E.replay) view3d.render(E, p);
     setNodeText(els["d-delta"].firstChild, d.main);
     setText(els["d-delta-sub"], d.sub);

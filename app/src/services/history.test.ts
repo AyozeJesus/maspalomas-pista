@@ -58,6 +58,35 @@ describe("línea de un entrenamiento en 8", () => {
   });
 });
 
+describe("línea de una ruta que pasó por tramos (subidas o los tuyos)", () => {
+  const s: ListedSession = {
+    ...base,
+    tipo: "ruta",
+    recorrido: { distancia: 6150, duracion: 540 },
+  };
+  it("cada tramo con su tiempo, en el orden en que se pasó, tras lo de siempre", () => {
+    expect(
+      sessionLine({
+        ...s,
+        tramos: [
+          { id: "a", nombre: "Barranco Hondo (sur)", tiempo: 103.748 },
+          { id: "b", nombre: "Cuesta de Las Tablas (sur)", tiempo: 64.679 },
+        ],
+      }),
+    ).toBe(
+      "Ruta libre · 6,2 km · 9:00 · Barranco Hondo (sur) 1:43,7 · Cuesta de Las Tablas (sur) 1:04,7",
+    );
+  });
+  it("con muchos, los tres primeros y cuántos más; sin ninguno, como siempre", () => {
+    const tramos = ["A", "B", "C", "D", "E"].map((n, k) => ({ id: n, nombre: n, tiempo: 60 + k }));
+    expect(sessionLine({ ...s, tramos })).toBe(
+      "Ruta libre · 6,2 km · 9:00 · A 1:00,0 · B 1:01,0 · C 1:02,0 · y 2 tramos más",
+    );
+    expect(sessionLine({ ...s, tramos: [] })).toBe("Ruta libre · 6,2 km · 9:00");
+    expect(sessionLine({ ...s, tramos: null })).toBe("Ruta libre · 6,2 km · 9:00");
+  });
+});
+
 describe("línea de cada grabación en «Mis rutas»", () => {
   it("la fecha, como antes", () => {
     expect(CASES.map(sessionDate)).toEqual(CASES.map(old.sessionDate));

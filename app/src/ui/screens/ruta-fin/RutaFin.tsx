@@ -5,6 +5,7 @@ import { useCallback, useReducer, useRef, useState } from "react";
 import type { ColorBy } from "../../draw/mapa";
 import { useRuntime } from "../../runtime-context";
 import { BrakesCard } from "./BrakesCard";
+import { BreakdownCard } from "./BreakdownCard";
 import { CurvesCard } from "./CurvesCard";
 import { LapsCard } from "./LapsCard";
 import { MapCard } from "./MapCard";
@@ -50,6 +51,7 @@ export function RutaFin() {
       <MapCard paint={paint} colorBy={colorBy} onColor={toggleColor} refs={refs} />
       <Route3dCard paint={paint} visible={visible} scrub={scrub} />
       <PhaseCard paint={paint} chartRef={refs.chart} />
+      <BreakdownCard paint={paint} />
       <TramosCard paint={paint} />
       <LapsCard paint={paint} />
       <CurvesCard paint={paint} />

@@ -8,6 +8,7 @@ import { isLatLon, MARK, type Tramo } from "../src/core/tramos";
 import type { Engine } from "../src/engine";
 import type { Settings } from "../src/engine/settings";
 import { legacyFile, liveFunctions } from "./legacy";
+import { addAwayMap } from "./renames";
 
 const FNS = [
   "render",
@@ -120,6 +121,7 @@ function byId(doc: Document, id: string): HTMLElement {
 export function oldPanel(E: Engine, opts: OldPanelOptions): OldPanel {
   const doc = document.implementation.createHTMLDocument("antes");
   doc.body.innerHTML = oldPanelHtml();
+  addAwayMap(doc);
   byId(doc, "ruta").hidden = false;
   const draws: string[] = [];
   const legends: string[] = [];
