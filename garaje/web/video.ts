@@ -305,69 +305,135 @@ export function mount(container: HTMLElement, hooks: VideoHooks): VideoControl {
     }
     st.exporting = true;
     expBtn.disabled = true;
-    const vw = video.videoWidth;
-    const vh = video.videoHeight;
-    const w = Math.min(1920, vw);
-    const h = Math.round((w * vh) / vw / 2) * 2;
-    const cv = document.createElement("canvas");
-    cv.width = w;
-    cv.height = h;
-    const ctx = ctx2d(cv);
-    const stream = cv.captureStream(30);
+    let rec: MediaRecorder | null = null;
+    // Pase lo que pase (el vídeo no se deja reproducir, se para a mitad, falla la grabadora), el botón vuelve a valer.
     try {
-      const vs = video.captureStream ? video.captureStream() : null;
-      if (vs) for (const tr of vs.getAudioTracks()) stream.addTrack(tr);
-    } catch {
-      /* sin sonido */
-    }
-    const types = [
-      "video/mp4;codecs=avc1.42E01E,mp4a.40.2",
-      "video/mp4",
-      "video/webm;codecs=vp9,opus",
-      "video/webm;codecs=vp8,opus",
-      "video/webm",
-    ];
-    const mime = types.find((t) => MediaRecorder.isTypeSupported(t)) || "";
-    const rec = new MediaRecorder(
-      stream,
-      mime ? { mimeType: mime, videoBitsPerSecond: 8e6 } : undefined,
-    );
-    const parts: Blob[] = [];
-    rec.ondataavailable = (ev) => {
-      if (ev.data && ev.data.size) parts.push(ev.data);
-    };
-    const done = new Promise((res) => (rec.onstop = res));
-    video.pause();
-    video.currentTime = start;
-    await new Promise((res) => video.addEventListener("seeked", res, { once: true }));
-    rec.start(1000);
-    await video.play();
-    await new Promise<void>((res) => {
-      const step = () => {
+      const vw = video.videoWidth;
+      const vh = video.videoHeight;
+      const w = Math.min(1920, vw);
+      const h = Math.round((w * vh) / vw / 2) * 2;
+      const cv = document.createElement("canvas");
+      cv.width = w;
+      cv.height = h;
+      const ctx = ctx2d(cv);
+      const stream = cv.captureStream(30);
+      try {
+        const vs = video.captureStream ? video.captureStream() : null;
+        if (vs) for (const tr of vs.getAudioTracks()) stream.addTrack(tr);
+      } catch {
+        /* sin sonido */
+      }
+      const types = [
+        "video/mp4;codecs=avc1.42E01E,mp4a.40.2",
+        "video/mp4",
+        "video/webm;codecs=vp9,opus",
+        "video/webm;codecs=vp8,opus",
+        "video/webm",
+      ];
+      const mime = types.find((t) => MediaRecorder.isTypeSupported(t)) || "";
+      const recorder = new MediaRecorder(
+        stream,
+        mime ? { mimeType: mime, videoBitsPerSecond: 8e6 } : undefined,
+      );
+      rec = recorder;
+      const parts: Blob[] = [];
+      recorder.ondataavailable = (ev) => {
+        if (ev.data && ev.data.size) parts.push(ev.data);
+      };
+      const done = new Promise((res) => (recorder.onstop = res));
+      video.pause();
+      video.currentTime = start;
+      await seeked();
+      recorder.start(1000);
+      await video.play();
+      const fin = await recordUntil(end, () => {
         ctx.drawImage(video, 0, 0, w, h);
         drawOverlay(ctx, w, h, current(), st.map);
         expMsg.textContent =
           "Grabando… " +
           Math.round(((video.currentTime - start) / (end - start)) * 100) +
           " % (se graba en tiempo real: no cambies de pestaña hasta que acabe)";
-        if (video.currentTime >= end || video.ended) res();
+      });
+      video.pause();
+      recorder.stop();
+      await done;
+      if (!fin) {
+        expMsg.textContent =
+          "Exportación cortada: el vídeo se paró antes de acabar la vuelta. Vuelve a pulsar «Exportar» y deja que llegue al final.";
+        return;
+      }
+      const type = (mime || "video/webm").split(";")[0];
+      const blob = new Blob(parts, { type });
+      // Un solo enlace: el de la exportación anterior se quita y su vídeo se libera de la memoria.
+      for (const old of exp.querySelectorAll("a[download]")) {
+        URL.revokeObjectURL((old as HTMLAnchorElement).href);
+        old.remove();
+      }
+      const a = el("a", "", "", exp);
+      a.href = URL.createObjectURL(blob);
+      a.download = "vuelta-" + l.num + (type === "video/mp4" ? ".mp4" : ".webm");
+      a.textContent = "Descargar «" + a.download + "» (" + fmt(blob.size / 1048576, 1) + " MB)";
+      expMsg.textContent = "Listo.";
+      st.lastExport = { size: blob.size, type, name: a.download };
+    } catch (e) {
+      // El detalle, a la consola; al piloto, qué hacer.
+      console.warn("No se ha podido exportar la vuelta", e);
+      if (rec && rec.state !== "inactive") rec.stop();
+      video.pause();
+      expMsg.textContent =
+        "No se ha podido grabar la vuelta: el navegador no ha dejado reproducir o grabar el vídeo. Prueba otra vez (si sigue, con Chrome).";
+    } finally {
+      st.exporting = false;
+      expBtn.disabled = false;
+    }
+  }
+
+  // Espera a que el vídeo acabe de colocarse donde se le ha pedido (10 s como mucho: si no, no se deja).
+  function seeked(): Promise<void> {
+    return new Promise((res, rej) => {
+      const timer = setTimeout(() => {
+        video.removeEventListener("seeked", ok);
+        rej(new Error("el vídeo no se coloca en el principio de la vuelta"));
+      }, 10000);
+      const ok = () => {
+        clearTimeout(timer);
+        res();
+      };
+      video.addEventListener("seeked", ok, { once: true });
+    });
+  }
+
+  // Dibuja cada fotograma (frame) hasta que el vídeo llega a `end`: true. false si se para antes (a mano, otro vídeo
+  // o un error del vídeo), en vez de esperar para siempre; y si dibujar falla, el error.
+  function recordUntil(end: number, frame: () => void): Promise<boolean> {
+    return new Promise((res, rej) => {
+      let over = false;
+      const stop = () => {
+        over = true;
+        for (const ev of ["pause", "error", "emptied"]) video.removeEventListener(ev, cut);
+      };
+      const finish = (ok: boolean) => {
+        if (over) return;
+        stop();
+        res(ok);
+      };
+      // Al acabar el archivo el navegador también avisa «pause»: eso no es cortar.
+      const cut = () => finish(video.ended || video.currentTime >= end - 0.05);
+      for (const ev of ["pause", "error", "emptied"]) video.addEventListener(ev, cut);
+      const step = () => {
+        if (over) return;
+        try {
+          frame();
+        } catch (e) {
+          stop();
+          rej(e);
+          return;
+        }
+        if (video.currentTime >= end || video.ended) finish(true);
         else requestAnimationFrame(step);
       };
       requestAnimationFrame(step);
     });
-    video.pause();
-    rec.stop();
-    await done;
-    const type = (mime || "video/webm").split(";")[0];
-    const blob = new Blob(parts, { type });
-    const a = el("a", "", "", exp);
-    a.href = URL.createObjectURL(blob);
-    a.download = "vuelta-" + l.num + (type === "video/mp4" ? ".mp4" : ".webm");
-    a.textContent = "Descargar «" + a.download + "» (" + fmt(blob.size / 1048576, 1) + " MB)";
-    expMsg.textContent = "Listo.";
-    st.exporting = false;
-    expBtn.disabled = false;
-    st.lastExport = { size: blob.size, type, name: a.download };
   }
 
   return {
