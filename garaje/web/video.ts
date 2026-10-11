@@ -33,6 +33,8 @@ interface VideoState {
   raf: number;
   exporting: boolean;
   last: OverlayData | null;
+  // Número del último vídeo elegido (para descartar lo que acabe de leerse de uno anterior).
+  pick: number;
   lastExport?: VideoExport;
 }
 
@@ -121,6 +123,7 @@ export function mount(container: HTMLElement, hooks: VideoHooks): VideoControl {
     raf: 0,
     exporting: false,
     last: null,
+    pick: 0,
   };
 
   function setInfo(t: string): void {
@@ -200,6 +203,8 @@ export function mount(container: HTMLElement, hooks: VideoHooks): VideoControl {
     const f = file.files && file.files[0];
     file.value = "";
     if (!f) return;
+    // Si mientras se lee la telemetría de este vídeo se elige otro, esta lectura ya no vale: manda el último.
+    const pick = ++st.pick;
     if (st.url) URL.revokeObjectURL(st.url);
     st.url = URL.createObjectURL(f);
     st.gopro = null;
@@ -217,6 +222,7 @@ export function mount(container: HTMLElement, hooks: VideoHooks): VideoControl {
     if (/\.(mp4|mov|lrv)$/i.test(f.name)) {
       try {
         const data = await extract(fileReader(f));
+        if (pick !== st.pick) return;
         st.gopro = data;
         st.session = toSession(data);
         const hz =
@@ -239,6 +245,7 @@ export function mount(container: HTMLElement, hooks: VideoHooks): VideoControl {
         }
         setInfo(f.name);
       } catch (e) {
+        if (pick !== st.pick) return;
         const msg = messageOf(e);
         setInfo(f.name + (/GPS|GoPro|GPMF/.test(msg) && !/MP4/.test(msg) ? " · " + msg : ""));
       }

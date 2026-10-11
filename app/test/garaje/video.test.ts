@@ -3,7 +3,9 @@
 // se deja reproducir, si se para a mitad (a mano, otro vídeo, un error) o si algo falla, el botón vuelve a valer y se
 // dice qué ha pasado. Y de varias exportaciones queda solo el último enlace (el anterior se libera).
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { mount } from "../../../garaje/web/video";
+import { dataAt, drawOverlay, mount } from "../../../garaje/web/video";
+import { mapOf } from "../../../garaje/web/video/dibujo";
+import { h5Payloads, mp4 } from "../fixtures-gpmf";
 import type { VideoControl } from "../../../garaje/web/tipos";
 import { analyze, demoSession } from "../../src/core/maspalomas";
 import type { AnalyzeResult } from "../../src/core/maspalomas/types";
@@ -186,6 +188,33 @@ describe("garaje: exportar una vuelta del vídeo", () => {
     expect(expMsg()).toMatch(/^Exportación cortada/);
     expect(links()).toHaveLength(0);
     expect(ctl.state().lastExport).toBeNull();
+  });
+
+  it("dos vídeos seguidos: manda el último, aunque el primero (una GoPro) acabe de leerse después", async () => {
+    const input = container.querySelector("input[type=file]") as HTMLInputElement;
+    const pick = (f: File) => {
+      Object.defineProperty(input, "files", { configurable: true, get: () => [f] });
+      input.dispatchEvent(new Event("change"));
+    };
+    pick(new File([mp4(h5Payloads(), { minf: "HERO5 Black" })], "GX010001.MP4"));
+    pick(new File(["abc"], "clip.webm", { type: "video/webm" }));
+    await until(() => false, 200);
+    expect(container.querySelector("p.caption")?.textContent).toBe("clip.webm");
+    expect(ctl.state().gopro).toBe(false);
+    expect(ctl.state().offset).toBeNull();
+    expect((container.querySelector(".vid-gopro") as HTMLElement).hidden).toBe(true);
+  });
+
+  it("sin dato de tumbada, encima del vídeo sale «—°» sin lado", () => {
+    const log = new DrawLog();
+    const ctx = log.canvas().getContext("2d") as unknown as CanvasRenderingContext2D;
+    const d = dataAt(RES, RES.laps[1].t0 + 20);
+    expect(d).not.toBeNull();
+    if (!d) return;
+    drawOverlay(ctx, 1280, 720, { ...d, lean: NaN }, mapOf(RES));
+    const texts = log.entries.filter((e) => e[1] === "fillText").map((e) => String(e[2]));
+    expect(texts).toContain("—°");
+    expect(texts.join(" ")).not.toMatch(/izq\.|der\./);
   });
 
   it("de dos exportaciones queda un solo enlace, y el anterior se libera", async () => {

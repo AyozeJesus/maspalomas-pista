@@ -130,7 +130,10 @@ export function drawOverlay(
   ctx.font = "700 " + 3 * u + "px system-ui, sans-serif";
   ctx.textAlign = "center";
   ctx.fillText(
-    fmt(Math.abs(d.lean), 0) + "°" + (Math.abs(d.lean) < 3 ? "" : d.lean > 0 ? " der." : " izq."),
+    // Sin dato (NaN): «—°», sin lado.
+    fmt(Math.abs(d.lean), 0) +
+      "°" +
+      (!isFinite(d.lean) || Math.abs(d.lean) < 3 ? "" : d.lean > 0 ? " der." : " izq."),
     cx,
     cy + 4.5 * u,
   );
