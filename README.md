@@ -153,6 +153,32 @@ ruta es de ida y vuelta por la misma carretera (como subir y bajar Los Loros), e
 atrás (el punto más lejano del principio, o la mitad de la parada si paraste allí): en la ruta del 9 de octubre,
 dos partes de 6,3 y 6,2 km (`app/src/core/cortar.ts`).
 
+## Lo grabado en 3D (y la vuelta de prueba de cada subida)
+
+Lo que enseñaba la vuelta de ejemplo (la moto en 3D desde el casco, desde detrás o desde arriba) sale ahora también
+con lo tuyo:
+
+- **Rutas** (resumen, tarjeta «En 3D», debajo del mapa): «Ver en 3D» monta la carretera con tu propia trazada
+  (suavizada; dos carriles con su discontinua e hitos cada 50 m, y tú por el derecho) y la recorre con tu velocidad,
+  tu inclinación, la luz de freno donde frenaste y el morro arriba en los caballitos. Va a la par que el punto del
+  mapa: si lo mueves allí (o con su barra), la moto salta ahí; reproduciendo, el punto la sigue. De ×1 a ×16, y las
+  paradas largas se saltan. La grabación no tiene alturas: la carretera sale llana.
+- **Tandas** (boxes, viendo una tanda guardada, tarjeta «Vuelta en 3D»): cada vuelta válida en el circuito de
+  siempre (pianos, barreras y los carteles de frenada de tu mejor vuelta), contra tu mejor vuelta de esa tanda en
+  morado, a la misma hora de vuelta, con el tiempo y la diferencia en directo (verde si ganas, rojo si pierdes).
+- **Subidas de montaña** («Subidas de montaña» → isla → sentido → «3D»): una vuelta de prueba para ver por dónde va
+  la carretera, en los dos sentidos. Es una moto simulada que va tan rápido como dejan las curvas, como mucho a
+  90 km/h y 35° de inclinación: sirve para ver el trazado, no es un ritmo que seguir. La carretera es tu camino de
+  verdad si ya pasaste por ella (el que se aprende en la primera pasada) y, si no, la de OpenStreetMap
+  (© colaboradores de OpenStreetMap, ODbL): su ruta en coche de la salida a la meta (OSRM, 11-oct-2026), guardada en
+  la app (`app/src/app/subidas-trazados.ts`), así que va sin cobertura. Comprobada con las rutas del 9 de octubre: a
+  menos de 16 m de lo grabado. En Los Loros el router tiraba por un atajo de 1 km y lleva tres puntos de paso para ir
+  por sus curvas.
+
+three.js y las carreteras solo se cargan al abrir el 3D; rodando, nada de esto se ve ni se calcula. De paso: el suelo
+de la vista 3D (un plano de kilómetros hecho de dos triángulos) perdía precisión de profundidad y tapaba trozos de
+asfalto (el km 0,3 de El Teide, Los Loros); ahora se dibuja el primero y no tapa nada, también en la vuelta de ejemplo.
+
 ## Ruta libre (cualquier carretera)
 
 Va dibujando tu línea de trazada sobre un mapa que te sigue: en rojo donde frenas, en verde donde aceleras, en

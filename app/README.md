@@ -23,6 +23,9 @@ comparar.
 - `src/ui/`: las pantallas (`screens/`, con los mismos ids que la app de antes), las capas de encima (`overlays/`),
   componentes comunes y los dibujos (mapa, imágenes para compartir, vista 3D). Los paneles en marcha se pintan en cada
   fotograma fuera del estado de React (escriben en el DOM solo lo que cambia: el móvil del circuito es modesto).
+- `src/ui/three/vista3d.ts`: la escena 3D (circuito cerrado o carretera abierta). Solo importa `three`: el garaje la
+  carga tal cual en el navegador. `src/ui/replay3d/`: el reproductor 3D de lo grabado (rutas, vueltas de una tanda y
+  la vuelta de prueba de cada subida) y de dónde sale cada cosa (trazada → carretera, línea de tiempo, simulación).
 - `sw/`: el service worker (la app entera guardada en el móvil, «pista-vN» con N = la versión de la portada).
 
 ## Órdenes
