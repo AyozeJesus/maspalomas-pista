@@ -40,6 +40,19 @@
   fill: var(--ink);
   font-weight: 700;
 }
+/* Texto dentro de un trozo de color (todos los de la app son claros): oscuro. */
+.ch-svg .ch-in {
+  fill: #050607;
+  font-weight: 700;
+}
+/* Una barra suelta, sin el fondo de las gráficas. */
+.ch-svg.ch-bare {
+  background: transparent;
+}
+/* Al tocar un trozo, los demás se apagan un poco. */
+.ch-dim {
+  opacity: 0.45;
+}
 
 .ch-grid {
   stroke: rgba(255, 255, 255, 0.08);

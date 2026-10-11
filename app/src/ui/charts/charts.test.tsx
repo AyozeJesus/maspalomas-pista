@@ -7,6 +7,9 @@ import { compareSeries, type CompareNames, type GridLike } from "./lap-compare";
 import { LapCompareChart } from "./LapCompareChart";
 import type { LapPoint } from "./lap-times";
 import { LapTimesChart } from "./LapTimesChart";
+import { leanSides } from "./lean-sides";
+import { LeanSidesChart } from "./LeanSidesChart";
+import { ShareBar } from "./ShareBar";
 import { FALLBACK_WIDTH } from "./useChartWidth";
 
 afterEach(cleanup);
@@ -159,5 +162,87 @@ describe("LapCompareChart", () => {
     expect(svg.querySelectorAll("path.ch-line.ch-best")).toHaveLength(1);
     // Sin curvas, metros abajo.
     expect(svg.textContent).toContain("200 m");
+  });
+});
+
+describe("ShareBar", () => {
+  const segs = [
+    { key: "freno", label: "frena", value: 120, color: "#ff5b4f" },
+    { key: "gas", label: "acelera", value: 240, color: "#22c35f" },
+    { key: "muerto", label: "sin gas en curva", value: 6, color: "#f2b300" },
+    { key: "caballito", label: "caballito", value: 0, color: "#d08bff" },
+  ];
+
+  it("un trozo por cosa con algo, su % dentro si cabe, y al tocar su tiempo", () => {
+    const { container } = render(<ShareBar id="sb" label="Tiempo en cada fase" segments={segs} />);
+    const box = container.querySelector("#sb") as HTMLElement;
+    const svg = placed(box.querySelector("svg") as SVGSVGElement);
+    expect(svg.querySelectorAll("path")).toHaveLength(3);
+    expect(Array.from(svg.querySelectorAll("text.ch-in"), (t) => t.textContent)).toEqual([
+      "33 %",
+      "66 %",
+    ]);
+    expect(svg.getAttribute("aria-label")).toBe(
+      "Tiempo en cada fase: frena 33 %, acelera 66 %, sin gas en curva 2 %",
+    );
+    fireEvent.pointerDown(svg, { clientX: FALLBACK_WIDTH - 1, pointerId: 1 });
+    expect(box.querySelector(".ch-readout")?.textContent).toBe(
+      "Sin gas en curva · 2\u{a0}% · 0:06",
+    );
+    expect(svg.querySelectorAll(".ch-dim")).toHaveLength(2);
+    fireEvent.keyDown(svg, { key: "Home" });
+    expect(box.querySelector(".ch-readout")?.textContent).toBe("Frena · 33\u{a0}% · 2:00");
+  });
+
+  it("sin nada que repartir: la caja vacía", () => {
+    const { container } = render(
+      <ShareBar id="sb" label="x" segments={segs.map((s) => ({ ...s, value: 0 }))} />,
+    );
+    expect((container.querySelector("#sb") as HTMLElement).hasAttribute("data-empty")).toBe(true);
+    expect(container.querySelector("svg")).toBeNull();
+  });
+});
+
+describe("LeanSidesChart", () => {
+  const data = leanSides([
+    { lean: -1, leanMax: 22 },
+    { lean: -1, leanMax: 25 },
+    { lean: 1, leanMax: 12 },
+    { lean: 1, leanMax: 33 },
+    { lean: 1, leanMax: 36 },
+  ]);
+
+  it("barras a cada lado por tramo, los máximos arriba y, al tocar, sus curvas", () => {
+    const { container } = render(
+      <LeanSidesChart id="ls" data={data} maxLeft={25.4} maxRight={36.2} />,
+    );
+    const box = container.querySelector("#ls") as HTMLElement;
+    const svg = placed(box.querySelector("svg") as SVGSVGElement);
+    // Izquierda 15–30° (2); derecha < 15° (1) y 30–40° (2).
+    expect(svg.querySelectorAll("path")).toHaveLength(3);
+    const texts = Array.from(svg.querySelectorAll("text"), (t) => t.textContent);
+    expect(texts).toEqual(
+      expect.arrayContaining(["Izquierda · máx 25°", "Derecha · máx 36°", "30–40°"]),
+    );
+    expect(svg.getAttribute("aria-label")).toBe(
+      "Curvas por inclinación. Izquierda: 2 de 15–30°. Derecha: 1 de < 15°, 2 de 30–40°.",
+    );
+    // La fila de arriba es la más tumbada (30–40°); a la derecha del centro.
+    fireEvent.pointerDown(svg, { clientX: FALLBACK_WIDTH * 0.8, clientY: 22 + 10, pointerId: 1 });
+    expect(box.querySelector(".ch-readout")?.textContent).toBe("Derecha · 30–40° · 2 curvas");
+    expect(svg.querySelectorAll("rect.ch-pick")).toHaveLength(1);
+    // Con las flechas también por las vacías.
+    fireEvent.keyDown(svg, { key: "ArrowDown" });
+    expect(box.querySelector(".ch-readout")?.textContent).toBe("Derecha · 15–30° · 0 curvas");
+    fireEvent.keyDown(svg, { key: "ArrowLeft" });
+    expect(box.querySelector(".ch-readout")?.textContent).toBe("Izquierda · 15–30° · 2 curvas");
+  });
+
+  it("sin curvas con inclinación: la caja vacía", () => {
+    const { container } = render(
+      <LeanSidesChart id="ls" data={null} maxLeft={null} maxRight={null} />,
+    );
+    expect((container.querySelector("#ls") as HTMLElement).hasAttribute("data-empty")).toBe(true);
+    expect(container.querySelector("svg")).toBeNull();
   });
 });

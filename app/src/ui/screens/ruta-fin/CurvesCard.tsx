@@ -1,5 +1,7 @@
-// «Curvas»: las 15 más tumbadas de la ruta.
+// «Curvas»: cuántas a cada lado en cada tramo de inclinación (gráfica) y las 15 más tumbadas de la ruta (tabla).
 import { memo, useMemo } from "react";
+import { leanSides } from "../../charts/lean-sides";
+import { LeanSidesChart } from "../../charts/LeanSidesChart";
 import { FoldTable } from "./FoldTable";
 import type { Paint } from "./paint";
 import { curvesTable } from "./tables";
@@ -16,12 +18,19 @@ const HEAD = (
 
 export const CurvesCard = memo(function CurvesCard({ paint }: { paint: Paint | null }) {
   const table = useMemo(() => (paint ? curvesTable(paint.eng.route.curves) : null), [paint]);
+  const sides = useMemo(() => (paint ? leanSides(paint.eng.route.curves) : null), [paint]);
   return (
     <section className="card" aria-labelledby="ruf-c-h">
       <h2 id="ruf-c-h">Curvas</h2>
       <p className="muted" id="ruf-c-note">
         {table ? table.note : ""}
       </p>
+      <LeanSidesChart
+        id="ruf-c-lean"
+        data={sides}
+        maxLeft={paint ? paint.s.inclIzquierda : null}
+        maxRight={paint ? paint.s.inclDerecha : null}
+      />
       <FoldTable
         paint={paint}
         head={HEAD}

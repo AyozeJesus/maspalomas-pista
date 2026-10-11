@@ -2,6 +2,8 @@
 // gas, sin gas en curva, manteniendo o en caballito (la nota de la gráfica de fases).
 import type { Curve, TrailPoint } from "../../../core/recorrido";
 import { fmt } from "../../../lib/format";
+import type { ShareSegment } from "../../charts/share";
+import { mapa } from "../../draw/mapa";
 
 // Con menos puntos de trazada no hay gráfica de fases.
 export const PHASE_CHART_MIN = 20;
@@ -40,6 +42,14 @@ export function phaseTimes(tr: readonly Pick<TrailPoint, "t" | "gap" | "wh" | "p
 
 function phaseKey(ph: string): keyof PhaseTimes {
   return ph === "freno" || ph === "gas" || ph === "muerto" || ph === "mantiene" ? ph : "mantiene";
+}
+
+// Los trozos de la barra de fases, en el orden y con los nombres y colores de la leyenda del mapa por fases (frena,
+// acelera, sin gas en curva, mantiene, caballito).
+export function phaseSegments(tm: PhaseTimes): ShareSegment[] {
+  const keys: (keyof PhaseTimes)[] = ["freno", "gas", "muerto", "mantiene", "caballito"];
+  const items = mapa.legendItems("fase");
+  return keys.map((key, k) => ({ key, label: items[k][0], value: tm[key], color: items[k][1] }));
 }
 
 // «Del tiempo en marcha: frenando 21 %, acelerando 34 %, sin gas en curva 9 %, manteniendo 36 %. Sin gas en curva:
