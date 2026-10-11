@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { asCanvas, asDocument, DrawLog } from "../../../test/fake-canvas";
 import { composePages, PAGE } from "./paginas";
 
-const LOOK = { font: "16px Roboto", family: "Roboto", color: "#f3f5f6", background: "#050607" };
+const LOOK = { family: "Roboto", color: "#f3f5f6", background: "#050607" };
 // Ancho útil de la página y la escala de una tarjeta de móvil (360 px de CSS).
 const CW = PAGE.w - 2 * PAGE.margin;
 const K = CW / 360;

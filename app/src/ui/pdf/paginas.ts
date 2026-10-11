@@ -145,7 +145,7 @@ export async function screenPdf(
   const { blocks, unmount } = mountClone(screen, prepareClone(screen));
   let markups: string[];
   try {
-    markups = blocks.map((b) => blockMarkup(b, screen, css, look));
+    markups = blocks.map((b) => blockMarkup(b, screen, css));
   } finally {
     unmount();
   }

@@ -10,6 +10,8 @@ export const OMIT = [
   "input",
   "select",
   "textarea",
+  // La etiqueta de un campo quitado («Nombre» al guardar el circuito).
+  "label",
   '[data-pdf="omit"]',
   // «Opciones» (nombre, compartir, exportar, cortar): del resumen y de boxes.
   'section[aria-labelledby="ruf-opt-h"]',
@@ -141,9 +143,9 @@ export function mountClone(
   return { blocks, unmount: () => host.remove() };
 }
 
-// Cómo es la página por debajo de las tarjetas (body): letra (entera y solo la familia), color y fondo.
+// Cómo es la página por debajo de las tarjetas (body), para el fondo y el pie de cada página del PDF: la familia de
+// letra, el color y el fondo.
 export interface PageLook {
-  font: string;
   family: string;
   color: string;
   background: string;
@@ -153,28 +155,19 @@ export function pageLook(doc: Document): PageLook {
   const view = doc.defaultView;
   const cs = view ? view.getComputedStyle(doc.body) : null;
   return {
-    font: (cs && cs.font) || "16px sans-serif",
     family: (cs && cs.fontFamily) || "sans-serif",
     color: (cs && cs.color) || "#fff",
     background: (cs && cs.backgroundColor) || "#000",
   };
 }
 
-// El XHTML de una tarjeta para meterlo en un SVG: los estilos, la pantalla (sin su relleno) y la tarjeta.
-export function blockMarkup(b: Block, screen: HTMLElement, css: string, look: PageLook): string {
+// El XHTML de una tarjeta para meterlo en un SVG: los estilos, la pantalla (sin su relleno) y la tarjeta. Va dentro de
+// un <body> para que valga la regla de body de la app tal cual (letra, color, fondo y sobre todo el interlineado
+// relativo: copiado de getComputedStyle sería fijo en px y las letras pequeñas saldrían más altas que en la pantalla).
+export function blockMarkup(b: Block, screen: HTMLElement, css: string): string {
   const doc = b.el.ownerDocument;
-  const wrap = doc.createElement("div");
-  wrap.style.cssText =
-    "margin:0;overflow:hidden;width:" +
-    b.w +
-    "px;height:" +
-    b.h +
-    "px;font:" +
-    look.font +
-    ";color:" +
-    look.color +
-    ";background:" +
-    look.background;
+  const wrap = doc.createElement("body");
+  wrap.style.cssText = "margin:0;overflow:hidden;width:" + b.w + "px;height:" + b.h + "px";
   const style = doc.createElement("style");
   style.textContent = css;
   // La pantalla (main.page…), para que valgan las reglas que dependen de ella.

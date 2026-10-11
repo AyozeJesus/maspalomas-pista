@@ -9,7 +9,8 @@ const SCREEN =
   '<section class="card"><h2>Resumen</h2><details class="fold more" id="ruf-more"><summary>Más datos</summary>' +
   "<div>Curvas 12</div></details></section>" +
   '<section class="card"><canvas id="ruf-map" class="route-map"></canvas><div class="scrub">' +
-  '<p class="scrub-at">A 1,2 km</p><input type="range" id="ruf-pos"><div class="scrub-nav"><button>‹</button></div>' +
+  '<p class="scrub-at">A 1,2 km</p><label for="ruf-pos">Punto</label><input type="range" id="ruf-pos">' +
+  '<div class="scrub-nav"><button>‹</button></div>' +
   '<p class="muted">Arrastra el dedo</p></div></section>' +
   '<section class="card"><div class="cmp-wrap"><table class="cmp-table"><tbody><tr><td>1</td></tr>' +
   '<tr class="extra"><td>6</td></tr></tbody></table></div><button class="quiet more-rows">Ver las 6</button></section>' +
@@ -59,6 +60,8 @@ describe("prepareClone", () => {
     expect(shot.mock.calls[0][0]).toBe(screen.querySelector("#ruf-map"));
     // La pantalla, como estaba.
     expect(screen.querySelectorAll("button")).toHaveLength(3);
+    expect(screen.querySelectorAll("label")).toHaveLength(1);
+    expect(clone.querySelectorAll("label")).toHaveLength(0);
     expect(screen.querySelector("#ruf-more")?.hasAttribute("open")).toBe(false);
     expect(screen.querySelector(".cmp-wrap")?.classList.contains("all")).toBe(false);
     expect(screen.querySelectorAll("canvas")).toHaveLength(3);
@@ -72,26 +75,23 @@ describe("prepareClone", () => {
 });
 
 describe("blockMarkup y windowSvg", () => {
-  it("la tarjeta dentro de su pantalla (sin relleno), con los estilos y la letra de la página", () => {
+  it("la tarjeta dentro de su pantalla (sin relleno) y de un <body> (vale la regla de body: letra e interlineado)", () => {
     const screen = live();
     const card = screen.querySelector("section.card") as HTMLElement;
     const xhtml = blockMarkup(
       { el: card, w: 340, h: 120, cuts: [] },
       screen,
       ".card > h2 { color: red; }",
-      {
-        font: '400 16px / 23.2px Roboto, "Google Sans"',
-        family: 'Roboto, "Google Sans"',
-        color: "rgb(243, 245, 246)",
-        background: "rgb(5, 6, 7)",
-      },
     );
     const doc = new DOMParser().parseFromString(xhtml, "application/xml");
     expect(doc.querySelector("parsererror")).toBeNull();
     const root = doc.documentElement;
     expect(root.namespaceURI).toBe("http://www.w3.org/1999/xhtml");
+    expect(root.localName).toBe("body");
     expect(root.getAttribute("style")).toContain("width: 340px");
-    expect(root.getAttribute("style")).toContain("background: rgb(5, 6, 7)");
+    expect(root.getAttribute("style")).toContain("height: 120px");
+    // Ni letra ni interlineado copiados a mano: los pone la regla de body.
+    expect(root.getAttribute("style")).not.toContain("font");
     expect(doc.querySelector("style")?.textContent).toBe(".card > h2 { color: red; }");
     const main = doc.querySelector("main#ruta-fin.page") as Element;
     expect(main.getAttribute("style")).toContain("padding: 0px");
