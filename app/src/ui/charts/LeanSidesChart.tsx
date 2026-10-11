@@ -11,7 +11,7 @@ const HEAD = 22;
 const ROW = 30;
 const BAR = 16;
 const LABEL_W = 64;
-const M = { left: 4, right: 4, bottom: 4 };
+const M = { left: 10, right: 10, bottom: 4 };
 
 type Side = "left" | "right";
 
@@ -166,7 +166,8 @@ export function LeanSidesChart({ id, data, maxLeft, maxRight }: Props) {
           onKeyDown={onKey}
         >
           {base}
-          {cur ? (
+          {/* Una barra vacía no lleva aro: lo dice la línea de encima («0 curvas»). */}
+          {cur && data.bands[cur.band][cur.side] ? (
             <rect
               className="ch-pick"
               x={

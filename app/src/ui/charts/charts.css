@@ -31,6 +31,10 @@
   outline: 3px solid var(--focus);
   outline-offset: 2px;
 }
+/* Al tocarla con el dedo, sin el contorno del navegador (el de teclado, el de arriba). */
+.ch-svg:focus:not(:focus-visible) {
+  outline: none;
+}
 .ch-svg text {
   fill: var(--muted);
   font: 500 11px var(--sans);
@@ -54,7 +58,9 @@
   opacity: 0.45;
 }
 
-.ch-grid {
+/* La rejilla de visx lleva su color en cada línea: la clase va en el grupo. */
+.ch-grid,
+.ch-grid line {
   stroke: rgba(255, 255, 255, 0.08);
   stroke-width: 1;
 }

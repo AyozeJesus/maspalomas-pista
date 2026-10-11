@@ -9,6 +9,7 @@ import { Area, LinePath } from "@visx/shape";
 import { useId, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
 import { fmt, fmtSigned } from "../../lib/format";
 import {
+  deltaExtent,
   indexAtMeters,
   readoutAt,
   type CompareNames,
@@ -29,8 +30,6 @@ const AXIS_H = 22;
 const H = M.top + SPEED_H + GAP + DELTA_H + AXIS_H;
 const DELTA_TOP = M.top + SPEED_H + GAP;
 const DELTA_BOTTOM = DELTA_TOP + DELTA_H;
-// Escalas de la diferencia de tiempo (± s).
-const DELTA_STEPS = [0.2, 0.5, 1, 2, 3, 5, 10, 20];
 
 const CLASS: Record<SeriesKind, string> = { best: "ch-best", lap: "ch-lap", model: "ch-model" };
 
@@ -69,17 +68,15 @@ export function LapCompareChart({ cs, subKind, refKind, names, corners }: Props)
     const vHi = Math.max(vLo + 20, Math.ceil((vr[1] + 5) / 20) * 20);
     const v = scaleLinear<number>({ domain: [vLo, vHi], range: [M.top + SPEED_H, M.top] });
     const vTicks = stepsBetween(vLo, vHi, niceStep(vHi - vLo, 4));
-    const dr = finiteRange(cs.delta);
-    const dMax = dr ? Math.max(Math.abs(dr[0]), Math.abs(dr[1])) : 0;
-    const dm = DELTA_STEPS.find((s) => s >= dMax * 1.1) || Math.ceil(dMax);
-    const d = scaleLinear<number>({ domain: [-dm, dm], range: [DELTA_BOTTOM, DELTA_TOP] });
-    return { x, v, vTicks, d, dm };
+    const { up, dn } = deltaExtent(cs.delta);
+    const d = scaleLinear<number>({ domain: [-dn, up], range: [DELTA_BOTTOM, DELTA_TOP] });
+    return { x, v, vTicks, d, up, dn };
   }, [cs, width, m]);
 
   // Lo que no cambia al deslizar el dedo.
   const base = useMemo(() => {
     if (!geo) return null;
-    const { x, v, vTicks, d, dm } = geo;
+    const { x, v, vTicks, d, up, dn } = geo;
     const idx = Array.from({ length: m }, (_, i) => i);
     const xi = (i: number) => x(cs.s[i]);
     const marks = corners.filter((c) => c.s >= 0 && c.s <= cs.L).sort((a, b) => a.s - b.s);
@@ -95,7 +92,7 @@ export function LapCompareChart({ cs, subKind, refKind, names, corners }: Props)
     );
     const zero = d(0);
     const plotW = width - M.left - M.right;
-    const dFmt = (s: number) => (s === 0 ? "0" : fmtSigned(s, dm < 1 ? 1 : 0) + " s");
+    const dFmt = (s: number) => (s === 0 ? "0" : fmtSigned(s, Math.abs(s) < 1 ? 1 : 0) + " s");
     return (
       <>
         <defs>
@@ -133,7 +130,7 @@ export function LapCompareChart({ cs, subKind, refKind, names, corners }: Props)
         <AxisLeft
           scale={d}
           left={M.left}
-          tickValues={[dm, 0, -dm]}
+          tickValues={[up, 0, -dn]}
           tickFormat={(t) => dFmt(Number(t))}
           hideAxisLine
           hideTicks

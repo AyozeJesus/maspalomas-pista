@@ -64,6 +64,28 @@ export function compareSeries(ref: GridLike, sub: GridLike, maxPoints = 700): Co
   return out;
 }
 
+// Pasos redondos del panel de la diferencia de tiempo (s).
+const DELTA_STEPS = [0.2, 0.5, 1, 2, 3, 5, 10, 20];
+const niceUp = (x: number, k: number) => DELTA_STEPS.find((s) => s >= x * k) || Math.ceil(x * k);
+
+// Hasta dónde llega el panel de la diferencia por arriba (lo perdido, up) y por abajo (lo ganado, dn), en pasos
+// redondos y con un poco de aire: cada lado lo suyo (una vuelta que solo pierde no gasta medio panel en lo que no
+// gana), pero el más corto como poco un cuarto del otro, para que el cero no quede pegado al borde.
+export function deltaExtent(delta: ArrayLike<number>): { up: number; dn: number } {
+  let hi = 0;
+  let lo = 0;
+  for (let i = 0; i < delta.length; i++)
+    if (Number.isFinite(delta[i])) {
+      if (delta[i] > hi) hi = delta[i];
+      if (delta[i] < lo) lo = delta[i];
+    }
+  let up = niceUp(hi, 1.1);
+  let dn = niceUp(-lo, 1.1);
+  up = Math.max(up, niceUp(dn / 4, 1));
+  dn = Math.max(dn, niceUp(up / 4, 1));
+  return { up, dn };
+}
+
 // El punto de la serie más cercano a s metros (las s van de menor a mayor).
 export function indexAtMeters(s: ArrayLike<number>, x: number): number {
   let lo = 0;

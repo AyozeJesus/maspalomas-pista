@@ -4,6 +4,7 @@ import {
   compareSeries,
   compareSummary,
   cornerNear,
+  deltaExtent,
   indexAtMeters,
   readoutAt,
   type CompareNames,
@@ -85,6 +86,20 @@ describe("compareSeries", () => {
     )!;
     expect(cs.delta[50]).toBeNaN();
     expect(cs.delta[51]).toBeCloseTo(0);
+  });
+});
+
+describe("deltaExtent", () => {
+  it("cada lado lo suyo, redondo y con aire; el corto, como poco un cuarto del otro", () => {
+    expect(deltaExtent([0, 0.4, 1.73, -0.01])).toEqual({ up: 2, dn: 0.5 });
+    expect(deltaExtent([0, -0.3, -0.9])).toEqual({ up: 0.5, dn: 1 });
+    expect(deltaExtent([0, 2.5, -2.4])).toEqual({ up: 3, dn: 3 });
+  });
+
+  it("sin diferencias (o sin datos): el panel más pequeño", () => {
+    expect(deltaExtent([0, 0, 0])).toEqual({ up: 0.2, dn: 0.2 });
+    expect(deltaExtent([NaN, NaN])).toEqual({ up: 0.2, dn: 0.2 });
+    expect(deltaExtent([])).toEqual({ up: 0.2, dn: 0.2 });
   });
 });
 

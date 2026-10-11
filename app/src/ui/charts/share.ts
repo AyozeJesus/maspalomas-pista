@@ -20,7 +20,7 @@ export interface PlacedSegment extends ShareSegment {
 
 const GAP = 2;
 // Lo que ocupa «100 %» en negrita a 11 px, con aire.
-const LABEL_MIN = 38;
+const LABEL_MIN = 34;
 
 // Los trozos con algo (en su orden) a lo largo de width px. [] si no hay nada.
 export function placeSegments(segs: readonly ShareSegment[], width: number): PlacedSegment[] {
