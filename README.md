@@ -262,6 +262,15 @@ vuelta, todas las vueltas y el circuito) y lo más importante (distancia, tiempo
 frenada máxima, curvas, frenadas, caballitos). Se manda con lo que ofrezca el móvil (WhatsApp, Telegram…); sin
 red, WhatsApp la deja en cola. Si el navegador no sabe compartir archivos, se descarga.
 
+**Compartir en PDF** («Compartir (PDF)», en «Opciones» del resumen de la ruta y de boxes): todo lo que se ve al darle a
+«Ver», tal cual y desplegado («Más datos» abierto, las tablas con todas sus filas, el mapa con el punto donde esté, las
+gráficas), sin los botones. Cada tarjeta va a lo ancho de un A4, con el mismo tamaño de letra que en el móvil; una
+tarjeta pasa entera a la página siguiente si cabe en una, y si no se parte entre filas, nunca por la mitad de una. Lo
+hace el móvil, sin red ni librerías (`app/src/ui/pdf/`, `app/src/lib/pdf.ts`): copia la pantalla, pinta cada tarjeta
+con los estilos de la app y mete una imagen por página. Tarda unos segundos; si se pasa del rato que el navegador deja
+para compartir tras un toque, el botón dice «Compartir el PDF» y basta otro toque. Lo que no deba salir en el PDF lleva
+`data-pdf="omit"` (la vista 3D).
+
 **Atrás**: el atrás del móvil ya no cierra la app. Desde el resumen de la ruta, la prueba de sensores o los tiempos
 del día vuelve a la portada, a la pestaña de donde saliste (y el resumen tiene «Volver» arriba); repasando una
 grabación, la cierra; rodando no para nada (avisa de que para acabar está «Terminar»); en «Mis rutas» o «Ajustes»
