@@ -17,6 +17,13 @@ initKey();
 
 const dockServer = createServer(handler(dock));
 const garageServer = createServer(handler(garage));
+// Las conexiones que se reutilizan (cloudflared las guarda 90 s; fetch, unos segundos) no las corta el garaje antes que
+// quien las usa: con los 5 s de Node, una petición podía llegar a una que se estaba cerrando (ECONNRESET, o un 502 al
+// móvil por el túnel).
+for (const s of [dockServer, garageServer]) {
+  s.keepAliveTimeout = 120_000;
+  s.headersTimeout = 121_000;
+}
 
 let closing = false;
 function shutdown(): void {

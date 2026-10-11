@@ -198,6 +198,15 @@ describe("garaje: la puerta de este Mac", () => {
       expect([p, (await fetch(g.garaje + p)).status]).toEqual([p, 404]);
   });
 
+  it("guarda las conexiones abiertas más que el túnel (cloudflared, 90 s) y que fetch", async () => {
+    // Con los 5 s de Node, quien reutiliza una conexión puede pillarla cerrándose: ECONNRESET aquí, un 502 al móvil
+    // por el túnel.
+    for (const base of [g.garaje, g.muelle]) {
+      const r = await fetch(base + "/api/hola");
+      expect(r.headers.get("keep-alive")).toBe("timeout=120");
+    }
+  });
+
   it("sin túnel no hay enlace para emparejar", async () => {
     const est = (await (await fetch(g.garaje + "/api/estado")).json()) as EstadoGaraje;
     expect(est.enlace).toBeNull();
