@@ -20,6 +20,7 @@ function data(times: number[], opts: { model?: boolean; noProfile?: number[] } =
       time,
       best: time === best,
       profile: opts.noProfile && opts.noProfile.includes(i + 1) ? null : grid(30),
+      sectors: null,
     })),
     target: 65,
     model: opts.model ? { time: 65, profile: grid(33) } : null,
@@ -34,8 +35,8 @@ describe("lapChartData", () => {
       rows: [],
       bestT: 67.2,
       laps: [
-        { time: 68.4, profile: g as never },
-        { time: 67.2, profile: g as never },
+        { time: 68.4, profile: g as never, sectors: [30.1, 38.3] },
+        { time: 67.2, profile: g as never, sectors: [29.8, 37.4] },
       ],
     };
     const analysis = {
@@ -50,8 +51,8 @@ describe("lapChartData", () => {
     } as unknown as AnalyzeResult;
     const d = lapChartData(table, analysis, 65);
     expect(d.laps).toEqual([
-      { num: 1, time: 68.4, best: false, profile: g },
-      { num: 2, time: 67.2, best: true, profile: g },
+      { num: 1, time: 68.4, best: false, profile: g, sectors: [30.1, 38.3] },
+      { num: 2, time: 67.2, best: true, profile: g, sectors: [29.8, 37.4] },
     ]);
     expect(d.model).toEqual({ time: 65.1, profile: g });
     expect(d.corners).toEqual([
@@ -63,7 +64,7 @@ describe("lapChartData", () => {
 
   it("sin análisis: las vueltas del cronómetro, sin rejilla, objetivo ni curvas", () => {
     const d = lapChartData({ rows: [], bestT: 67.2, laps: [{ time: 67.2 }] }, null, 65);
-    expect(d.laps).toEqual([{ num: 1, time: 67.2, best: true, profile: null }]);
+    expect(d.laps).toEqual([{ num: 1, time: 67.2, best: true, profile: null, sectors: null }]);
     expect(d.model).toBeNull();
     expect(d.corners).toEqual([]);
   });

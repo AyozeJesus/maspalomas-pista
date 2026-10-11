@@ -13,6 +13,8 @@ export interface ChartLap {
   best: boolean;
   // Su rejilla de distancia (solo con el análisis).
   profile: GridLike | null;
+  // Lo que tardó en cada sector, en el orden de corners (solo con el análisis).
+  sectors: number[] | null;
 }
 
 export interface LapChartData {
@@ -36,6 +38,7 @@ export function lapChartData(
       time: l.time,
       best: l.time === table.bestT,
       profile: l.profile || null,
+      sectors: l.sectors || null,
     })),
     target,
     model:

@@ -9,6 +9,7 @@ import { DEFAULT_SETTINGS } from "../../../engine/settings";
 import { fmtLap } from "../../../lib/format";
 import { LapCompareCard } from "./LapCompareCard";
 import { LapsCard } from "./LapsCard";
+import { SectorsCard } from "./SectorsCard";
 import { pitsView, type PitsView } from "./pits-view";
 
 afterEach(cleanup);
@@ -23,6 +24,7 @@ function mount(view: PitsView) {
     <>
       <LapsCard laps={view.laps} ideal={view.ideal} chart={view.chart} />
       <LapCompareCard data={view.chart} />
+      <SectorsCard data={view.chart} />
     </>,
   );
 }
@@ -104,6 +106,23 @@ describe("boxes: gráficas de las vueltas", () => {
     } finally {
       E.pitsAnalysis = saved;
     }
+  });
+
+  it("sectores: una fila por vuelta, un mejor (morado) por columna y su suma = la vuelta ideal de 4 sectores", () => {
+    const view = viewOf();
+    const { container } = mount(view);
+    const box = container.querySelector("#p-sec-box") as HTMLElement;
+    expect(box.hasAttribute("data-empty")).toBe(false);
+    const rows = Array.from(box.querySelectorAll("tbody tr:not(.ch-sum)"));
+    expect(rows).toHaveLength(view.laps.length);
+    const cols = view.chart.corners.length;
+    expect(box.querySelectorAll("thead th")).toHaveLength(cols + 1);
+    for (let j = 0; j < cols; j++)
+      expect(rows.some((r) => r.children[j + 1].classList.contains("top"))).toBe(true);
+    const ideal = (container.querySelector("#p-ideal") as HTMLElement).textContent || "";
+    expect(ideal).toMatch(/4 sectores\): 1:\d\d,\d\d$/);
+    const sum = (box.querySelectorAll(".ch-note")[1] as HTMLElement).textContent || "";
+    expect(sum).toBe("Con tus mejores sectores juntos: " + ideal.split(": ")[1] + ".");
   });
 
   it("antes de entrar en boxes (sin vista): las dos cajas vacías", () => {

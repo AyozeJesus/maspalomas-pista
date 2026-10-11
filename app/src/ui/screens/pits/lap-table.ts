@@ -27,6 +27,8 @@ export interface TableLap {
   leanMax?: number;
   vMax?: number;
   profile?: Grid;
+  // Lo que tardó en cada sector (el de cada curva lenta del modelo, en su orden).
+  sectors?: number[];
 }
 
 export function lapTable(laps: readonly Lap[], analysis: AnalyzeResult | null): LapTable {
@@ -45,7 +47,13 @@ export function lapTable(laps: readonly Lap[], analysis: AnalyzeResult | null): 
         .filter((l) => l.valid)
         .map((l) => {
           const m = timerOf(l);
-          return { time: m ? m.time : l.time, leanMax: l.leanMax, vMax: l.vMax, profile: l.grid };
+          return {
+            time: m ? m.time : l.time,
+            leanMax: l.leanMax,
+            vMax: l.vMax,
+            profile: l.grid,
+            sectors: l.sectors,
+          };
         })
     : valid.map((l) => ({ time: l.time }));
   const bestT = list.length ? Math.min(...list.map((l) => l.time)) : null;

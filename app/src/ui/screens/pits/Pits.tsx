@@ -10,6 +10,7 @@ import { LapCompareCard } from "./LapCompareCard";
 import { LapsCard } from "./LapsCard";
 import { OptionsCard } from "./OptionsCard";
 import { PitsMain } from "./PitsMain";
+import { SectorsCard } from "./SectorsCard";
 import { StoreLine } from "./StoreLine";
 import { TipsCard } from "./TipsCard";
 import { usePitsView } from "./usePitsView";
@@ -57,6 +58,7 @@ export function Pits() {
         chart={view ? view.chart : null}
       />
       <LapCompareCard data={view ? view.chart : null} />
+      <SectorsCard data={view ? view.chart : null} />
       <BrakesCard rows={view ? view.brakes : []} note={view ? BRAKES_NOTE : ""} />
       <TipsCard tips={view ? view.tips : []} />
       <OptionsCard key={"o" + entry} view={view} onRenamed={onRenamed} />

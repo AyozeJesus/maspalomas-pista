@@ -244,6 +244,16 @@
   font-size: 14px;
 }
 
+/* Rejilla de sectores: rojo más intenso cuanto más se pierde (--heat de 0 a 1); el mejor, morado (td.top de
+   cmp-table); la fila de los mejores, separada. */
+.ch-heat td.num:not(.top) {
+  background: rgba(255, 138, 127, calc(var(--heat, 0) * 0.32));
+}
+.ch-heat tr.ch-sum td {
+  border-top: 1px solid var(--line-strong);
+  color: var(--ink-2);
+}
+
 @media (prefers-reduced-motion: no-preference) {
   .ch-svg {
     animation: ch-in 0.25s ease-out;

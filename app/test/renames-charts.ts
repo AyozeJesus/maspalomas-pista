@@ -6,17 +6,29 @@
 // Una caja de gráfica vacía, como la pinta React antes de tener datos (por fuera, igual con datos).
 const shell = (id: string) => '<div class="ch" id="' + id + '" data-chart=""></div>';
 
+// Una tarjeta que es solo su gráfica (id, id-h del título e id-box de la caja).
+const card = (id: string, title: string) =>
+  '<section class="card ch-card" aria-labelledby="' +
+  id +
+  '-h" id="' +
+  id +
+  '"><h2 id="' +
+  id +
+  '-h">' +
+  title +
+  "</h2>" +
+  shell(id + "-box") +
+  "</section>";
+
 export function addChartShells(root: ParentNode): void {
-  // Desde el 11-oct-2026, boxes lleva los tiempos por vuelta en «Vueltas» (antes de la tabla) y, después, la tarjeta
-  // «Tu mejor vuelta frente a otra».
+  // Desde el 11-oct-2026, boxes lleva los tiempos por vuelta en «Vueltas» (antes de la tabla) y, después, las tarjetas
+  // «Tu mejor vuelta frente a otra» y «Sectores».
   const laps = root.querySelector('#pits section[aria-labelledby="laps-h"]');
   if (laps) {
     laps.querySelector(".table-wrap")?.insertAdjacentHTML("beforebegin", shell("p-lapchart"));
     laps.insertAdjacentHTML(
       "afterend",
-      '<section class="card ch-card" aria-labelledby="p-cmp-h" id="p-cmp">' +
-        '<h2 id="p-cmp-h">Tu mejor vuelta frente a otra</h2>' +
-        '<div class="ch" id="p-cmp-box" data-chart=""></div></section>',
+      card("p-cmp", "Tu mejor vuelta frente a otra") + card("p-sec", "Sectores"),
     );
   }
   // Y el resumen de la ruta, la barra del rato en cada fase (tras la leyenda de la gráfica de fases) y las curvas por
