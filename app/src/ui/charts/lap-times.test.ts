@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { CAP, lapReadout, lapTimesScale, type LapPoint } from "./lap-times";
+import { CAP, lapReadout, lapTimesScale, OCHO_WORDS, type LapPoint } from "./lap-times";
 
 const laps = (times: number[]): LapPoint[] => {
   const best = Math.min(...times);
@@ -40,6 +40,15 @@ describe("lapTimesScale", () => {
     expect(sc.ticks.length).toBeGreaterThanOrEqual(2);
   });
 
+  // En un 8, uno lento no es tráfico: es cómo empezó la sesión (19 y 17 s y luego 10), y se ve, sin tope.
+  it("con las palabras de los ochos, sin tope hasta el doble del mejor", () => {
+    expect(lapTimesScale(laps([19, 17, 16, 12, 10]), null)!.capAt).toBe(16);
+    const sc = lapTimesScale(laps([19, 17, 16, 12, 10]), null, OCHO_WORDS)!;
+    expect(sc.capAt).toBeNull();
+    expect(sc.hi).toBeGreaterThan(19);
+    expect(lapTimesScale(laps([25, 12, 10]), null, OCHO_WORDS)!.capAt).toBe(20);
+  });
+
   it("con menos de dos vueltas, nada", () => {
     expect(lapTimesScale(laps([67.2]), 65)).toBeNull();
     expect(lapTimesScale([], 65)).toBeNull();
@@ -53,5 +62,11 @@ describe("lapReadout", () => {
     expect(lapReadout(ls, 0)).toBe("Vuelta 1 · 1:08,02 · +0,82 s");
     expect(lapReadout(ls, 1)).toBe("Vuelta 2 · 1:07,20 · tu mejor");
     expect(lapReadout(ls, 5)).toBe("");
+  });
+
+  it("con las palabras de los ochos: «Ocho N» y el tiempo en segundos", () => {
+    const ls = laps([10.52, 10.11]);
+    expect(lapReadout(ls, 0, OCHO_WORDS)).toBe("Ocho 1 · 10,52 s · +0,41 s");
+    expect(lapReadout(ls, 1, OCHO_WORDS)).toBe("Ocho 2 · 10,11 s · tu mejor");
   });
 });

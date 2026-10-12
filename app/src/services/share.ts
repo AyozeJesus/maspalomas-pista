@@ -64,8 +64,9 @@ function ochoShareData(eng: Engine, tr: OchoTracker, colorBy: ColorBy): RouteIma
       ["Mejor 8", secs(o.mejor), true],
       ["Media", secs(o.media)],
       ["Regularidad", o.desviacion === null ? "—" : "±" + fmt(o.desviacion, 2) + " s"],
-      ["Incl. izquierda", deg(o.izq)],
-      ["Incl. derecha", deg(o.der)],
+      // La máxima, y lo pone: en «Ver», la de casi siempre es la «sostenida».
+      ["Incl. izq. máx.", deg(o.izq)],
+      ["Incl. der. máx.", deg(o.der)],
       ["Tiempo", fmtClock(s.duracion)],
       ["Distancia", fmt(s.distancia / 1000, 1) + " km"],
       ["Punta", fmt(s.punta, 0) + " km/h"],

@@ -1,13 +1,13 @@
-// Tiempos por vuelta: un punto por vuelta unidos por una raya tenue (la mejor en morado, con su tiempo al lado), la
-// raya discontinua del objetivo y, al tocar un punto (o con las flechas), lo de esa vuelta encima. Las vueltas muy
-// lentas se quedan en el tope con un triángulo (lap-times.ts). La tabla de vueltas lleva los mismos números.
+// Tiempos por vuelta (o por 8, con OCHO_WORDS): un punto por vuelta unidos por una raya tenue (la mejor en morado, con
+// su tiempo al lado), la raya discontinua del objetivo y, al tocar un punto (o con las flechas), lo de esa vuelta
+// encima. Las vueltas muy lentas se quedan en el tope con un triángulo (lap-times.ts). La tabla de vueltas lleva los
+// mismos números.
 import { AxisLeft } from "@visx/axis";
 import { GridRows } from "@visx/grid";
 import { scaleLinear } from "@visx/scale";
 import { LinePath } from "@visx/shape";
 import { useMemo, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
-import { fmtLap } from "../../lib/format";
-import { lapReadout, lapTimesScale, type LapPoint } from "./lap-times";
+import { LAP_WORDS, lapReadout, lapTimesScale, type LapPoint, type TimeWords } from "./lap-times";
 import { spacedLabels } from "./ticks";
 import { useChartWidth } from "./useChartWidth";
 
@@ -21,13 +21,15 @@ interface Props {
   id: string;
   laps: readonly LapPoint[];
   target: number | null;
+  // Cómo se llama y se escribe cada punto (sin ello, vueltas de un circuito; los ochos llevan OCHO_WORDS).
+  words?: TimeWords;
 }
 
-export function LapTimesChart({ id, laps, target }: Props) {
+export function LapTimesChart({ id, laps, target, words = LAP_WORDS }: Props) {
   const box = useRef<HTMLDivElement>(null);
   const width = useChartWidth(box);
   const [pick, setPick] = useState<number | null>(null);
-  const sc = useMemo(() => lapTimesScale(laps, target), [laps, target]);
+  const sc = useMemo(() => lapTimesScale(laps, target, words), [laps, target, words]);
   const n = laps.length;
   const geo = useMemo(() => {
     if (!sc || width <= 0) return null;
@@ -61,7 +63,7 @@ export function LapTimesChart({ id, laps, target }: Props) {
           scale={y}
           left={M.left}
           tickValues={sc.ticks}
-          tickFormat={(v) => fmtLap(Number(v), sc.decimals)}
+          tickFormat={(v) => words.time(Number(v), sc.decimals)}
           hideAxisLine
           hideTicks
           tickLabelProps={{ dx: -4, textAnchor: "end", verticalAnchor: "middle" }}
@@ -81,7 +83,7 @@ export function LapTimesChart({ id, laps, target }: Props) {
               y={y(target) - 5}
               textAnchor="end"
             >
-              {"Objetivo " + fmtLap(target)}
+              {"Objetivo " + words.time(target)}
             </text>
           </g>
         ) : null}
@@ -116,7 +118,7 @@ export function LapTimesChart({ id, laps, target }: Props) {
             y={bestY - 10 < M.top + 6 ? bestY + 20 : bestY - 10}
             textAnchor="middle"
           >
-            {fmtLap(laps[bestI].time)}
+            {words.time(laps[bestI].time)}
           </text>
         ) : null}
         {laps.map((l, i) =>
@@ -128,11 +130,11 @@ export function LapTimesChart({ id, laps, target }: Props) {
         )}
       </>
     );
-  }, [sc, geo, laps, target, width]);
+  }, [sc, geo, laps, target, width, words]);
 
   const empty = !sc;
   const at = pick !== null && pick < n ? pick : null;
-  const text = at === null ? "Toca un punto para ver esa vuelta." : lapReadout(laps, at);
+  const text = at === null ? words.hint : lapReadout(laps, at, words);
 
   // La vuelta más cercana al dedo (en horizontal).
   const pickAt = (e: PointerEvent<SVGSVGElement>) => {
@@ -184,7 +186,7 @@ export function LapTimesChart({ id, laps, target }: Props) {
           viewBox={`0 0 ${width} ${H}`}
           role="slider"
           tabIndex={0}
-          aria-label="Tiempo de cada vuelta"
+          aria-label={words.aria}
           aria-valuemin={1}
           aria-valuemax={n}
           aria-valuenow={

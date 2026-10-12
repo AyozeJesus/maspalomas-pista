@@ -17,6 +17,21 @@ import { cornerTrack, predicted } from "./track";
 import { lagNow, resetCalib, type Engine } from "./state";
 import { dot3, G } from "./vec";
 
+// Entrenamiento en 8: segundos parado (según el GPS) para que un giro brusco cuente como el móvil en la mano (los ceros
+// sueltos del GPS rodando despacio duran 1–2 fijos; las paradas de verdad, de 9 en adelante), con histéresis: parado
+// desde menos de STILL_V m/s y rodando otra vez desde más de ROLL_V. El giro, sostenido (media de 0,3 s del vector de
+// giro de más de SPIN_HELD rad/s): un golpe es una muestra sola. Se confirma si sigue parado CONFIRM_S más (al
+// arrancar girando, el GPS aún dice 0 un segundo). Y la calibración nueva, desde ROLL_AGAIN_V m/s (en ochos casi nunca
+// se pasa de 8).
+const STILL_S = 3;
+const STILL_V = 0.5;
+const ROLL_V = 1.2;
+const SPIN_HELD = 0.4;
+const CONFIRM_S = 2;
+const ROLL_AGAIN_V = 3;
+// En el 8, el giro que se junta antes de que las curvas decidan los ejes del montaje (en lo demás, 1).
+const MOUNT_EVIDENCE_OCHO = 3;
+
 // gyroRaw: giro en rad/s en el orden que da el navegador (se graba así; el análisis también lo comprueba).
 export function onMotion(
   E: Engine,
@@ -66,8 +81,10 @@ export function onMotion(
     c.up[2] += grav[2];
     c.upN++;
   }
-  // Parado, un giro brusco es el móvil en la mano o recolocado: ejes nuevos al volver a rodar.
-  if (v < 2 && spin > 1.5) E.moved = true;
+  // Parado, un giro brusco es el móvil en la mano o recolocado: ejes nuevos al volver a rodar. En el 8, solo parado de
+  // verdad y con giro sostenido (ochoMoved).
+  if (E.ocho) ochoMoved(E, t, v, spin);
+  else if (v < 2 && spin > 1.5) E.moved = true;
   else if (E.moved && v > 8) resetCalib(E);
   const dt = E.aLast === null ? 0.02 : Math.max(0.001, Math.min(0.1, t - E.aLast));
   E.aLast = t;
@@ -127,6 +144,34 @@ export function onMotion(
   }
 }
 
+// Entrenamiento en 8: «el móvil se ha movido» solo parado de verdad y con giro sostenido. El GPS del Vivo da 0 en uno o
+// dos fijos sueltos al ir despacio (casi siempre al cambiar de lado), y un golpe (arrancar, la pata de cabra) es una
+// muestra sola: las dos cosas tiraban la calibración (12-oct: tres veces en un minuto; después, inclinación vacía o con
+// los ejes del montaje, y vueltas mal medidas). spin: el giro de esta muestra (rad/s).
+function ochoMoved(E: Engine, t: number, v: number, spin: number): void {
+  if (v < STILL_V) {
+    if (E.stillFrom === null) E.stillFrom = t;
+  } else if (v > ROLL_V) {
+    // Rodando otra vez: si lo de antes era arrancar girando, no era el móvil en la mano.
+    E.stillFrom = null;
+    E.movedT = null;
+  }
+  const wl = E.wLp;
+  const held = wl ? Math.hypot(wl[0], wl[1], wl[2]) : 0;
+  if (
+    E.movedT === null &&
+    E.stillFrom !== null &&
+    t - E.stillFrom >= STILL_S &&
+    spin > 1.5 &&
+    held > SPIN_HELD
+  )
+    E.movedT = t;
+  if (E.movedT !== null && t - E.movedT >= CONFIRM_S) {
+    E.moved = true;
+    E.movedT = null;
+  } else if (E.moved && v > ROLL_AGAIN_V) resetCalib(E);
+}
+
 // Comprueba con las curvas el eje adelante del montaje. En curva la moto gira sobre la vertical del mundo, que vista
 // desde la moto tumbada cae en su vertical y en su eje lateral, y siempre hacia el mismo lado: a derechas (giro −Ω,
 // tumbada φ > 0) ω·l = −Ω·sen φ; a izquierdas (+Ω, φ < 0) ω·l = Ω·sen φ: negativo en las dos. Sobre el eje adelante solo
@@ -141,14 +186,16 @@ export function mountCheck(E: Engine, w: readonly number[], v: number, dt: numbe
   const Lf = L.f;
   const Lu = L.u;
   const Ll = L.l;
-  if (!k || !Lf || !Lu || !Ll || !(v > 8)) return;
+  // En el 8, desde ROLL_AGAIN_V: casi nunca se pasa de 8 m/s (12-oct: seis fijos en 44 min), y con los ejes del montaje
+  // girados 90° las vueltas y la inclinación salían mal toda la sesión.
+  if (!k || !Lf || !Lu || !Ll || !(v > (E.ocho ? ROLL_AGAIN_V : 8))) return;
   const wu = Math.abs(dot3(w, Lu));
   if (wu < 0.15) return;
   k.uu += wu * wu * dt;
   k.fu += dot3(w, Lf) * wu * dt;
   k.lu += dot3(w, Ll) * wu * dt;
   // Unas cuantas curvas (una de 3 s a 0,4 rad/s da ~0,5).
-  if (k.uu < 1) return;
+  if (k.uu < (E.ocho ? MOUNT_EVIDENCE_OCHO : 1)) return;
   E.mountChk = { uu: 0, fu: 0, lu: 0 };
   // Puntuación de cada eje lateral posible (−Σ ω·l·|ω·u| / Σ ω·u²): con el bueno sale tan φ de media (0,5–1 en la
   // tanda de ejemplo); con los otros, solo el balanceo, que en un par de curvas aún no se anula (±0,7). Por eso no se
@@ -253,5 +300,7 @@ export function rideStep(
     pitch: E.pitchDeg,
   });
   // Entrenamiento en 8: el mismo giro, con el signo que el recorrido ha comprobado con el GPS.
-  if (E.ocho) E.ocho.step(t, E.route.yawSign * yawRate, E.leanDeg, v);
+  // Las velocidades de cada 8, las del GPS: la del motor va adelantada con el acelerómetro y, tumbado mucho rato, se
+  // pasa (12-oct: 44,8 km/h en un 8 cuyo GPS no pasó de 26,7).
+  if (E.ocho) E.ocho.step(t, E.route.yawSign * yawRate, E.leanDeg, v, E.fix ? E.fix.v : NaN);
 }

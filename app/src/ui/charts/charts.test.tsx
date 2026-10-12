@@ -5,7 +5,7 @@ import { cleanup, fireEvent, render } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { compareSeries, type CompareNames, type GridLike } from "./lap-compare";
 import { LapCompareChart } from "./LapCompareChart";
-import type { LapPoint } from "./lap-times";
+import { OCHO_WORDS, type LapPoint } from "./lap-times";
 import { LapTimesChart } from "./LapTimesChart";
 import { leanSides } from "./lean-sides";
 import { LeanSidesChart } from "./LeanSidesChart";
@@ -78,6 +78,20 @@ describe("LapTimesChart", () => {
     expect(svg.querySelectorAll("circle.ch-dot")).toHaveLength(2);
     expect(svg.querySelectorAll("path.ch-dot")).toHaveLength(1);
     expect(svg.querySelector("line.ch-target")).toBeNull();
+  });
+
+  it("con las palabras de los ochos: «Ocho N» y segundos", () => {
+    const { container } = render(
+      <LapTimesChart id="lt" laps={laps([10.52, 10.11, 10.9])} target={null} words={OCHO_WORDS} />,
+    );
+    const svg = placed(container.querySelector("svg.ch-svg") as SVGSVGElement);
+    const readout = () => container.querySelector(".ch-readout")?.textContent;
+    expect(readout()).toBe("Toca un punto para ver ese 8.");
+    expect(svg.getAttribute("aria-label")).toBe("Tiempo de cada 8");
+    expect(svg.textContent).toContain("10,11 s");
+    expect(svg.textContent).not.toContain("0:10");
+    fireEvent.keyDown(svg, { key: "Home" });
+    expect(readout()).toBe("Ocho 1 · 10,52 s · +0,41 s");
   });
 
   it("con una sola vuelta (o ninguna), la caja vacía y sin dibujo", () => {

@@ -62,4 +62,19 @@ describe("franja del entrenamiento en 8", () => {
     const b = ochoStrip(slow.tr, slow.t);
     expect(b.hidden === false && b.deltaCls).toBe("num down");
   });
+
+  it("dando círculos al mismo lado (más de vuelta y poco), avisa: «vuelta de más» (como en el resumen)", () => {
+    const tr = new OchoTracker();
+    let t = 0;
+    // 0,7 rad/s durante 11 s: 441°.
+    for (let i = 0; i < 660; i++) tr.step((t += 1 / 60), -0.7, -25, 4.5);
+    const s = ochoStrip(tr, t);
+    expect(s.hidden === false && s.lap).toBe("Ochos 0 · vuelta de más");
+    // Antes de pasar de la vuelta, el tiempo de la vuelta en marcha, como siempre.
+    const tr2 = new OchoTracker();
+    let t2 = 0;
+    for (let i = 0; i < 300; i++) tr2.step((t2 += 1 / 60), -0.7, -25, 4.5);
+    const s2 = ochoStrip(tr2, t2);
+    expect(s2.hidden === false && s2.lap).toMatch(/^Ochos 0 · \d+,\d s$/);
+  });
 });

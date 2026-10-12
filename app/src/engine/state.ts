@@ -368,6 +368,10 @@ export interface Engine {
   crashLog: CrashRecord[];
   hasGyro: boolean;
   moved: boolean;
+  // Entrenamiento en 8: desde cuándo (s) el GPS dice parado (menos de 0,5 m/s), o null rodando; y cuándo pareció el
+  // móvil en la mano (se confirma si sigue parado), o null.
+  stillFrom: number | null;
+  movedT: number | null;
   canal: Series<"t" | "s" | "v" | "a" | "lean" | "lap">;
   canalT: number;
   cw: CornerWork | null;
@@ -565,6 +569,8 @@ export function newEngine(
     crashLog: [],
     hasGyro: false,
     moved: false,
+    stillFrom: null,
+    movedT: null,
     canal: new Series(["t", "s", "v", "a", "lean", "lap"] as const),
     canalT: -Infinity,
     // Curva en curso, curvas de esta vuelta y resumen de la última curva.

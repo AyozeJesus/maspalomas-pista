@@ -1,7 +1,7 @@
 // La franja de vueltas o tramos de la ruta libre (#ru-laps): el circuito en marcha (vuelta, tiempo, diferencia con la
 // mejor), el tramo en marcha o el recién acabado, o la salida marcada a mano. renderCircuit, renderTramoStrip y
 // passTimeAt de live.js, sin DOM.
-import type { OchoTracker } from "../../../core/ocho";
+import { MAX_TURN, type OchoTracker } from "../../../core/ocho";
 import { MARK, type TramoEstado } from "../../../core/tramos";
 import { lagNow, type Engine, type TramoRun } from "../../../engine";
 import { fmt, fmtClock, fmtLap, fmtMeters, fmtSigned } from "../../../lib/format";
@@ -98,12 +98,17 @@ export function ochoStrip(tr: OchoTracker, t: number, leanReady = true): StripVi
   const last = st.last;
   const best = st.best;
   const idle = !st.count && !st.lobe && !st.open;
+  // Dando círculos al mismo lado: esa vuelta ya no será la mitad de un 8 (que no parezca un 8 lentísimo). «Vuelta de
+  // más», como en el resumen.
+  const circles = !!st.lobe && st.lobe.turn > (MAX_TURN * 180) / Math.PI;
   return {
     hidden: false,
     lap:
       !leanReady && idle
         ? "Primero, parado: «Calibrar»"
-        : "Ochos " + st.count + (now !== null ? " · " + fmt(now, 1) + " s" : ""),
+        : "Ochos " +
+          st.count +
+          (circles ? " · vuelta de más" : now !== null ? " · " + fmt(now, 1) + " s" : ""),
     delta: last ? fmt(last.time, 2) + " s" : "—",
     deltaCls:
       "num" +
