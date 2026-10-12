@@ -68,6 +68,40 @@ describe("prepareClone", () => {
     expect(screen.querySelectorAll("canvas")).toHaveLength(3);
   });
 
+  it("una pantalla en pestañas: todas, sin la barra, con sus tarjetas sueltas y en orden (se vea la que se vea)", () => {
+    document.body.innerHTML =
+      '<main class="page" id="ruta-fin"><header class="page-head"><h1>Ruta</h1></header>' +
+      '<div class="ruf-tabbar" data-pdf="omit"><div role="tablist"><button role="tab">Resumen</button></div></div>' +
+      '<div class="ruf-panels" data-pdf="unwrap">' +
+      '<div role="tabpanel" id="p1" hidden="" data-pdf="unwrap"><section id="a"></section><section id="b"></section></div>' +
+      '<div role="tabpanel" id="p2" data-pdf="unwrap"><section id="c" hidden=""></section><canvas id="cv"></canvas></div>' +
+      '</div><p class="muted">Nota</p></main>';
+    const screen = document.getElementById("ruta-fin") as HTMLElement;
+    const shot = vi.fn((): CanvasShot => ({
+      src: "data:image/png;base64,AAAA",
+      w: 300,
+      h: 100,
+      display: "block",
+    }));
+    const clone = prepareClone(screen, shot);
+    expect(Array.from(clone.children, (c) => c.id || c.tagName.toLowerCase())).toEqual([
+      "header",
+      "a",
+      "b",
+      "c",
+      "cv",
+      "p",
+    ]);
+    // El lienzo de la pestaña que no se ve, copiado también (de la pantalla, donde está maquetado).
+    expect(shot).toHaveBeenCalledWith(screen.querySelector("#cv"));
+    expect(clone.querySelector("img#cv")).not.toBeNull();
+    // Lo que estaba oculto por sí mismo, sigue oculto.
+    expect(clone.querySelector("#c")?.hasAttribute("hidden")).toBe(true);
+    // La pantalla, como estaba.
+    expect(screen.querySelectorAll('[role="tabpanel"]')).toHaveLength(2);
+    expect(screen.querySelector("#p1")?.hasAttribute("hidden")).toBe(true);
+  });
+
   it("una pantalla oculta sale visible en la copia", () => {
     const screen = live();
     screen.hidden = true;

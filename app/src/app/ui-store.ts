@@ -5,6 +5,15 @@ import { createStore, useStore } from "zustand";
 export type Screen = "home" | "dash" | "pits" | "dia" | "sensores" | "ruta" | "ruta-fin";
 export type HomeTab = "rodar" | "rutas" | "ajustes";
 export const TABS: readonly HomeTab[] = ["rodar", "rutas", "ajustes"];
+// Las pestañas del resumen de la ruta, en su orden (las que no tienen nada en una ruta, no salen).
+export type SummaryTab = "resumen" | "tramos" | "pilotaje" | "3d" | "opciones";
+export const SUMMARY_TABS: readonly SummaryTab[] = [
+  "resumen",
+  "tramos",
+  "pilotaje",
+  "3d",
+  "opciones",
+];
 
 export interface LapFlash {
   kind: "lap";
@@ -37,6 +46,8 @@ export interface CrashUiState {
 export interface UiState {
   screen: Screen;
   homeTab: HomeTab;
+  // La pestaña del resumen de la ruta (cada ruta que se abre empieza en «Resumen»).
+  summaryTab: SummaryTab;
   // De dónde se fue a «Tiempos del día» (para volver ahí).
   dayFrom: "home" | "pits";
   toast: { text: string; id: number } | null;
@@ -60,6 +71,7 @@ export interface UiState {
 export const uiStore = createStore<UiState>(() => ({
   screen: "home",
   homeTab: "rodar",
+  summaryTab: "resumen",
   dayFrom: "home",
   toast: null,
   flash: null,
@@ -94,8 +106,12 @@ export function hideToast(): void {
   uiStore.setState({ toast: null });
 }
 
+// Otra pantalla empieza arriba (como otra pestaña de la portada): si no, la nueva salía a la altura de la de antes (de
+// un resumen bajado hasta el mapa, «Mis rutas» a media lista).
 export function show(screen: Screen): void {
+  const changed = screen !== uiStore.getState().screen;
   uiStore.setState({ screen });
+  if (changed && typeof window !== "undefined") window.scrollTo(0, 0);
 }
 
 export function setTab(tab: HomeTab): void {
@@ -103,6 +119,11 @@ export function setTab(tab: HomeTab): void {
   const changed = tab !== uiStore.getState().homeTab;
   uiStore.setState({ homeTab: tab });
   if (changed && typeof window !== "undefined") window.scrollTo(0, 0);
+}
+
+// La pestaña del resumen de la ruta (dónde queda la página al cambiarla lo decide la pantalla: SummaryTabs).
+export function setSummaryTab(tab: SummaryTab): void {
+  if (SUMMARY_TABS.includes(tab)) uiStore.setState({ summaryTab: tab });
 }
 
 export function refreshHome(): void {

@@ -207,6 +207,8 @@ describe("resumen de la ruta: el nombre", () => {
 describe("resumen de la ruta: guardar como tramo", () => {
   it("sin nombre lo pide; con él, guarda el tramo con sus pasadas y ya no lo ofrece", async () => {
     const b = await bench();
+    // En su pestaña (en una que no se ve, el campo no puede llevarse el foco).
+    fireEvent.click(byId(b.root, "ruf-tb-tramos"));
     expect(byId(b.root, "ruf-tr-save").hidden).toBe(false);
     fireEvent.click(byId(b.root, "ruf-tr-go"));
     expect(toastText()).toBe("Ponle un nombre al tramo");

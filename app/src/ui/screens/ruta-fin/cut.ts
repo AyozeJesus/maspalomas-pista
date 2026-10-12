@@ -74,9 +74,9 @@ export function cutSetup(
     note: turn
       ? "Sube y baja por la misma carretera: el corte va en la vuelta atrás" +
         (turn.parada ? ", donde paraste" : "") +
-        ". Mueve la barra para cambiarlo. Quedan dos rutas; esta entera se borra del móvil" +
+        " (el punto rosa «corte» del mapa, en «Resumen»). Mueve la barra para cambiarlo. Quedan dos rutas; esta entera se borra del móvil" +
         mac
-      : "Mueve la barra hasta donde quieras partirla (el punto rosa «corte» del mapa). Quedan dos rutas; esta entera se borra del móvil" +
+      : "Mueve la barra hasta donde quieras partirla (el punto rosa «corte» del mapa, en «Resumen»). Quedan dos rutas; esta entera se borra del móvil" +
         mac,
   };
 }

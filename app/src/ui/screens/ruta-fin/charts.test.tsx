@@ -10,6 +10,13 @@ import { PhaseCard } from "./PhaseCard";
 
 afterEach(cleanup);
 
+// Las piezas que pinta route-canvas.ts (aquí no se pinta nada).
+const noRefs = () => ({
+  chart: { current: null },
+  chartAt: { current: null },
+  chartSub: { current: null },
+});
+
 let paint: Paint;
 beforeAll(async () => {
   paint = makePaint(await routeOf(demoSeries()));
@@ -17,8 +24,7 @@ beforeAll(async () => {
 
 describe("resumen: gráficas", () => {
   it("la barra de fases: los mismos % que la nota", () => {
-    const chart = { current: null };
-    const { container } = render(<PhaseCard paint={paint} chartRef={chart} />);
+    const { container } = render(<PhaseCard paint={paint} refs={noRefs()} />);
     const bar = container.querySelector("#ruf-ph-bar") as HTMLElement;
     expect(bar.hasAttribute("data-empty")).toBe(false);
     const label = bar.querySelector("svg")?.getAttribute("aria-label") || "";
@@ -38,7 +44,7 @@ describe("resumen: gráficas", () => {
   });
 
   it("sin ruta (antes de pintar): la barra vacía", () => {
-    const { container } = render(<PhaseCard paint={null} chartRef={{ current: null }} />);
+    const { container } = render(<PhaseCard paint={null} refs={noRefs()} />);
     expect((container.querySelector("#ruf-ph-bar") as HTMLElement).hasAttribute("data-empty")).toBe(
       true,
     );

@@ -1,4 +1,5 @@
-// «Curvas»: cuántas a cada lado en cada tramo de inclinación (gráfica) y las 15 más tumbadas de la ruta (tabla).
+// «Curvas»: cuántas a cada lado en cada tramo de inclinación (gráfica) y las 15 más tumbadas de la ruta (tabla), cada
+// una con dónde está debajo (las coordenadas de su punto más tumbado y el enlace a Google Maps).
 import { memo, useMemo } from "react";
 import { leanSides } from "../../charts/lean-sides";
 import { LeanSidesChart } from "../../charts/LeanSidesChart";
@@ -17,7 +18,10 @@ const HEAD = (
 );
 
 export const CurvesCard = memo(function CurvesCard({ paint }: { paint: Paint | null }) {
-  const table = useMemo(() => (paint ? curvesTable(paint.eng.route.curves) : null), [paint]);
+  const table = useMemo(
+    () => (paint ? curvesTable(paint.eng.route.curves, paint.eng.route.trail) : null),
+    [paint],
+  );
   const sides = useMemo(() => (paint ? leanSides(paint.eng.route.curves) : null), [paint]);
   return (
     <section className="card" aria-labelledby="ruf-c-h">
@@ -38,6 +42,7 @@ export const CurvesCard = memo(function CurvesCard({ paint }: { paint: Paint | n
         moreId="ruf-c-more"
         moreText="Ver todas"
         rows={table ? table.rows : null}
+        places={table ? table.places : undefined}
       />
     </section>
   );

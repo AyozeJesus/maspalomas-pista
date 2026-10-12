@@ -9,13 +9,11 @@ import { routeSource } from "../../replay3d/sources";
 import type { Paint } from "./paint";
 import type { RouteCanvas } from "./route-canvas";
 import { scrubSync } from "./scrub-sync";
-
-// Con menos puntos de trazada (unos metros, o parado) no hay ruta que ver.
-const MIN_POINTS = 10;
+import { has3d } from "./summary-tabs";
 
 interface Props {
   paint: Paint | null;
-  // La pantalla del resumen se ve.
+  // La tarjeta se ve (la pantalla del resumen, en la pestaña «3D»): si no, la vista abierta se suelta.
   visible: boolean;
   scrub: Pick<RouteCanvas, "position" | "scrubTo">;
 }
@@ -24,7 +22,7 @@ export function Route3dCard({ paint, visible, scrub }: Props) {
   const eng = paint ? paint.eng : null;
   // De qué ruta se ha abierto la vista (otra ruta empieza cerrada).
   const [opened, setOpened] = useState<Engine | null>(null);
-  const can = !!eng && eng.route.trail.length >= MIN_POINTS;
+  const can = has3d(eng);
   const open = can && opened === eng;
   const source = useMemo(() => (open && eng ? routeSource(eng) : null), [open, eng]);
   const sync = useMemo(() => (source ? scrubSync(source, scrub) : null), [source, scrub]);
@@ -36,9 +34,10 @@ export function Route3dCard({ paint, visible, scrub }: Props) {
         {!can ? null : open && source ? (
           <>
             <Replay3dPlayer source={source} active={visible} sync={sync} id="ruf-3d" />
+            {/* El mapa va en otra pestaña: se abre donde esté su punto y lo mueve al reproducir. */}
             <p className="muted">
-              Va a la par que el punto del mapa: muévelo allí o con la barra. Las paradas largas se
-              saltan.
+              Empieza donde esté el punto del mapa de «Resumen»; muévelo allí y vuelve, o usa esta
+              barra. Las paradas largas se saltan.
             </p>
             <div className="actions">
               <button type="button" id="ruf-3d-close" onClick={() => setOpened(null)}>

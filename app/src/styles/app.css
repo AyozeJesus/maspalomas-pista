@@ -455,3 +455,43 @@ table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nu
 .away-map { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
 .away-l { position: absolute; top: 8px; left: 12px; right: 12px; margin: 0; font-weight: 800; font-size: min(4.6vw, 4.4vh); text-shadow: 0 1px 6px #000; pointer-events: none; }
 .dash.away .delta { grid-row: 2; grid-column: 1; align-self: end; z-index: 2; pointer-events: none; padding-bottom: 12px; font-size: min(12vw, 11vh); text-shadow: 0 2px 10px rgba(0, 0, 0, 0.8); }
+
+/* ── 12-oct: el resumen de la ruta en pestañas (Resumen · Tramos · Pilotaje · 3D · Opciones). La barra va debajo del
+   título y, al bajar, se queda pegada arriba (por debajo de la cámara del móvil): siempre a mano. La elegida, en blanco
+   con la raya azul abajo, hacia lo que enseña (la de la portada la lleva arriba: también hacia lo suyo). ── */
+.ruf-tabbar { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 20; container-type: scroll-state; margin: 0 calc(-1 * max(16px, env(safe-area-inset-right))) 0 calc(-1 * max(16px, env(safe-area-inset-left))); }
+.ruf-tabs { display: flex; gap: 2px; overflow-x: auto; scrollbar-width: none; overscroll-behavior-x: contain; padding: 0 max(8px, env(safe-area-inset-right)) 0 max(8px, env(safe-area-inset-left)); background: var(--bg); border-bottom: 1px solid var(--line); }
+.ruf-tabs::-webkit-scrollbar { display: none; }
+.ruf-tabs button { flex: 1 0 auto; min-height: 48px; padding: 8px 10px; background: transparent; border: 0; border-radius: 0; font-size: 15px; font-weight: 700; color: var(--muted); white-space: nowrap; }
+.ruf-tabs button[aria-selected="true"] { color: var(--ink); box-shadow: inset 0 -3px 0 var(--accent); }
+@media (hover: hover) { .ruf-tabs button:hover { background: var(--surface-2); color: var(--ink); } }
+.ruf-tabs button:focus-visible { outline-offset: -3px; }
+/* En un móvil estrecho (360 px) caben las cinco sin desplazar la barra. */
+@media (max-width: 380px) { .ruf-tabs button { padding-inline: 6px; font-size: 14px; } }
+/* Pegada arriba: con sombra, y tapando lo que pasa por debajo de la cámara. */
+@container scroll-state(stuck: top) { .ruf-tabs { box-shadow: 0 calc(-1 * env(safe-area-inset-top, 0px)) 0 var(--bg), 0 8px 16px rgba(0, 0, 0, 0.45); } }
+/* Las pestañas que no se ven siguen maquetadas, a lo ancho y sin alto, sin pintarse y fuera del alcance del dedo, del
+   teclado y del lector de pantalla (visibility): el mapa, las gráficas y el PDF tienen así el tamaño de verdad de sus
+   lienzos sin esperar a enseñarlas. */
+.ruf-panels { display: grid; grid-template-columns: minmax(0, 1fr); min-width: 0; }
+.ruf-panel[hidden] { display: grid !important; height: 0; overflow: hidden; visibility: hidden; }
+.ruf-panel:focus-visible { outline: 3px solid var(--focus); outline-offset: 4px; border-radius: var(--r-lg); }
+/* La tarjeta que abre una pestaña y se llama como ella, sin su título a la vista (ya lo dice la pestaña; el lector de
+   pantalla lo sigue leyendo). En el PDF, sin pestañas, sale. */
+#ruf-tab-resumen > #ruf-ochos[hidden] + [aria-labelledby="ruf-sum-h"] > h2, #ruf-tab-tramos > #ruf-tr:not([hidden]) > h2, #ruf-tab-tramos > #ruf-tr[hidden] + #ruf-l > h2, #ruf-tab-3d > #ruf-3d > h2, #ruf-tab-opciones > [aria-labelledby="ruf-opt-h"] > h2 { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+/* Dónde está el punto del mapa (el punto mismo; en el más tumbado de una curva, dice cuál): las coordenadas, que se
+   copian de un toque largo, y el enlace a Google Maps. Cerca de casa, solo de qué lado. */
+.scrub-where { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface-2); }
+.scrub-where p { display: grid; gap: 2px; min-width: 0; }
+.scrub-what { font-size: 13px; font-weight: 600; color: var(--muted); }
+.ll { -webkit-user-select: all; user-select: all; font-variant-numeric: tabular-nums; }
+.scrub-where .ll { font-size: 16px; font-weight: 700; color: var(--ink); }
+a.maps-link { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 8px 14px; border: 1px solid var(--line-strong); border-radius: var(--r-md); background: var(--surface-3); color: var(--accent); font: 700 15px/1.2 var(--sans); text-decoration: none; white-space: nowrap; }
+a.maps-link:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+a.maps-link:active { background: var(--line-strong); }
+/* En la tabla de curvas, debajo de cada una: «Mapa» (más pequeño) bajo su nombre y sus coordenadas al lado. La fila de
+   la curva va sin raya (las dos son una); en el PDF esta no va y la raya vuelve. */
+.cmp-table tr:has(+ tr.place-row) td { border-bottom: 0; padding-bottom: 2px; }
+.cmp-table tr.place-row td { padding-top: 2px; vertical-align: middle; white-space: nowrap; }
+.place-row .ll, .place-row .near { font-size: 13px; color: var(--muted); }
+.place-row a.maps-link { min-height: 36px; padding: 6px; font-size: 14px; }

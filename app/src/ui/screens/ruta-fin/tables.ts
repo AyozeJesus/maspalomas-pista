@@ -1,8 +1,11 @@
 // Las tablas del resumen (curvas, frenadas y caballitos): sus filas, su nota y el botón para verlas enteras.
-import type { Curve, RideSummary, Wheelie } from "../../../core/recorrido";
+import type { Curve, RideSummary, TrailPoint, Wheelie } from "../../../core/recorrido";
 import { diveCell, trailCell, type Cell } from "../../../lib/brakes";
 import { topCurves } from "../../../lib/curves";
 import { fmt } from "../../../lib/format";
+import { placeOf, type Place } from "../../../lib/maps";
+import { homeZone } from "./home-zone";
+import { curveSpans, type CurveSpan } from "./scrub";
 
 // Las 5 primeras filas a la vista y «Ver las N» para el resto (con las 40 frenadas, el resumen ocupaba siete
 // pantallas).
@@ -17,9 +20,29 @@ export interface Table {
   rows: Cell[][];
 }
 
-// Las 15 curvas más tumbadas: lado, tumbada, velocidad de entrada y mínima, frenada y rato sin gas.
-export function curvesTable(curves: readonly Curve[]): Table {
+// Dónde está lo de una fila en Google Maps, con el nombre de su enlace para el lector de pantalla; o, cerca de casa
+// (home-zone.ts), solo de qué lado («Cerca de la salida»), sin coordenadas ni enlace.
+export type RowPlace = (Place & { label: string }) | { near: string };
+
+// La de curvas lleva además dónde está cada una: null sin trazada.
+export interface CurvesTable extends Table {
+  places: (RowPlace | null)[];
+}
+
+// Dónde está una curva: su punto más tumbado de la trazada (al que llevan «Curva anterior / siguiente», el mismo
+// punto con el que se mueve el del mapa). Su vértice (donde fue más despacio) cae a veces en el borde de la curva, o
+// ya en la siguiente: no sirve para encontrarla.
+export function curvePlace(sp: CurveSpan, tr: readonly TrailPoint[]): RowPlace {
+  const home = homeZone(tr, tr[sp.top], sp.top);
+  if (home) return { near: "Cerca de la " + home };
+  return { ...placeOf(tr[sp.top]), label: "Ver la curva " + sp.c.num + " en Google Maps" };
+}
+
+// Las 15 curvas más tumbadas: lado, tumbada, velocidad de entrada y mínima, frenada, rato sin gas y dónde está (en la
+// trazada tr).
+export function curvesTable(curves: readonly Curve[], tr: readonly TrailPoint[]): CurvesTable {
   const top = topCurves(curves, 15);
+  const spans = tr.length ? curveSpans(tr, curves) : [];
   return {
     note:
       curves.length > top.length
@@ -34,6 +57,10 @@ export function curvesTable(curves: readonly Curve[]): Table {
       c.brakeG ? fmt(c.brakeG, 2) + " g" : "—",
       fmt(c.dead, 1) + " s",
     ]),
+    places: top.map((c) => {
+      const sp = spans.find((s) => s.c === c);
+      return sp ? curvePlace(sp, tr) : null;
+    }),
   };
 }
 

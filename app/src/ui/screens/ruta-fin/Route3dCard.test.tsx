@@ -75,6 +75,10 @@ describe("«En 3D» del resumen de la ruta", () => {
       fireEvent.click($(c, "#ruf-3d-open") as HTMLElement);
     });
     expect($(c, "#ruf-3d-player")).not.toBeNull();
+    // El mapa va en otra pestaña («Resumen»): lo dice.
+    expect($(c, "#ruf-3d-in > p.muted")?.textContent).toBe(
+      "Empieza donde esté el punto del mapa de «Resumen»; muévelo allí y vuelve, o usa esta barra. Las paradas largas se saltan.",
+    );
     expect($(c, "#ruf-3d-play")?.getAttribute("aria-label")).toBe("Reproducir");
     expect($(c, "#ruf-3d-speed")?.textContent).toBe("×1");
     // Sin WebGL (jsdom) lo dice en el recuadro.

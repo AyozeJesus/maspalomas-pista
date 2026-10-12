@@ -157,15 +157,24 @@ export interface TramoCard {
 // Una pasada sin otra con la que compararla punto a punto.
 export const NEXT_TIME = "La próxima vez que pases por aquí en este sentido, se compara con esta.";
 
+// ¿Se puede guardar como tramo? Un entrenamiento en 8 no es un tramo (ni pasa por ninguno: en ese modo no se buscan).
+function canSaveTramo(eng: Engine): boolean {
+  return !eng.ocho && !!((eng.viewing || !eng.sim) && eng.loc.n > 20);
+}
+
+// La tarjeta sale si la ruta pasó por algún tramo o se puede guardar como tramo (también decide su pestaña).
+export function tramoCardShown(eng: Engine): boolean {
+  return canSaveTramo(eng) || eng.tramoPasses.length > 0;
+}
+
 // Cada pasada de esta ruta por un tramo guardado (tramos: los guardados ahora). turn: la ida y vuelta de la ruta.
 export function tramoCard(
   eng: Engine,
   tramos: readonly Tramo[],
   turn: Turnaround | null,
 ): TramoCard {
-  // Un entrenamiento en 8 no es un tramo (ni pasa por ninguno: en ese modo no se buscan).
-  const canSave = !eng.ocho && !!((eng.viewing || !eng.sim) && eng.loc.n > 20);
-  const hidden = !canSave && !eng.tramoPasses.length;
+  const canSave = canSaveTramo(eng);
+  const hidden = !tramoCardShown(eng);
   if (hidden) return { hidden, items: [], showSave: false, turn: null, note: "" };
   const items: TramoItem[] = [];
   for (const tp of eng.tramoPasses) {

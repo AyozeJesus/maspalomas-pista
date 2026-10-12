@@ -3,7 +3,8 @@
 // RutaFin.test.tsx, en la página entera.
 import { describe, expect, it } from "vitest";
 import type { CircuitTrack, LapTimer } from "../../../core/circuito";
-import type { BrakeBrief, Curve, RideSummary, Wheelie } from "../../../core/recorrido";
+import { toLocal } from "../../../core/maspalomas";
+import type { BrakeBrief, Curve, RideSummary, TrailPoint, Wheelie } from "../../../core/recorrido";
 import { CIRCUITS_KEY, type Engine } from "../../../engine";
 import { memoryKV } from "../../../engine/kv";
 import type { PistaStore } from "../../../storage";
@@ -105,21 +106,62 @@ function curve(num: number, leanMax: number | null, lean: number | null): Curve 
 
 describe("tablas del resumen", () => {
   it("curvas: las 15 más tumbadas, o la nota de que no hay", () => {
-    expect(curvesTable([])).toEqual({ note: "No se ha detectado ninguna curva.", rows: [] });
-    const few = curvesTable([curve(1, 30, 30), curve(2, 41.6, -41.6)]);
+    expect(curvesTable([], [])).toEqual({
+      note: "No se ha detectado ninguna curva.",
+      rows: [],
+      places: [],
+    });
+    const few = curvesTable([curve(1, 30, 30), curve(2, 41.6, -41.6)], []);
+    // Sin trazada (sin posición del GPS en la curva), sin sitio en Google Maps.
     expect(few).toEqual({
       note: "",
       rows: [
         ["2 izq.", "42°", "80 → 51", "—", "1,3 s"],
         ["1 der.", "30°", "80 → 51", "0,51 g", "1,3 s"],
       ],
+      places: [null, null],
     });
     // Las que no tienen inclinación medida no salen en la tabla, pero cuentan.
     const many = Array.from({ length: 20 }, (_, k) => curve(k + 1, k % 4 ? 20 + k : null, k));
-    const t = curvesTable(many);
+    const t = curvesTable(many, []);
     expect(t.rows).toHaveLength(15);
     expect(t.note).toBe("Las 15 curvas más tumbadas de 20.");
-    expect(curvesTable(many.slice(0, 4)).note).toBe("Las 3 curvas más tumbadas de 4.");
+    expect(curvesTable(many.slice(0, 4), []).note).toBe("Las 3 curvas más tumbadas de 4.");
+  });
+
+  it("curvas: dónde está cada una (su punto más tumbado, no el vértice), con el enlace a Google Maps", () => {
+    // La curva 7 va de 70 s a 74 s; su punto más tumbado, a 72 s. El vértice que apunta (donde fue más despacio) cae
+    // en el borde, a la salida: no se usa.
+    const at = (lat: number, lon: number, t: number, lean: number): TrailPoint => {
+      const [x, y] = toLocal(lat, lon);
+      return { x, y, t, v: 15, lean, ph: "muerto", gap: false, wh: false };
+    };
+    // La salida y la llegada, lejos (a más de 300 m).
+    const trail = [
+      at(28.33, -16.41, 10, 0),
+      at(28.355601, -16.418811, 69, 0),
+      at(28.355694, -16.418944, 70, -14),
+      at(28.355801, -16.41907, 72, -37.6),
+      at(28.35593, -16.419112, 74, -22),
+      at(28.356055, -16.419101, 76, 0),
+      at(28.38, -16.43, 140, 0),
+    ];
+    const c = {
+      ...curve(7, 38, -38),
+      apex: { x: trail[4].x, y: trail[4].y, heading: null },
+    };
+    expect(curvesTable([c], trail).places).toEqual([
+      {
+        ll: "28.355801, -16.419070",
+        url: "https://www.google.com/maps/search/?api=1&query=28.355801,-16.419070",
+        label: "Ver la curva 7 en Google Maps",
+      },
+    ]);
+    // Con la salida a menos de 300 m de la curva (casa): sin coordenadas ni enlace; y con la llegada, lo mismo.
+    const fromHome = [at(28.3546, -16.4182, 10, 0), ...trail.slice(1)];
+    expect(curvesTable([c], fromHome).places).toEqual([{ near: "Cerca de la salida" }]);
+    const toHome = [...trail.slice(0, -1), at(28.3566, -16.4198, 140, 0)];
+    expect(curvesTable([c], toHome).places).toEqual([{ near: "Cerca de la llegada" }]);
   });
 
   it("frenadas: las más fuertes guardadas de todas y sus celdas", () => {

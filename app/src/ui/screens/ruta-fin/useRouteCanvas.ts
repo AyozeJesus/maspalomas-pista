@@ -15,6 +15,11 @@ export interface ScrubRefs {
   sub: RefObject<HTMLParagraphElement | null>;
   prev: RefObject<HTMLButtonElement | null>;
   next: RefObject<HTMLButtonElement | null>;
+  place: RefObject<HTMLSpanElement | null>;
+  ll: RefObject<HTMLSpanElement | null>;
+  maps: RefObject<HTMLAnchorElement | null>;
+  chartAt: RefObject<HTMLParagraphElement | null>;
+  chartSub: RefObject<HTMLParagraphElement | null>;
 }
 
 export function useScrubRefs(): ScrubRefs {
@@ -25,7 +30,15 @@ export function useScrubRefs(): ScrubRefs {
   const sub = useRef<HTMLParagraphElement>(null);
   const prev = useRef<HTMLButtonElement>(null);
   const next = useRef<HTMLButtonElement>(null);
-  return useMemo(() => ({ map, chart, pos, at, sub, prev, next }), []);
+  const place = useRef<HTMLSpanElement>(null);
+  const ll = useRef<HTMLSpanElement>(null);
+  const maps = useRef<HTMLAnchorElement>(null);
+  const chartAt = useRef<HTMLParagraphElement>(null);
+  const chartSub = useRef<HTMLParagraphElement>(null);
+  return useMemo(
+    () => ({ map, chart, pos, at, sub, prev, next, place, ll, maps, chartAt, chartSub }),
+    [],
+  );
 }
 
 function elementsOf(r: ScrubRefs): ScrubEls | null {
@@ -38,8 +51,21 @@ function elementsOf(r: ScrubRefs): ScrubEls | null {
     r.prev.current,
     r.next.current,
   ];
-  return map && chart && pos && at && sub && prev && next
-    ? { map, chart, pos, at, sub, prev, next }
+  const [place, ll, maps] = [r.place.current, r.ll.current, r.maps.current];
+  const [chartAt, chartSub] = [r.chartAt.current, r.chartSub.current];
+  return map &&
+    chart &&
+    pos &&
+    at &&
+    sub &&
+    prev &&
+    next &&
+    place &&
+    ll &&
+    maps &&
+    chartAt &&
+    chartSub
+    ? { map, chart, pos, at, sub, prev, next, place, ll, maps, chartAt, chartSub }
     : null;
 }
 

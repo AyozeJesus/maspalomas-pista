@@ -1,6 +1,6 @@
-// «Mapa»: toda la ruta (la pinta route-canvas.ts en su lienzo), el punto que se mueve por ella con lo que pasaba ahí
-// (lo escribe también route-canvas.ts, sin pasar por React: cambia arrastrando el dedo), el color de la trazada
-// (fases o inclinación) y su leyenda.
+// «Mapa»: toda la ruta (la pinta route-canvas.ts en su lienzo), el punto que se mueve por ella con lo que pasaba ahí y
+// dónde está en Google Maps (lo escribe también route-canvas.ts, sin pasar por React: cambia arrastrando el dedo), el
+// color de la trazada (fases o inclinación) y su leyenda.
 import { memo } from "react";
 import { mapa, type ColorBy } from "../../draw/mapa";
 import { Legend } from "./Legend";
@@ -48,9 +48,22 @@ export const MapCard = memo(function MapCard({ paint, colorBy, onColor, refs }: 
             Curva siguiente ›
           </button>
         </div>
+        {/* Dónde está el punto mismo para verlo en Google Maps (en el más tumbado de una curva, dice cuál); cerca de
+            casa, solo de qué lado. No va en el PDF: el punto empieza en la salida de la ruta, que puede ser casa. */}
+        <div className="scrub-where" data-pdf="omit">
+          <p>
+            <span ref={refs.place} className="scrub-what" id="ruf-at-pl" />
+            <span ref={refs.ll} className="ll num" id="ruf-at-ll" />
+          </p>
+          <a ref={refs.maps} className="maps-link" id="ruf-at-map" target="_blank" rel="noopener">
+            Ver en Google Maps
+          </a>
+        </div>
         <p className="muted">
-          Arrastra el dedo por la línea del mapa, por la gráfica de velocidad o por la barra: el
-          punto blanco dice qué pasaba ahí.
+          Arrastra el dedo por la línea del mapa o por la barra: el punto blanco dice qué pasaba
+          ahí. También se mueve con el dedo por la gráfica de velocidad de «Pilotaje», y la vista 3D
+          va con él. Cerca de la salida y de la llegada no se dan coordenadas, para no enseñar dónde
+          empiezas y acabas.
         </p>
       </div>
       <div className="actions">

@@ -3,6 +3,7 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import { demoSeries, routeOf } from "../../../../test/fixtures-ruta-fin";
 import { liveFunctions, loadLegacy } from "../../../../test/legacy";
+import { renameCutNote } from "../../../../test/renames-tabs";
 import type { Turnaround } from "../../../core/cortar";
 import type { TrailPoint } from "../../../core/recorrido";
 import type { Engine } from "../../../engine";
@@ -103,7 +104,9 @@ describe("cortar en dos: lo mismo que antes", () => {
         expect(mine).toEqual(NO_CUT);
         return;
       }
-      expect(mine.note).toBe(text["ruf-cut-note"]);
+      expect(mine.note).toBe(renameCutNote(text["ruf-cut-note"]));
+      // El mapa con el punto del corte va en otra pestaña: las dos notas lo dicen.
+      expect(mine.note).toContain("(el punto rosa «corte» del mapa, en «Resumen»)");
       const input = els["ruf-cut-t"];
       expect([String(mine.min), String(mine.max), String(Math.round(mine.t))]).toEqual([
         input.min,

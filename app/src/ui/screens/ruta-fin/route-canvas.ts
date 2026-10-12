@@ -3,7 +3,7 @@
 // por la gráfica, con la barra o de curva en curva) solo repinta la copia y el punto encima, una vez por fotograma
 // aunque lleguen muchos seguidos. Sin React: lo que cambia arrastrando no pasa por el estado de la pantalla.
 import type { Engine } from "../../../engine";
-import { setText } from "../../dom";
+import { setHidden, setText } from "../../dom";
 import type { ColorBy, MapDot, MapView } from "../../draw/mapa";
 import { canvasCopy } from "./canvas-copy";
 import { drawChartDot, drawPhaseChart, type ChartScale } from "./phase-chart";
@@ -19,7 +19,9 @@ import {
   type CurveSpan,
 } from "./scrub";
 
-// Las piezas de la página: los dos lienzos y lo de debajo del mapa (la barra, los textos y los botones de curva).
+// Las piezas de la página: los dos lienzos, lo de debajo del mapa (la barra, los textos, los botones de curva y dónde
+// está el punto: de qué son las coordenadas, las coordenadas y el enlace a Google Maps) y los textos de debajo de la
+// gráfica (en otra pestaña que el mapa: lo mismo que los de debajo del mapa).
 export interface ScrubEls {
   map: HTMLCanvasElement;
   chart: HTMLCanvasElement;
@@ -28,6 +30,11 @@ export interface ScrubEls {
   sub: HTMLElement;
   prev: HTMLButtonElement;
   next: HTMLButtonElement;
+  place: HTMLElement;
+  ll: HTMLElement;
+  maps: HTMLAnchorElement;
+  chartAt: HTMLElement;
+  chartSub: HTMLElement;
 }
 
 interface MapLayer {
@@ -142,6 +149,14 @@ export function createRouteCanvas(opts: RouteCanvasOptions = {}) {
     setText(els.sub, t.sub);
     els.prev.disabled = !t.hasPrev;
     els.next.disabled = !t.hasNext;
+    setText(els.chartAt, t.at);
+    setText(els.chartSub, t.sub);
+    setText(els.place, t.place);
+    setText(els.ll, t.ll);
+    // Cerca de casa no hay enlace: ni se ve ni lleva adónde.
+    setHidden(els.maps, !t.url);
+    if (!t.url) els.maps.removeAttribute("href");
+    else if (els.maps.getAttribute("href") !== t.url) els.maps.setAttribute("href", t.url);
   }
 
   // El punto de la trazada bajo el dedo en el mapa.

@@ -1,8 +1,10 @@
 // El punto que se mueve por la ruta en el resumen (sin dibujar): en qué curva o frenada cae cada punto de la trazada,
-// lo que se dice de él, a qué curva saltan «Curva anterior / siguiente» y qué punto se toca con el dedo en el mapa o
-// en la gráfica.
+// lo que se dice de él (y dónde está en Google Maps), a qué curva saltan «Curva anterior / siguiente» y qué punto se
+// toca con el dedo en el mapa o en la gráfica.
 import type { Brake, Curve, TrailPoint } from "../../../core/recorrido";
 import { fmt, fmtClock, fmtMeters } from "../../../lib/format";
+import { placeOf } from "../../../lib/maps";
+import { homeZone } from "./home-zone";
 
 // Cada curva en la trazada: sus puntos (i0…i1) y el más tumbado (top).
 export interface CurveSpan {
@@ -13,13 +15,17 @@ export interface CurveSpan {
 }
 
 // Lo que se escribe bajo el mapa para un punto: arriba (y para el lector de pantalla, con comas), la curva o la
-// frenada en la que está, y si hay curva antes o después (para los botones).
+// frenada en la que está, si hay curva antes o después (para los botones) y dónde está en Google Maps (place: de qué
+// son las coordenadas; ll y url, como en lib/maps.ts, vacíos cerca de casa).
 export interface ScrubText {
   at: string;
   aria: string;
   sub: string;
   hasPrev: boolean;
   hasNext: boolean;
+  place: string;
+  ll: string;
+  url: string;
 }
 
 const PHASE_NAME: Readonly<Record<string, string | undefined>> = {
@@ -116,12 +122,27 @@ export function scrubText(
       );
     }
   }
+  // Dónde está el punto blanco mismo (llevándolo a la entrada de una curva, se dice dónde había gravilla); en el punto
+  // más tumbado de una curva (adonde llevan «Curva anterior / siguiente», el de la tabla de curvas), dice cuál. Cerca
+  // de casa (home-zone.ts), sin coordenadas ni enlace: solo de qué lado.
+  const curve = sp && sp.top === i ? "Curva " + sp.c.num : null;
+  const home = homeZone(tr, p, i);
+  const where = home ? null : placeOf(p);
   return {
     at: head.join(" · "),
     aria: head.join(", "),
     sub: parts.join(". ") + ".",
     hasPrev: spans.some((s) => s.top < i),
     hasNext: spans.some((s) => s.top > i),
+    place: home
+      ? curve
+        ? curve + ", cerca de la " + home
+        : "Cerca de la " + home
+      : curve
+        ? curve + ", en su punto más tumbado"
+        : "Este punto",
+    ll: where ? where.ll : "",
+    url: where ? where.url : "",
   };
 }
 

@@ -4,6 +4,8 @@
 // que cambia queda escrito en un solo sitio.
 import { addChartShells } from "./renames-charts";
 import { addPdfButtons } from "./renames-pdf";
+import { addPlaces } from "./renames-places";
+import { addSummaryTabs } from "./renames-tabs";
 
 // La marca de arriba de las imágenes para compartir.
 export const IMAGE_BRAND = { old: "MODO PISTA · MASPALOMAS", now: "POORTELEMETRY" };
@@ -86,6 +88,9 @@ export function renameLegacyMarkup(root: ParentNode): void {
       '<section class="card ch-card" aria-labelledby="ruf-bd-h" id="ruf-bd"><h2 id="ruf-bd-h">Por tramos</h2>' +
         '<div class="ch" id="ruf-bd-box" data-chart=""></div></section>',
     );
+  // Desde el 12-oct, dónde está cada curva en Google Maps y el resumen en pestañas (al final: mueve las tarjetas).
+  addPlaces(root);
+  addSummaryTabs(root);
 }
 
 // Desde el 11-oct, el panel de pista lleva detrás de la vista 3D el mapa de «aún fuera de la pista» (con tu posición y

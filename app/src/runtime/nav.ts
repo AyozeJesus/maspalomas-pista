@@ -1,11 +1,13 @@
 // Moverse entre pantallas y el atrás del móvil. Instalada, la app se cerraba con el atrás del móvil desde cualquier
-// pantalla. Ahora lleva una entrada propia en el historial y atrás vuelve dentro de la app: el resumen de la ruta y la
-// prueba de sensores, a la portada; repasando una grabación, la cierra; rodando no para nada (avisa de cómo terminar);
-// en la portada, la primera vez avisa y la segunda sale. La entrada se pone al tocar la pantalla: al ir atrás, Chrome
-// se salta las que una página añade sin que nadie la haya tocado.
+// pantalla. Ahora lleva una entrada propia en el historial y atrás vuelve dentro de la app: el resumen de la ruta (desde
+// otra de sus pestañas, primero a «Resumen») y la prueba de sensores, a la portada; repasando una grabación, la
+// cierra; rodando no para nada (avisa de cómo terminar); en la portada, la primera vez avisa y la segunda sale. La
+// entrada se pone al tocar la pantalla: al ir atrás, Chrome se salta las que una página añade sin que nadie la haya
+// tocado.
 import {
   closeCircuitPicker,
   refreshHome,
+  setSummaryTab,
   setTab,
   show,
   subidasBack,
@@ -38,7 +40,10 @@ export function createNav(session: Session, viewer: Viewer, crash: CrashUi, sens
   }
 
   function backArm(): void {
-    if (!(history.state && history.state.pista)) history.pushState({ pista: 1 }, "");
+    if (history.state && history.state.pista) return;
+    // La entrada nueva copia el modo de la de ahora: si es de antes de recargar (otra versión), aún «auto».
+    history.scrollRestoration = "manual";
+    history.pushState({ pista: 1 }, "");
   }
 
   function onBack(): void {
@@ -75,8 +80,10 @@ export function createNav(session: Session, viewer: Viewer, crash: CrashUi, sens
       else toast("Para seguir, «Volver a pista»; para acabar, «Terminar»");
       return backArm();
     }
+    // El resumen de la ruta: en otra pestaña, a «Resumen» (como en la portada); en «Resumen», a la portada.
     if (ui.screen === "ruta-fin") {
-      goHome();
+      if (ui.summaryTab !== "resumen") setSummaryTab("resumen");
+      else goHome();
       return backArm();
     }
     if (ui.screen === "sensores") {
@@ -99,13 +106,22 @@ export function createNav(session: Session, viewer: Viewer, crash: CrashUi, sens
   // Atrás del móvil y su entrada en el historial, que se pone al tocar la pantalla.
   function wire(): () => void {
     const pop = (ev: PopStateEvent) => {
-      if (!(ev.state && ev.state.pista)) onBack();
+      if (ev.state && ev.state.pista) return;
+      // El modo va con cada entrada: la que se deja al ir atrás puede ser de antes de recargar («auto»).
+      history.scrollRestoration = "manual";
+      onBack();
     };
     window.addEventListener("popstate", pop);
     document.addEventListener("pointerdown", backArm, { capture: true, passive: true });
+    // Las entradas son nuestras (solo para el atrás): al volver, el navegador dejaría la página donde estaba al
+    // apuntarlas, encima de donde la coloca la app (el resumen, al principio de la pestaña; al cambiar de pantalla,
+    // arriba: show en ui-store).
+    const restore = history.scrollRestoration;
+    history.scrollRestoration = "manual";
     return () => {
       window.removeEventListener("popstate", pop);
       document.removeEventListener("pointerdown", backArm, { capture: true });
+      history.scrollRestoration = restore;
     };
   }
 

@@ -18,10 +18,13 @@ La portada tiene tres pestañas abajo:
 - **Ajustes**: piloto y objetivo, pantalla en pista, panel y avisos (mapa, aviso de frenada, aviso de caída),
   receptor GPS externo, el Mac (garaje) y los circuitos (línea de meta, otros guardados).
 
-El resumen de una ruta va de lo general a lo detallado: los números (los mismos de la imagen para compartir; el
-resto en «Más datos»), el mapa con el punto que se mueve, la gráfica de frenada / gas / tiempo muerto, los tramos,
-las curvas, las frenadas y los caballitos (las tablas largas, las 5 primeras y «Ver las N»), y al final
-«Opciones»: nombre, compartir, exportar y «Cortar en dos» (plegado). En boxes, «Volver a pista» y «Terminar» van
+El resumen de una ruta va en pestañas, debajo del título (al bajar por la página se quedan arriba): **Resumen** (si
+pasó por algún tramo o subida, primero «Por tramos», con su tiempo en cada uno; los números, los mismos de la imagen
+para compartir, el resto en «Más datos»; el mapa con el punto que se mueve), **Tramos** (cada pasada por tus tramos y subidas con su comparación, «Guardar como
+tramo» y las vueltas a un circuito; sin tramos y con vueltas se llama «Vueltas»), **Pilotaje** (la gráfica de
+frenada / gas / tiempo muerto, las curvas, las frenadas y los caballitos: las tablas largas, las 5 primeras y «Ver
+las N»), **3D** y **Opciones** (nombre, compartir, exportar y «Cortar en dos», plegado). Una pestaña sin nada que
+enseñar no sale, y cada ruta que se abre empieza en «Resumen». En boxes, «Volver a pista» y «Terminar» van
 arriba del todo; después las vueltas, las frenadas por curva, el plan para la próxima tanda y las opciones.
 
 ## Uso en pista
@@ -145,8 +148,8 @@ un «Nuevo tramo» dado parado) no se queda en la lista.
 **Cortar una tanda** (en boxes, viendo una tanda guardada): «Cortar en dos» elige después de qué vuelta, para separar
 dos tandas que se grabaron seguidas; quedan dos grabaciones con sus vueltas y la entera se borra del móvil.
 
-**Cortar en dos** (en el resumen de una ruta guardada): una barra elige dónde y el mapa lo marca con un punto rosa
-(«corte»);
+**Cortar en dos** (en «Opciones» del resumen de una ruta guardada): una barra elige dónde y el mapa (en «Resumen») lo
+marca con un punto rosa («corte»);
 «Cortar aquí» (dos toques) deja dos rutas nuevas con todos sus datos (cada una con su hora de principio) y borra la
 entera del móvil (en el Mac, si ya se subió, sigue también la entera; las partes se suben como rutas nuevas). Si la
 ruta es de ida y vuelta por la misma carretera (como subir y bajar Los Loros), el corte sale ya puesto en la vuelta
@@ -158,10 +161,11 @@ dos partes de 6,3 y 6,2 km (`app/src/core/cortar.ts`).
 Lo que enseñaba la vuelta de ejemplo (la moto en 3D desde el casco, desde detrás o desde arriba) sale ahora también
 con lo tuyo:
 
-- **Rutas** (resumen, tarjeta «En 3D», debajo del mapa): «Ver en 3D» monta la carretera con tu propia trazada
+- **Rutas** (resumen, pestaña «3D»; al dejarla se suelta la vista): «Ver en 3D» monta la carretera con tu propia trazada
   (suavizada; dos carriles con su discontinua e hitos cada 50 m, y tú por el derecho) y la recorre con tu velocidad,
-  tu inclinación, la luz de freno donde frenaste y el morro arriba en los caballitos. Va a la par que el punto del
-  mapa: si lo mueves allí (o con su barra), la moto salta ahí; reproduciendo, el punto la sigue. De ×1 a ×16, y las
+  tu inclinación, la luz de freno donde frenaste y el morro arriba en los caballitos. Empieza donde esté el punto del
+  mapa de «Resumen» y va a la par que él: si lo mueves allí y vuelves (o con su barra), la moto salta ahí;
+  reproduciendo, el punto la sigue. De ×1 a ×16, y las
   paradas largas se saltan. La grabación no tiene alturas: la carretera sale llana.
 - **Tandas** (boxes, viendo una tanda guardada, tarjeta «Vuelta en 3D»): cada vuelta válida en el circuito de
   siempre (pianos, barreras y los carteles de frenada de tu mejor vuelta), contra tu mejor vuelta de esa tanda en
@@ -196,15 +200,27 @@ el número y el color dicen siempre lo mismo (antes, una curva que acababa frena
 como tiempo muerto: 2,4 s de media en Los Loros cuando el mapa pintaba un 5 %). En Los Loros: 0,3 s de media en 102
 curvas, 3 con más de 2 s.
 
-**Frenada, gas y tiempo muerto** (en el resumen): la velocidad a lo largo de la ruta pintada por fases, y cuánto del
+**Frenada, gas y tiempo muerto** (en «Pilotaje» del resumen): la velocidad a lo largo de la ruta pintada por fases, y cuánto del
 tiempo en marcha vas frenando, acelerando, sin gas en curva y manteniendo.
 
 **El punto que se mueve** (en el resumen, bajo el mapa): un punto blanco que llevas con el dedo por la línea del mapa,
-por la gráfica de velocidad o con la barra. Dice el km, el tiempo, la velocidad, la inclinación y la fase de ese
-sitio, y si estás en una curva, sus datos (tumbada, velocidad de entrada y mínima, frenada, tiempo sin gas), con la
-curva resaltada en el mapa; si estás en una frenada, la suya (pico, de qué a qué velocidad, metros, hundimiento); en
-recta, a cuántos metros está la siguiente curva. «Curva anterior / siguiente» va de curva en curva, al punto más
-tumbado de cada una. En una ida y vuelta por la misma carretera, arrastrando no salta al otro sentido.
+por la gráfica de velocidad (en «Pilotaje») o con la barra. Dice el km, el tiempo, la velocidad, la inclinación y la
+fase de ese sitio, y si estás en una curva, sus datos (tumbada, velocidad de entrada y mínima, frenada, tiempo sin
+gas), con la curva resaltada en el mapa; si estás en una frenada, la suya (pico, de qué a qué velocidad, metros,
+hundimiento); en recta, a cuántos metros está la siguiente curva. «Curva anterior / siguiente» va de curva en curva,
+al punto más tumbado de cada una. En una ida y vuelta por la misma carretera, arrastrando no salta al otro sentido.
+Bajo la gráfica de velocidad sale lo que dice el punto (el km, el tiempo, la velocidad, la fase y su curva o frenada;
+los dos van en pestañas distintas), sin dónde está ni sus coordenadas. Debajo del mapa,
+**dónde está** el punto para verlo en Google Maps (llevándolo a la entrada de una curva se puede decir dónde
+había gravilla): sus coordenadas, que se copian con un toque largo, y «Ver en Google Maps», que las abre; en el punto
+más tumbado de una curva (adonde llevan «Curva anterior / siguiente»), dice cuál es. La tabla de curvas de «Pilotaje»
+lleva bajo cada curva «Mapa» y las coordenadas de ese mismo punto, el más tumbado. **Cerca de casa**, a 300 m o menos
+en línea recta (300 m justos cuentan) de la salida o de la llegada de la ruta (las de su trazada, las del mapa),
+nunca hay coordenadas ni enlace, tampoco al pasar por ahí a mitad de ruta: solo «Cerca de la salida» o «Cerca de la
+llegada» (cerca de las dos, en una vuelta que acaba donde empezó, según la mitad de la ruta: la última curva está
+«cerca de la llegada»; en una curva, «Curva 3, cerca de la salida»); la ayuda de debajo del mapa dice por qué. Una
+ruta cortada en dos son dos grabaciones nuevas (la entera se borra del móvil), y cada una protege su salida y su
+llegada. Nada de esto va en el PDF ni en la imagen.
 
 **Hunde** (en directo): frenando con la moto derecha, la casilla del morro dice «hunde ≈ N mm» (la horquilla, por el
 cabeceo); al soltar, «hundió N mm» durante 4 s.
@@ -264,15 +280,16 @@ red, WhatsApp la deja en cola. Si el navegador no sabe compartir archivos, se de
 
 **Compartir en PDF** («Compartir (PDF)», en «Opciones» del resumen de la ruta y de boxes): todo lo que se ve al darle a
 «Ver», tal cual y desplegado («Más datos» abierto, las tablas con todas sus filas, el mapa con el punto donde esté, las
-gráficas), sin los botones. Cada tarjeta va a lo ancho de un A4, con el mismo tamaño de letra que en el móvil; una
+gráficas; del resumen de la ruta, todas sus pestañas, una tarjeta detrás de otra), sin los botones. Cada tarjeta va a lo ancho de un A4, con el mismo tamaño de letra que en el móvil; una
 tarjeta pasa entera a la página siguiente si cabe en una, y si no se parte entre filas, nunca por la mitad de una. Lo
 hace el móvil, sin red ni librerías (`app/src/ui/pdf/`, `app/src/lib/pdf.ts`): copia la pantalla, pinta cada tarjeta
 con los estilos de la app y mete una imagen por página. Tarda unos segundos; si se pasa del rato que el navegador deja
 para compartir tras un toque, el botón dice «Compartir el PDF» y basta otro toque. Lo que no deba salir en el PDF lleva
 `data-pdf="omit"` (la vista 3D).
 
-**Atrás**: el atrás del móvil ya no cierra la app. Desde el resumen de la ruta, la prueba de sensores o los tiempos
-del día vuelve a la portada, a la pestaña de donde saliste (y el resumen tiene «Volver» arriba); repasando una
+**Atrás**: el atrás del móvil ya no cierra la app. Desde el resumen de la ruta (desde otra de sus pestañas, primero a
+«Resumen»), la prueba de sensores o los tiempos del día vuelve a la portada, a la pestaña de donde saliste (y el
+resumen tiene «Volver» arriba); repasando una
 grabación, la cierra; rodando no para nada (avisa de que para acabar está «Terminar»); en «Mis rutas» o «Ajustes»
 vuelve a «Rodar»; en «Rodar» avisa y el segundo atrás sale.
 

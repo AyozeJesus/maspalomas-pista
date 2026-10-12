@@ -25,9 +25,15 @@ import { DEFAULT_SETTINGS, type Settings } from "../../../engine/settings";
 import type { Runtime } from "../../../runtime";
 import { mapa } from "../../draw/mapa";
 import { chartsInOldRender } from "../../../../test/renames-charts";
+import { placesInOldRender } from "../../../../test/renames-places";
+import { tabsInOldRender } from "../../../../test/renames-tabs";
+import { prepareClone } from "../../pdf/captura";
 import { RuntimeContext } from "../../runtime-context";
 import { RutaFin } from "./RutaFin";
 import { saveTramoFrom } from "./tramo-save";
+
+// Unas coordenadas como las de Google Maps («28.360946, -16.431731»).
+const LATLON = /\d{1,2}\.\d{6}, -?\d{1,3}\.\d{6}/;
 
 // La app de antes no tenía subidas de montaña: para comparar, sin ellas (la ruta de Los Loros pasa por una; con ellas,
 // en src/engine/subidas.test.ts).
@@ -135,6 +141,8 @@ function oldRoot(b: Bench): HTMLElement {
   const el = b.old.doc.getElementById("ruta-fin");
   if (!el) throw new Error("sin #ruta-fin de antes");
   chartsInOldRender(el);
+  placesInOldRender(el, b.eng, b.old.old);
+  tabsInOldRender(el, b.eng);
   return el;
 }
 
@@ -235,8 +243,20 @@ describe("resumen de la ruta: lo mismo que antes", () => {
     expect(byId(b.root, "ruf-sub").textContent).toMatch(
       /^viernes, 9 de octubre · \d+,\d km · \d+:\d\d$/,
     );
-    expect(b.root.querySelectorAll("#ruf-curves tr")).toHaveLength(15);
+    expect(b.root.querySelectorAll("#ruf-curves tr:not(.place-row)")).toHaveLength(15);
     expect(byId(b.root, "ruf-at").textContent).toMatch(/^km 0,0 · 0:00 · \d+ km\/h/);
+    // Con dónde está cada curva y el punto en Google Maps (comparados con lo calculado aparte: renames-places.ts).
+    // (Las de cerca de boxes, la salida y la llegada de la vuelta de ejemplo, sin coordenadas ni enlace.)
+    const links = b.root.querySelectorAll("#ruf-curves tr.place-row a[href]").length;
+    const near = b.root.querySelectorAll("#ruf-curves tr.place-row .near").length;
+    expect([links > 0, near > 0, links + near]).toEqual([true, true, 15]);
+    // Bajo la gráfica de velocidad («Pilotaje»), lo mismo que bajo el mapa.
+    expect(byId(b.root, "ruf-ph-at").textContent).toMatch(/^km 0,0 · 0:00 · /);
+    // El punto empieza en la salida: cerca de casa, sin coordenadas ni enlace.
+    expect(byId(b.root, "ruf-at-pl").textContent).toBe("Cerca de la salida");
+    expect(byId(b.root, "ruf-at-ll").textContent).toBe("");
+    expect(byId(b.root, "ruf-at-map").hidden).toBe(true);
+    expect(byId(b.root, "ruf-at-map").hasAttribute("href")).toBe(false);
   });
 
   it("con nombre, caballitos, avisos de caída, garaje y el mapa por inclinación", async () => {
@@ -339,10 +359,23 @@ describe("resumen de la ruta: al tocarlo, lo mismo que antes", () => {
 
   it("el punto que se mueve: de curva en curva y con la barra", async () => {
     const b = await bench();
+    // Con y sin enlace a Google Maps (lejos de boxes y cerca: la salida y la llegada de la vuelta de ejemplo).
+    const seen = new Set<string>();
+    const link = () => {
+      const a = byId(b.root, "ruf-at-map");
+      seen.add(
+        a.hidden
+          ? "sin"
+          : /^https:\/\/www\.google\.com\/maps\//.test(a.getAttribute("href") ?? "")
+            ? "con"
+            : "?",
+      );
+    };
     for (const dir of [1, 1, 1, -1, 1] as const) {
       click(b.root, dir > 0 ? "ruf-next" : "ruf-prev");
       b.old.old.jumpCurve(dir as never);
       same(b);
+      link();
     }
     const n = b.eng.route.trail.length;
     for (const at of [Math.round(n / 2), n - 1, 0, 37]) {
@@ -350,7 +383,9 @@ describe("resumen de la ruta: al tocarlo, lo mismo que antes", () => {
       byId<HTMLInputElement>(b.old.doc, "ruf-pos").value = String(at);
       b.old.old.scrubTo(at as never);
       same(b);
+      link();
     }
+    expect([...seen].sort()).toEqual(["con", "sin"]);
   });
 
   it("«Cortar en dos»: abrirlo (el punto rosa en el mapa) y mover la barra", async () => {
@@ -402,5 +437,29 @@ describe("resumen de la ruta: al tocarlo, lo mismo que antes", () => {
     b.old.old.showRouteSummary(b.eng as never);
     same(b);
     expect(byId(b.root, "ruf-color").textContent).toBe("Color: inclinación");
+  });
+});
+
+describe("resumen de la ruta: el PDF, sin dónde se ha rodado", () => {
+  it("con el punto lejos de casa (coordenadas y enlace a la vista) y la tabla de curvas entera: ni coordenadas ni enlaces", async () => {
+    const b = await bench();
+    // De curva en curva hasta una lejos de la salida y de la llegada (con sus coordenadas y «Ver en Google Maps»).
+    for (let k = 0; k < 30 && byId(b.root, "ruf-at-map").hidden; k++) {
+      click(b.root, "ruf-next");
+      act(() => runFrames(frames));
+    }
+    expect(byId(b.root, "ruf-at-map").hidden).toBe(false);
+    expect(byId(b.root, "ruf-at-ll").textContent).toMatch(LATLON);
+    click(b.root, "ruf-c-more");
+    expect(b.root.querySelectorAll("#ruf-curves a.maps-link").length).toBeGreaterThan(0);
+    // Lo que copia el PDF (ui/pdf/captura.ts), sin lienzos.
+    const clone = prepareClone(b.root, () => null);
+    expect(clone.textContent).not.toMatch(LATLON);
+    expect(clone.querySelector('a[href*="google.com/maps"]')).toBeNull();
+    for (const sel of ["#ruf-ph-at", "#ruf-ph-at-c", ".scrub-where", ".place-row"])
+      expect(clone.querySelector(sel), sel).toBeNull();
+    // (Lo demás sí va: el texto del punto y la tabla de curvas.)
+    expect(clone.querySelector("#ruf-at")?.textContent).toMatch(/^km \d+,\d · /);
+    expect(clone.querySelectorAll("#ruf-curves tr").length).toBe(15);
   });
 });

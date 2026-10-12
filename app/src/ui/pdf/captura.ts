@@ -1,7 +1,8 @@
 // La pantalla que se está viendo (el resumen de la ruta o boxes), copiada para el PDF: todo lo que se ve y lo plegado
-// desplegado (los «Más datos», las tablas enteras), sin lo que solo sirve para tocar (botones, campos, «desliza el
-// dedo…»). Cada lienzo se copia como imagen. La copia se monta fuera de la vista, con el mismo ancho, para medir cada
-// tarjeta y dónde se puede partir; después cada tarjeta se pinta en una imagen SVG con los estilos de la página.
+// desplegado (los «Más datos», las tablas enteras, todas las pestañas), sin lo que solo sirve para tocar (botones,
+// campos, «desliza el dedo…», la barra de pestañas). Cada lienzo se copia como imagen. La copia se monta fuera de la
+// vista, con el mismo ancho, para medir cada tarjeta y dónde se puede partir; después cada tarjeta se pinta en una
+// imagen SVG con los estilos de la página.
 import { safeCuts } from "../../lib/pdf-pages";
 
 // Lo que no va en el PDF.
@@ -86,6 +87,10 @@ export function prepareClone(
     c.replaceWith(img);
   });
   clone.querySelectorAll(OMIT).forEach((el) => el.remove());
+  // Lo que solo agrupa en la pantalla (las pestañas del resumen y su caja: data-pdf="unwrap") se deshace: sus tarjetas
+  // quedan sueltas en la pantalla, en su orden, como antes de haber pestañas; las de las pestañas que no se ven también
+  // (en la pantalla están maquetadas, sin alto: sus lienzos tienen tamaño y se copian).
+  clone.querySelectorAll('[data-pdf="unwrap"]').forEach((el) => el.replaceWith(...el.childNodes));
   clone.querySelectorAll("details").forEach((d) => d.setAttribute("open", ""));
   clone.querySelectorAll(".cmp-wrap").forEach((w) => w.classList.add("all"));
   clone.removeAttribute("hidden");
